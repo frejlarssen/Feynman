@@ -1,2 +1,2 @@
 # FeynQFT
-A Feynman simulator tailored to solve QFT
+A Feynman simulator, and a version tailored to solve QFT
