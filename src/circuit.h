@@ -17,7 +17,7 @@ enum GateType {
     CNOT
 };
 
-GateType gate_type_from_string(const string& s) {
+GateType gate_type_from_string(const string& s) { //TODO: Confirm it's according to QASM 3.0
     if (s == "h" || s == "H") {
         return HADAMARD;
     } else if (s == "cp" || s == "CP" || s == "cz" || s == "CZ") {
@@ -59,15 +59,6 @@ const array<GateTypeInfo,4> gate_type_infos = {
     GateTypeInfo(SWAP, 2, 0, true),
     GateTypeInfo(CNOT, 2, 1, true)
 };
-
-//int global_index(int wire, int internal_index) {
-//    // TODO: Generalize for non-QFT circuits
-//    // Loop through all wires before this one and count their internal wires
-//
-//
-//    return wire * (2*NUM_QUBITS - wire + 1 ) / 2 + internal_index;
-//}
-
 
 // Stored on each wire it takes as argument.
 struct ParsedGate {
@@ -162,37 +153,48 @@ struct Circuit {
         // String to store each line of the file.
         string line;
 
+        // TODO: Maybe use a real parser instead. Or maybe none is very up to date.
         if (file.is_open()) {
 
-            if (getline(file, line) && line != "OPENQASM 2.0;" && line != "OPENQASM 3.0;") {
-                cerr << "Only OPENQASM (v2.0 and v3.0) supported" << endl;
+            if (getline(file, line) && line != "OPENQASM 3.0;") {
+                cerr << "Only OPENQASM 3.0 supported" << endl;
                 exit(1);
             }
 
-            if (getline(file, line) && line != "include \"qelib1.inc\";") { //TODO: Fix support for standard library.
-                cerr << "Only qelib1.inc supported" << endl;
+            if (getline(file, line) && line != "include \"stdgates.inc\";") { //TODO: Fix support for standard library.
+                cerr << "Only stdgates.inc supported" << endl;
                 exit(1);
             }
 
-            if (getline(file, line) && line.substr(0, 4) != "qreg") { // TODO: Change to qubit. qreg is soon deprecated: https://openqasm.com/language/types.html
-                cerr << "Only qreg supported" << endl;
-                exit(1);
-            }
+            string qreg_name;
+            size_t bracket_pos;
+            size_t end_bracket_pos;
+            getline(file, line);
+            // Support for both qreg (qiskit) and qubit (v3). qreg is soon deprecated: https://openqasm.com/language/types.html
 
-            line = line.substr(5); // Remove "qreg "
-            size_t bracket_pos = line.find('[');
-            size_t end_bracket_pos = line.find(']');
+            string stripped_line = line.substr(5); // Remove "qubit" or "qreg "
+            bracket_pos = stripped_line.find('[');
+            end_bracket_pos = stripped_line.find(']');
             if (bracket_pos == string::npos || end_bracket_pos == string::npos || end_bracket_pos <= bracket_pos) {
-                cerr << "Invalid qreg declaration" << endl;
+                cerr << "Invalid qubit register declaration" << endl;
+                exit(1);
+            }
+            if (line.substr(0, 5) == "qubit") {
+                qreg_name = stripped_line.substr(end_bracket_pos + 2, stripped_line.size() - end_bracket_pos - 3);
+            }
+            else if (line.substr(0, 4) == "qreg") {
+                qreg_name = stripped_line.substr(0, bracket_pos);
+            }
+            else {
+                cerr << "Expected qubit or qreg keyword" << endl;
                 exit(1);
             }
 
-            string qreg_name = line.substr(0, bracket_pos);
-            n = stoi(line.substr(bracket_pos + 1, end_bracket_pos - bracket_pos - 1));
+            n = stoi(stripped_line.substr(bracket_pos + 1, end_bracket_pos - bracket_pos - 1));
             wires.resize(n);
 
-            printf("Qreg name: %s, size: %d\n", qreg_name.c_str(), n);
-            
+            printf("qubit reg name: %s, size: %d\n", qreg_name.c_str(), n);
+
             int gate_index = 0;
             // Read each line from the file and store it in the
             // 'line' variable.
@@ -242,22 +244,6 @@ struct Circuit {
         for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
             cout << "Wire " << i << ": " << wire_to_string(wires[i]) << "\n";
         }
-
-//        bool target_at_output = false;
-//        // Step 1: Hadamards and controlled phases
-//        for (int group = 0; group < n; group++) {
-//            g.emplace_back(HADAMARD, vector<GateQubit>{GateQubit(group, n - group, false, true, false)});
-//            for (int i = 1; i < n - group; i++) {
-//                // Edge case: target happens to be at output (no switch in the middle)
-//                if (n%2 == 1 && group == n/2 && i == n - group - 1) {
-//                    bool phase_target_at_output = true;
-//                }
-//                g.emplace_back(CPHASE, vector<GateQubit>{
-//                    GateQubit(group + i, n - group - i, true, true, false),         // control
-//                    GateQubit(group, n - group - i, false, false, target_at_output) // target
-//                }, -PI / (1 << i) );
-//            }
-//        }
 
         return;
     }
