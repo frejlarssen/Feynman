@@ -212,57 +212,40 @@ struct Circuit {
             // Read each line from the file and store it in the
             // 'line' variable.
             while (getline(file, line)) {
-                //cout << "Index: " << gate_index << ": " << line << endl;
                 size_t space = line.find(' ');
                 string type_param_str = line.substr(0, space);
                 string qubits_str = line.substr(space + 1);
-                //cout << "Type string: " << type_param_str << "\n";
 
                 size_t left_par = type_param_str.find('(');
                 size_t right_par = type_param_str.find(')');
                 
-                //cout << "left_par: " << left_par << "\n";
-                //cout << "right_par: " << right_par << "\n";
-
                 string type_str;
                 string params_str;
                 if (left_par != string::npos && right_par != string::npos) {
                     type_str = type_param_str.substr(0, left_par);
-                    //cout << "type_str: " << type_str << "\n";
-                    //cout << "right_par - 2" << (right_par - 2) << "\n";
                     params_str = type_param_str.substr(left_par + 1, right_par - left_par - 1);
-                    //cout << "params_str: " << params_str << "\n";
                 } else {
                     type_str = type_param_str;
                     params_str = "";
                 }
-
-                //cout << "truncated params: " << params_str.substr(1,params_str.size() - 1) << "\n";
 
                 std::stringstream param_stream(params_str);
                 std::string param_str;
                 vector<float> params;
                 int param = 0;
                 while (getline(param_stream, param_str, ',')) {
-                    //printf("Param: %s\n", param_str.c_str());
-                    //printf("Qreg name given: %s\n", qubit_str.substr(0, qreg_name.size() + 1).c_str());
-                    //printf("Extracted index string: %s\n", qubit_str.substr(qubit_str.find('[') + 1, qubit_str.find(']') - qubit_str.find('[') - 1).c_str());
                     float param = stof(param_str);
                     params.push_back(param);
                 }
 
-                //cout << "Qubit string: " << qubits_str << "\n";
                 std::stringstream qubit_stream(qubits_str);
                 std::string qubit_str;
                 vector<int> arg_indices;
                 while (getline(qubit_stream, qubit_str, ',')) {
-                    //printf("Qubit: %s\n", qubit_str.c_str());
-                    //printf("Qreg name given: %s\n", qubit_str.substr(0, qreg_name.size() + 1).c_str());
                     if (qubit_str.substr(0, qreg_name.size() + 1) != qreg_name + "[") {
                         cerr << "Invalid qubit name" << endl;
                         exit(1);
                     }
-                    //printf("Extracted index string: %s\n", qubit_str.substr(qubit_str.find('[') + 1, qubit_str.find(']') - qubit_str.find('[') - 1).c_str());
                     int qubit_index = stoi(qubit_str.substr(qubit_str.find('[') + 1, qubit_str.find(']') - qubit_str.find('[') - 1));
                     arg_indices.push_back(qubit_index);
                 }
@@ -365,17 +348,11 @@ struct Circuit {
                 
                 if (idx == -1) { // Add new
                     int numq = gate_type_infos[pg.type].num_qubits;
-                    //cout << "numq: " << numq << "\n";
                     vector<GateQubit> args(numq);
-                    //cout << "vector created\n";
-                    //cout << "pg.qparam: " << pg.qparam << "\n";
                     args.at(pg.qparam) = q;
-                    //cout << "qubit inserted\n";
                     gates.emplace_back(pg.id, pg.type, args, pg.params);
-                    //cout << "Gate added\n";
                 } else { // Update existing
                     gates[idx].qubits.at(pg.qparam) = q;
-                    //cout << "Gate updated\n";
                 }
 
                 

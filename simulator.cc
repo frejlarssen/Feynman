@@ -20,9 +20,9 @@ const vector<bool> bit_array_from_string(const string& s) {
     vector<bool> bits(s.size());
     for (size_t i = 0; i < s.size(); i++) {
         if (s[i] == '1') {
-            bits[s.size() - i] = true;
+            bits[s.size() -1 - i] = true;
         } else if (s[i] == '0') {
-            bits[s.size() - i] = false;
+            bits[s.size() -1 - i] = false;
         } else {
             cerr << "Invalid bitstring!" << endl;
             exit(1);
@@ -34,10 +34,10 @@ const vector<bool> bit_array_from_string(const string& s) {
 const string string_from_bit_array(const vector<bool> bit_arr) {
     string str = "";
     for (int i = 0; i < bit_arr.size(); i++) {
-        if (bit_arr[bit_arr.size() - i]) {
-            str += "1";
+        if (bit_arr[bit_arr.size()-1 - i]) {
+            str += "q" + to_string(bit_arr.size()-1 - i) + "=1";
         } else {
-            str += "0";
+            str += "q" + to_string(bit_arr.size()-1 - i) + "=0";
         }
     }
     return str;
