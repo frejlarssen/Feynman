@@ -20,9 +20,9 @@ const vector<bool> bit_array_from_string(const string& s) {
     vector<bool> bits(s.size());
     for (size_t i = 0; i < s.size(); i++) {
         if (s[i] == '1') {
-            bits[i] = true;
+            bits[s.size() - i] = true;
         } else if (s[i] == '0') {
-            bits[i] = false;
+            bits[s.size() - i] = false;
         } else {
             cerr << "Invalid bitstring!" << endl;
             exit(1);
@@ -34,7 +34,7 @@ const vector<bool> bit_array_from_string(const string& s) {
 const string string_from_bit_array(const vector<bool> bit_arr) {
     string str = "";
     for (int i = 0; i < bit_arr.size(); i++) {
-        if (bit_arr[i]) {
+        if (bit_arr[bit_arr.size() - i]) {
             str += "1";
         } else {
             str += "0";
@@ -91,8 +91,8 @@ Environemnt get_environment(Gate gate, Options opts, int history) {
                        vector<bool>(num_targets)};
 
     // Loop through control arguments
-    for (int param = 0; param < num_controls; param++) {
-        GateQubit arg_qubit = gate.qubits[param];
+    for (int qparam = 0; qparam < num_controls; qparam++) {
+        GateQubit arg_qubit = gate.qubits[qparam];
         if (arg_qubit.at_input && arg_qubit.at_output) { //Special case
             if (opts.input_bits[arg_qubit.wire] != opts.output_bits[arg_qubit.wire]) {
                 throw std::logic_error("Conflicting input/output at wire " + to_string(arg_qubit.wire));
@@ -101,11 +101,11 @@ Environemnt get_environment(Gate gate, Options opts, int history) {
 
         if (arg_qubit.at_input) {
             //Here or in seperate function?
-            env.ctrls.at(param) = opts.input_bits[arg_qubit.wire]; // Push pack would also work if it wasn't filled.
+            env.ctrls.at(qparam) = opts.input_bits[arg_qubit.wire]; // Push pack would also work if it wasn't filled.
         } else if (arg_qubit.at_output) {
-            env.ctrls.at(param) = opts.output_bits[arg_qubit.wire];
+            env.ctrls.at(qparam) = opts.output_bits[arg_qubit.wire];
         } else {
-            env.ctrls.at(param) = history >> gate.qubits[0].internal_index_out & 1;
+            env.ctrls.at(qparam) = history >> gate.qubits[0].internal_index_out & 1;
         }
     }
 
@@ -131,6 +131,7 @@ Environemnt get_environment(Gate gate, Options opts, int history) {
         env.inputs = env.outputs;
     } else {
         // Loop through target input arguments
+        //cout << "Loop through target input arguments\n";
         for (int param = num_controls; param < num_controls + num_targets; param++) {
             GateQubit arg_qubit = gate.qubits[param];
 
@@ -184,85 +185,24 @@ complex <float> simulate(Options opts) {
                     // Otherwise, accepts
                 }
                 break;
-//            case CPHASE:
-//                bool control_bit;
-//                bool target_input_bit;
-//                bool target_output_bit;
-//
-//                if (gate.qubits[0].at_input && gate.qubits[0].at_output) {
-//                    if (input_bits[gate.qubits[0].wire] != output_bits[gate.qubits[0].wire]) {
-//                        contribution *= 0.0;
-//                        break;
-//                    }
-//                    else {
-//                        control_bit = input_bits[gate.qubits[0].wire];
-//                    }
-//                } else if (gate.qubits[0].at_input) {
-//                    control_bit = input_bits[gate.qubits[0].wire];
-//                }
-//                else if (gate.qubits[0].at_output) {
-//                    control_bit = output_bits[gate.qubits[0].wire];
-//                }
-//                else {
-//                    control_bit = history >> gate.qubits[0].global_index & 1;
-//                }
-//
-//                if (gate.qubits[1].at_input) {
-//                    target_input_bit = input_bits[gate.qubits[1].wire];
-//                } else {
-//                    target_input_bit = history >> gate.qubits[1].global_index & 1;
-//                }
-//
-//                if (gate.qubits[1].at_output) {
-//                    target_output_bit = output_bits[gate.qubits[1].wire];
-//                } else {
-//                    target_output_bit = history >> gate.qubits[1].global_index - 1 & 1;
-//                }
-//
-//                if (target_input_bit != target_output_bit) {
-//                    contribution *= 0.0;
-//                }
-//                else if (control_bit) {
-//                    contribution *= std::exp(complex<float>(0.0, gate.parameter));
-//                }
-//                else {
-//                    contribution *= 1.0;
-//                }
-//
-//                break;
-//            case SWAP:
-//                bool bit1_input;
-//                bool bit1_output;
-//                bool bit2_input;
-//                bool bit2_output;
-//                if (gate.qubits[0].at_input) {
-//                    bit1_input = input_bits[gate.qubits[0].wire];
-//                } else {
-//                    bit1_input = history >> gate.qubits[0].global_index & 1;
-//                }
-//                if (gate.qubits[0].at_output) {
-//                    bit1_output = output_bits[gate.qubits[0].wire];
-//                } else {
-//                    bit1_output = history >> gate.qubits[0].global_index - 1 & 1;
-//                }
-//
-//                if (gate.qubits[1].at_input) {
-//                    bit2_input = input_bits[gate.qubits[1].wire];
-//                } else {
-//                    bit2_input = history >> gate.qubits[1].global_index & 1;
-//                }
-//                if (gate.qubits[1].at_output) {
-//                    bit2_output = output_bits[gate.qubits[1].wire];
-//                } else {
-//                    bit2_output = history >> gate.qubits[1].global_index - 1 & 1;
-//                }
-//
-//                if (bit1_input == bit2_output && bit2_input == bit1_output) {
-//                    contribution *= 1.0;
-//                } else {
-//                    contribution *= 0.0;
-//                }
-//                break;
+            case CPHASE:
+                if (env.inputs[0] != env.outputs[0]) {
+                    contribution *= 0.0;
+                }
+                else if (env.ctrls[0] && env.inputs[0]) {
+                    contribution *= std::exp(complex<float>(0.0, gate.params[0]));
+                }
+                else {
+                    contribution *= 1.0;
+                }
+                break;
+            case SWAP:
+                if (env.inputs[0] == env.outputs[1] && env.inputs[1] == env.outputs[0]) {
+                    contribution *= 1.0;
+                } else {
+                    contribution *= 0.0;
+                }
+                break;
             default:
                 cerr << "Gate not implemented!" << endl;
                 exit(1);
@@ -291,14 +231,8 @@ int main(int argc, char* argv[]) {
         printf("\t%s\n", gate_to_string(Circuit::gates[i]).c_str());
     }
 
-    //for (const Gate& gate : Circuit::gates) {
-    //    cout << "Gate type: " << gate.type << ", acting on qubits: ";
-    //    for (const GateQubit& gq : gate.qubits) {
-    //        cout << "(wire: " << gq.wire << ", index: " << gq.internal_index_in << ", control: " << gq.is_control << ") ";
-    //    }
-    //    cout << "\n";
-    //}
-    
+    printf("Number of internal wires: %d\n", Circuit::num_internal_wires);
+
     simulate(opts);
     return 0;
 }
