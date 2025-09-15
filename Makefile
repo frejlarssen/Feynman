@@ -1,5 +1,5 @@
 simulator:
-	g++ simulator.cc -o simulator
+	g++ -fopenmp simulator.cc -o simulator
 
 simulator_qft:
 	g++ simulator_qft.cc -o simulator_qft

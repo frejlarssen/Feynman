@@ -206,8 +206,6 @@ struct Circuit {
             n = stoi(stripped_line.substr(bracket_pos + 1, end_bracket_pos - bracket_pos - 1));
             wires.resize(n);
 
-            printf("qubit reg name: %s, size: %d\n", qreg_name.c_str(), n);
-
             int gate_index = 0;
             // Read each line from the file and store it in the
             // 'line' variable.
@@ -271,9 +269,9 @@ struct Circuit {
             cerr << "Unable to open file!" << endl;
         }
 
-        for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
-            cout << "Wire " << i << ": " << wire_to_string(wires[i]) << "\n";
-        }
+        //for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
+        //    cout << "Wire " << i << ": " << wire_to_string(wires[i]) << "\n";
+        //}
 
         return;
     }
@@ -311,7 +309,7 @@ struct Circuit {
             bool prev_over_output = true;
             for (int pgi = wires[wire].size() - 1; pgi >= 0; pgi--) {
                 ParsedGate& pg = wires[wire][pgi];
-                printf("Processing parsed gate: %s at wire %d\n", parsed_gate_to_string(pg).c_str(), wire);
+                //printf("Processing parsed gate: %s at wire %d\n", parsed_gate_to_string(pg).c_str(), wire);
                 
                 // Check if gate is already added. Two ways:
                 // 1. check if it has a wire w lower than wire.
@@ -322,7 +320,7 @@ struct Circuit {
 
                 int idx = vector_idx_of_gate(pg.id);
 
-                cout << "idx: " << idx << "\n";
+                //cout << "idx: " << idx << "\n";
 
                 // We need to know which parameter (index in pg.wires) that has this wire as arugment,
                 // that is pg.args[parameter_idx] = wire
@@ -344,7 +342,7 @@ struct Circuit {
 
                 GateQubit q = GateQubit(wire, internal_index, is_control, at_input, at_output);
                 
-                cout << "q: " << gate_qubit_to_string(q) << "\n";
+                //cout << "q: " << gate_qubit_to_string(q) << "\n";
                 
                 if (idx == -1) { // Add new
                     int numq = gate_type_infos[pg.type].num_qubits;
@@ -365,7 +363,7 @@ struct Circuit {
                 } else if (at_input || prev_over_output) {
                     // No new internal wire either (since circuit input/output doesn't come from histories)
                 } else {
-                    printf("Internal wire found\n");
+                    //printf("Internal wire found\n");
                     internal_index++;
                 }
             }

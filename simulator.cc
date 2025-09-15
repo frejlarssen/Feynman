@@ -7,6 +7,7 @@
 #include <complex>
 #include <cstdio>
 #include <stdexcept>
+#include <chrono>
 
 using namespace std;
 
@@ -146,19 +147,21 @@ Environemnt get_environment(Gate gate, Options opts, int history) {
     return env;
 }
 
+#pragma omp declare reduction( \
+    complex_add : std::complex<float> : omp_out += omp_in) \
+    initializer(omp_priv = std::complex<float>(0,0))
+
 complex <float> simulate(Options opts) {
     const int num_internal_wires = Circuit::num_internal_wires;
-
-    cout << "Number of internal wires: " << num_internal_wires << "\n";
-
     complex <float> total_amplitude = 0.0;
-    complex <float> contribution;
-    // TODO: OpenMP. (GPU/CUDA?)
+
+// With n=16, about x3 speedup with openmp compared to without
+#pragma omp parallel for reduction(complex_add : total_amplitude)
     for (u_int64_t history = 0; history < u_int64_t(1) << num_internal_wires; history++) {
-        cout << "History: " << history << "\n";
-        contribution = 1.0;
+        //cout << "History: " << history << "\n";
+        complex <float> contribution = 1.0;
         for (const Gate& gate : Circuit::gates) {
-            cout << gate_type_to_string(gate.type) << " activates\n";
+            //cout << gate_type_to_string(gate.type) << " activates\n";
 
             Environemnt env = get_environment(gate, opts, history);
 
@@ -172,13 +175,13 @@ complex <float> simulate(Options opts) {
                 break;
             case CNOT:
                 if (env.ctrls[0]) { // NOT
-                    printf("Control activates negation\n");
+                    //printf("Control activates negation\n");
                     if (env.inputs[0] == env.outputs[0]) {
                         contribution = 0;
                     }
                     // Otherwise, accepts
                 } else { // Identity
-                    printf("Control activates identity\n");
+                    //printf("Control activates identity\n");
                     if (env.inputs[0] != env.outputs[0]) {
                         contribution = 0; // Denies
                     }
@@ -207,14 +210,13 @@ complex <float> simulate(Options opts) {
                 cerr << "Gate not implemented!" << endl;
                 exit(1);
             }
-            printf("Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
+            //printf("Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
 
         }
-        std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
+        //std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
         total_amplitude += contribution;
     }
 
-    printf("Total amplitude: %f + i%f\n", total_amplitude.real(), total_amplitude.imag());
     return total_amplitude;
 }
 
@@ -226,13 +228,13 @@ int main(int argc, char* argv[]) {
 
     Circuit::build_gate_list();
 
-    printf("Gates:\n");
-    for (int i = 0; i < Circuit::gates.size(); i++){
-        printf("\t%s\n", gate_to_string(Circuit::gates[i]).c_str());
-    }
+    //printf("Gates:\n");
+    //for (int i = 0; i < Circuit::gates.size(); i++){
+    //    printf("\t%s\n", gate_to_string(Circuit::gates[i]).c_str());
+    //}
 
     printf("Number of internal wires: %d\n", Circuit::num_internal_wires);
-
-    simulate(opts);
+    complex<float> amp = simulate(opts);
+    printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     return 0;
 }
