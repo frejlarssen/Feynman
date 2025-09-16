@@ -72,6 +72,18 @@ For wire in wires:
 
 If they don't change 0/1 (control, Phase), they don't introduce a new internal wire.
 
+Amplitude amplification with n=4, it=3 gives about 60 internal wires when only joining over non-switching.
+When joining over all classical, it would be one internal wire for each of the 4+3*8=28 H-gates.
+AA is nice to show that joining over classical helps, but for Feynman to be good we need less H-gates.
+Time is exponential to depth, unlike Schrödinger method or Feynman for QFT.
+
+Adder is classical -> Should be much better on Feynman than Schrödinger (but no quantum advantage).
+Different kinds. Input + hard coded or input + input. For quantum walk we only need to add or subtract one.
+
+Quantum walk: One H gate and some adder or similar (deterministic routine?) to implement the step. Maybe interesting mix of H-gates and deterministic. And it has applications?
+https://quantumai.google/cirq/experiments/quantum_walks
+
+
 
 ### Possible improvement
 Phase, control, swap, cnot does not introduce new histories. (Phase is "classical" in this sense.)
