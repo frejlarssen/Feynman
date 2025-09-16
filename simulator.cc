@@ -47,13 +47,20 @@ const string string_from_bit_array(const vector<bool> bit_arr) {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
+    const char* helpstr = "Usage: ./feynqft -c circuit_file -i input_bitstring -o output_bitstring\n";
+
+    if (argc < 4) {
+        cout << helpstr;
+        exit(1);
+    }
+
     int k;
 
     auto to_int = [](const std::string& word) -> unsigned {
         return std::atoi(word.c_str());
     };
 
-      while ((k = getopt(argc, argv, "c:d:k:p:r:i:o:t:v:z")) != -1) {
+    while ((k = getopt(argc, argv, "c:d:k:p:r:i:o:t:v:z")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -65,10 +72,10 @@ Options get_options(int argc, char* argv[]) {
             opts.output_bits = bit_array_from_string(optarg);
             break;
           default:
-            fprintf(stderr, "Usage: ./feynqft -c circuit_file -i input_bitstring -o output_bitstring\n");
+            cout << helpstr;
             exit(1);
         }
-      }
+    }
     return opts;
 }
 
@@ -85,8 +92,8 @@ struct Environemnt {
 // If they conflict, throw exception and catch (contribution = 0 from that history and all other histories.)
 
 Environemnt get_environment(Gate gate, Options opts, int history) {
-    int num_controls = gate_type_infos[gate.type].num_controls;
-    int num_targets = gate_type_infos[gate.type].num_qubits - num_controls;
+    int num_controls = gate.num_controls;
+    int num_targets = gate_type_infos[gate.type].num_targets;
     Environemnt env = {vector<bool>(num_controls),
                        vector<bool>(num_targets),
                        vector<bool>(num_targets)};
@@ -132,7 +139,6 @@ Environemnt get_environment(Gate gate, Options opts, int history) {
         env.inputs = env.outputs;
     } else {
         // Loop through target input arguments
-        //cout << "Loop through target input arguments\n";
         for (int param = num_controls; param < num_controls + num_targets; param++) {
             GateQubit arg_qubit = gate.qubits[param];
 
@@ -165,6 +171,31 @@ complex <float> simulate(Options opts) {
 
             Environemnt env = get_environment(gate, opts, history);
 
+            // Check if the gate is activated
+            bool activate = true;
+            for (int c = 0; c < env.ctrls.size(); c++) {
+                if (!env.ctrls[c]) {
+                    activate = false;
+                    break;
+                }
+            }
+
+            if (!activate) {
+                // Compare if input = output
+                bool accept = true;
+                for (int t = 0; t < env.inputs.size(); t++) {
+                    if (env.inputs[t] != env.outputs[t]) {
+                        accept = false;
+                        break;
+                    }
+                }
+                if (!accept) {
+                    contribution = 0; // TODO: Here we could break out of both loops.
+                }
+                continue; // Go on to the next gate.
+            }
+
+            // Activate gate
             switch (gate.type) {
             case HADAMARD:
                 if (env.inputs[0] && env.outputs[0]) {
@@ -173,30 +204,17 @@ complex <float> simulate(Options opts) {
                     contribution *= 1.0 / sqrt(2.0);
                 }
                 break;
-            case CNOT:
-                if (env.ctrls[0]) { // NOT
-                    //printf("Control activates negation\n");
-                    if (env.inputs[0] == env.outputs[0]) {
-                        contribution = 0;
-                    }
-                    // Otherwise, accepts
-                } else { // Identity
-                    //printf("Control activates identity\n");
-                    if (env.inputs[0] != env.outputs[0]) {
-                        contribution = 0; // Denies
-                    }
-                    // Otherwise, accepts
+            case NOT:
+                if (env.inputs[0] == env.outputs[0]) {
+                    contribution = 0;
                 }
                 break;
-            case CPHASE:
+            case PHASE:
                 if (env.inputs[0] != env.outputs[0]) {
                     contribution *= 0.0;
                 }
-                else if (env.ctrls[0] && env.inputs[0]) {
+                else if (env.inputs[0]) {
                     contribution *= std::exp(complex<float>(0.0, gate.params[0]));
-                }
-                else {
-                    contribution *= 1.0;
                 }
                 break;
             case SWAP:
@@ -204,6 +222,14 @@ complex <float> simulate(Options opts) {
                     contribution *= 1.0;
                 } else {
                     contribution *= 0.0;
+                }
+                break;
+            case PAULIZ:
+                if (env.inputs[0] != env.outputs[0]) {
+                    contribution *= 0.0;
+                }
+                else if (env.inputs[0]) {
+                    contribution *= -1;
                 }
                 break;
             default:
@@ -228,10 +254,10 @@ int main(int argc, char* argv[]) {
 
     Circuit::build_gate_list();
 
-    //printf("Gates:\n");
-    //for (int i = 0; i < Circuit::gates.size(); i++){
-    //    printf("\t%s\n", gate_to_string(Circuit::gates[i]).c_str());
-    //}
+    printf("Gates:\n");
+    for (int i = 0; i < Circuit::gates.size(); i++){
+        printf("\t%s\n", gate_to_string(Circuit::gates[i]).c_str());
+    }
 
     printf("Number of internal wires: %d\n", Circuit::num_internal_wires);
     complex<float> amp = simulate(opts);

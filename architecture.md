@@ -13,6 +13,8 @@
 
 Subset of QASM v3. Follow conventions of QASM3.0 (qubit ordering etc).
 
+I support gates such as `cccccz` with arbitrarily many controls. This is because I'm building a simulator that doesn't need to decompose with ancillas etc, which OpenQASM is targeting.
+
 https://openqasm.com/language/standard_library.html#two-qubit-gates
 In standard library, the first argument qubit is control and least significant.
 

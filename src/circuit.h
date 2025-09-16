@@ -12,20 +12,23 @@ using namespace std;
 
 enum GateType {
     HADAMARD,
-    CPHASE,
+    PHASE,
     SWAP,
-    CNOT
+    NOT,
+    PAULIZ
 };
 
 GateType gate_type_from_string(const string& s) { //TODO: Confirm it's according to QASM 3.0
     if (s == "h" || s == "H") {
         return HADAMARD;
-    } else if (s == "cp" || s == "CP" || s == "cz" || s == "CZ") {
-        return CPHASE;
+    } else if (s == "p") {
+        return PHASE;
     } else if (s == "swap" || s == "SWAP") {
         return SWAP;
-    } else if (s == "cx") {
-        return CNOT;
+    } else if (s == "x" || s == "X" || s == "not") {
+        return NOT;
+    } else if (s == "z") {
+        return PAULIZ;
     } else {
         cerr << "Unknown gate type: " << s << endl;
         exit(1);
@@ -35,45 +38,47 @@ GateType gate_type_from_string(const string& s) { //TODO: Confirm it's according
 std::string gate_type_to_string(GateType type) {
     switch (type) {
         case HADAMARD: return "HADAMARD";
-        case CPHASE: return "CPHASE";
+        case PHASE: return "PHASE";
         case SWAP: return "SWAP";
-        case CNOT: return "CNOT";
+        case NOT: return "NOT";
+        case PAULIZ: return "PAULIZ";
         default: return "UNKNOWN";
     }
 }
 
 struct GateTypeInfo {
     GateType type;
-    int num_qubits;
-    int num_controls; // The first num_controls parameters are controls, the rest are targets
+    int num_targets;
     bool breaks_internal_wire; // Does the target bits of it break the internal wire?
     int num_params; // How many parameters? (angle etc)
 
     // Constructor
-    GateTypeInfo(GateType t, int n, int c, bool b, int np) : type(t), num_qubits(n), num_controls(c), breaks_internal_wire(b), num_params(np) {}
+    GateTypeInfo(GateType t, int nt, bool b, int np) : type(t), num_targets(nt), breaks_internal_wire(b), num_params(np) {}
 };
 
 //Must be defined in the same way as in the enum GateType (if we don't remove that one and use only this).
-const array<GateTypeInfo,4> gate_type_infos = {
-    GateTypeInfo(HADAMARD, 1, 0, true, 0),
-    GateTypeInfo(CPHASE, 2, 1, false, 1),
-    GateTypeInfo(SWAP, 2, 0, true, 0),
-    GateTypeInfo(CNOT, 2, 1, true, 0)
+const array<GateTypeInfo,5> gate_type_infos = {
+    GateTypeInfo(HADAMARD, 1, true, 0),
+    GateTypeInfo(PHASE, 1, false, 1),
+    GateTypeInfo(SWAP, 2, true, 0),
+    GateTypeInfo(NOT, 1, true, 0),
+    GateTypeInfo(PAULIZ, 1, false, 0)
 };
 
 // Stored on each wire it takes as argument.
 struct ParsedGate {
     const int id; // ID from line in circuit file.
     const GateType type;
-    const vector<int> args; // Argument list. wires[0] is the argument to the first parameter etc.
+    const int num_controls; // The first num_controls arguments are controls, the rest are targets.
+    const vector<int> args; // Of size type.num_targets + this.num_controls. wires[0] is the argument to the first parameter etc.
     const int qparam; // The qubit parameter of which argument-wire this struct is stored.
     const vector<float> params; // The parameters, for example the angle of a phase.
     // Constructor
-    ParsedGate(int i, GateType t, vector<int> a, int qp, vector<float> p) : id(i), type(t), args(a), qparam(qp), params(p) {}
+    ParsedGate(int i, GateType t, int nc, vector<int> a, int qp, vector<float> p) : id(i), type(t), num_controls(nc), args(a), qparam(qp), params(p) {}
 };
 
 string parsed_gate_to_string(const ParsedGate& pg) {
-    string s = "ParsedGate(id=" + to_string(pg.id) + ", type=" + gate_type_to_string(pg.type) + ", args=[";
+    string s = "ParsedGate(id=" + to_string(pg.id) + ", type=" + gate_type_to_string(pg.type) + ", num_controls=" + to_string(pg.num_controls) + ", args=[";
     for (size_t i = 0; i < pg.args.size(); i++) {
         s += to_string(pg.args[i]);
         if (i < pg.args.size() - 1) s += ", ";
@@ -100,7 +105,7 @@ string wire_to_string(const vector<ParsedGate>& wire) {
 struct GateQubit {
     int wire;
     int internal_index_out; // Global indexing of internal wire out if target, and both in and out if control.
-    bool is_control; // Might not be necessary. Given from which index this GateQubit have in Gate.qubits and type.
+    bool is_control;
     bool at_input;
     bool at_output;
 
@@ -124,18 +129,19 @@ string gate_qubit_to_string(const GateQubit& gq) {
 struct Gate {
     int id;
     GateType type;
-    vector<GateQubit> qubits; //Argument list. Order matters!
-    //const float parameter; // TODO: For gates that need parameters (e.g., general CPHASE)
+    int num_controls;
+    vector<GateQubit> qubits; //Argument list. Order is same as in QASM.
     vector<float> params;
 
     // Constructor
-    Gate(int id, GateType t, vector<GateQubit> qs, vector<float> p)
-        : id (id), type(t), qubits(std::move(qs)), params(p) {}
+    Gate(int id, GateType t, int nc, vector<GateQubit> qs, vector<float> p)
+        : id (id), type(t), num_controls(nc), qubits(std::move(qs)), params(p) {}
 };
 
 string gate_to_string(const Gate& g) {
     string str = "Gate(id="+to_string(g.id) +
     ", type="+gate_type_to_string(g.type) +
+    ", num_controls="+to_string(g.num_controls) +
     ", qubits=[";
     for (int qi = 0; qi < g.qubits.size(); qi++) {
         str += gate_qubit_to_string(g.qubits[qi]);
@@ -227,6 +233,20 @@ struct Circuit {
                     params_str = "";
                 }
 
+                int num_controls = 0;
+                for (int i = 0; i < type_str.length(); i++) {
+                    if (type_str.at(i) == 'c') {
+                        num_controls ++;
+                    }
+                    else {
+                        break;
+                    }
+                }
+
+                string basic_type_str = type_str.substr(num_controls);
+
+                //TODO: Store parsed gate with a certain number of control bits and with a basic target type.
+
                 std::stringstream param_stream(params_str);
                 std::string param_str;
                 vector<float> params;
@@ -254,19 +274,16 @@ struct Circuit {
                         cerr << "Qubit index out of range" << endl;
                         exit(1);
                     }
-                    wires[arg_index].emplace_back(gate_index, gate_type_from_string(type_str), arg_indices, qparam, params);
+                    wires[arg_index].emplace_back(gate_index, gate_type_from_string(basic_type_str), num_controls, arg_indices, qparam, params);
                 }
                 gate_index++;
             }
 
-            // Close the file stream once all lines have been
-            // read.
             file.close();
         }
         else {
-            // Print an error message to the standard error
-            // stream if the file cannot be opened.
             cerr << "Unable to open file!" << endl;
+            exit(1);
         }
 
         //for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
@@ -299,13 +316,13 @@ struct Circuit {
             for (int pgi = 0; pgi < wires[wire].size(); pgi++) {
                 ParsedGate& pg = wires[wire][pgi];
                 //TODO: break on first breaking target.
-                if (!(pg.qparam < gate_type_infos[pg.type].num_controls) && gate_type_infos[pg.type].breaks_internal_wire) {
+                if (!(pg.qparam < pg.num_controls) && gate_type_infos[pg.type].breaks_internal_wire) {
                     // Not control and target breaks wire.
                     nr_pgs_on_input = pgi + 1;
                     break;
                 }
             }
-            
+
             bool prev_over_output = true;
             for (int pgi = wires[wire].size() - 1; pgi >= 0; pgi--) {
                 ParsedGate& pg = wires[wire][pgi];
@@ -327,7 +344,7 @@ struct Circuit {
                 // This, we could have stored directly.
 
                 // Build/modify gate
-                bool is_control = (pg.qparam < gate_type_infos[pg.type].num_controls);
+                bool is_control = (pg.qparam < pg.num_controls);
                 bool at_input = pgi < nr_pgs_on_input;
                 //TODO: Check if any parsed gate to the left of this is wire-breaking target.
 
@@ -341,14 +358,15 @@ struct Circuit {
                 }
 
                 GateQubit q = GateQubit(wire, internal_index, is_control, at_input, at_output);
-                
+
                 //cout << "q: " << gate_qubit_to_string(q) << "\n";
-                
+
                 if (idx == -1) { // Add new
-                    int numq = gate_type_infos[pg.type].num_qubits;
+                    int numq = pg.num_controls + gate_type_infos[pg.type].num_targets;
+
                     vector<GateQubit> args(numq);
                     args.at(pg.qparam) = q;
-                    gates.emplace_back(pg.id, pg.type, args, pg.params);
+                    gates.emplace_back(pg.id, pg.type, pg.num_controls, args, pg.params);
                 } else { // Update existing
                     gates[idx].qubits.at(pg.qparam) = q;
                 }
