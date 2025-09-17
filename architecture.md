@@ -2,8 +2,8 @@
 
 ## High level
 
-1. Construct circuit.
-2. Parse input/output bitstring.
+1. Parse circuit.
+2. Build/analyse circuit.
 3. For all history $h$:
     1. Multiply the amplitude of all gates, given the input and output determined by the histroy $h$.
 
@@ -85,7 +85,7 @@ https://quantumai.google/cirq/experiments/quantum_walks
 
 
 
-### Possible improvement
+### Join histories over deterministic gates
 Phase, control, swap, cnot does not introduce new histories. (Phase is "classical" in this sense.)
 But SWAP/CNOT etc introduces internal wire in some way (since 0/1 can shift). How to solve this without splitting the history? (CNOT can partially utalize the control, so SWAP is a cleaner example.)
 An "internal wire" really sounds like it should be one value. So we need to revise the $H=2^{internal\_wires}$ formula.
@@ -100,7 +100,42 @@ Can an "internal path" span multiple global wires?
 
 
 
+We sometimes have H in the beginning and then only deterministic gates (QFT and arithmetic on superposition).
+In these cases it would help alot (reduce to a single history) to also have backwards propagation from a selected output. This shouldn't be more difficult than forward.
+
+Where can we store calculated 0/1:s? Not in the history, since they don't fit.
+Maybe in the gates themselves.
+
+New terminology: Input/output bitstrings constitute natural sources. We also need "induced sources". They are set by the history.
+We need to keep track of which qubits are *reached* by natural and induced sources.
+
+Change `at_input` and `at_output` to `induced_input` and `induced_output`, which is true if the value is decided by a series of deterministic gates, given a history. Initialize all of them to `false`.
+They also have two booleans `input`and `output` which should be set later for each history.
+If they are true, it means that they can be decided given a history, by propagating either forwards or backwards.
+
+We need to look at all wires connected to a gate to know if a qubit should be `induced_output` or not.
+How long time can the "compilation" phase take?
+1. Set references `next` and `prev` of each `GateQubit` when creating them wire by wire.
+2. Pass once time-forward and once time-backward. A "fake run" similar to when we run, but instead fo setting `input` and `output` we set `induced_input` and `induced_output`. The "fake run" can later be refined to make difference of different deterministic gates. A swap is deterministic on output 0 if it is deterministic on input 1 etc.
+
+   Problem: Some induced sources might make others unnecessary! It matters for efficiency which order we set them.
+3. Go wire by wire and count and name induction points (similar to the internal wires now).
+
+
+How to store circuit?
+When we run we want one time sorted vector of `Gate` to iterate.
+When we run we also want to send the output of a deterministic `GateQubit` to the input of the next one on the same wire. We want this to be fast (no looping) since it happens for each history.
+
+Either: One time-sorted vector of `Gate`. Each `GateQubit` has a reference to the next `GateQubit` on the same wire. One dereference for each `GateQubit`.
+Or: Loop through a vector of references to `Gate`. One vector for each wire, where the `GateQubits` are stored. Would need two dereferences?
+
+
+
+
 ## Loop through histories
+
+For each history we go through all gates by id ("time"). For each output qubit of the gate, we need to set the output of this one to the input of the next qubit on the same wire.
+Either, we can have `wires` which is vectors of references to `GateQubit`s. Every GateQubit keeps track of where it is on the wire, and can by a dereference update the input of the next one. For each history, we do this once forwards, and once backwards. In the last one of them, or in a new pass, we calculate the contribution.
 
 Loop through all histories (assignments 0/1 to all intenal wires).
 
