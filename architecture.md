@@ -11,27 +11,50 @@
 
 ## Input format
 
-Subset of QASM v3. Follow conventions of QASM3.0 (qubit ordering etc).
+Subset of QASM v3. Follow conventions of QASM3.0 (qubit ordering etc). Maybe mix with older versions to support running same file with qiskit to compare.
 
 I support gates such as `cccccz` with arbitrarily many controls. This is because I'm building a simulator that doesn't need to decompose with ancillas etc, which OpenQASM is targeting.
 
 https://openqasm.com/language/standard_library.html#two-qubit-gates
 In standard library, the first argument qubit is control and least significant.
 
-In parsing we push back. wires[0] is the first argument, and least significant qubit of gate.
-
-Gate should also have a similar argument list of qubits, so that evaluation know which qubit does what.
-First qubit in a gate we stumble upon should not be first or last, but it depends on which parameter it is an argument to.
-
 ## Circuit representation / Prep stage
 
-A circuit is an array of gates. A gate is defined by it's type, and internal wire (wire and position in that wire).
+Gate should have an argument list of qubits, so that evaluation know which qubit does what. First qubit in a gate we stumble upon should not be first or last, but it depends on which parameter it is an argument to.
 
-```
-circuit:  list(gate)
+A circuit is an array of gates. A gate is defined by it's type and `GateQubit`s. The `GateQubit` has these members:
+
+
+TODO: See if something can be optimized by differing between H-gates and deterministic gates.
+
+GateQubit: {
+    
+}
+
+`Enum status_{in/out}`:
+* Not reached yet (We might need to make it an artificial source.)
+ reached (set during analysis), and it's value (set in simulation for each history), (and weather the value is set?).
+* Natural source: (in which case we would get it directly from bitstring)
+* An artificial source (in which case get it from the history)
+* Reached (in which case we get it when running, either backwards or forwards).
+
+
+`bool set_{in/out}`: The `value` field contains the actual value. Ends up in this status during analysis if a natural source, during evaluation of history if artificial source or reached.
+`bool value_{in/out}`: The value. (Only valid if set=true).
+
+
+We could also have `GatePort`s instead. One for input and one for output, connecting to another port.
+
+TODO: Optimize by copying everything to minimal datastructures after analysis. status won't be NOT_REACHED etc.
 
 gate:  {type, list({wire, internal_wire_in, global_index, control, at_input, at_output})}
 
+Circuit:  {
+    list(gate)
+}
+
+
+```
 QFT2 would be represented by this circuit: //TODO: Update
 circuit =
 [

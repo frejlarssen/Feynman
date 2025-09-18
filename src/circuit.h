@@ -49,20 +49,21 @@ std::string gate_type_to_string(GateType type) {
 struct GateTypeInfo {
     GateType type;
     int num_targets;
-    bool breaks_internal_wire; // Does the target bits of it break the internal wire?
+    bool breaks_internal_wire; // Does it change 0/1?
+    bool deterministic; // True for all except H-gate. Could maybe optimize/simplify by using this fact.
     int num_params; // How many parameters? (angle etc)
 
     // Constructor
-    GateTypeInfo(GateType t, int nt, bool b, int np) : type(t), num_targets(nt), breaks_internal_wire(b), num_params(np) {}
+    GateTypeInfo(GateType t, int nt, bool b, bool d, int np) : type(t), num_targets(nt), breaks_internal_wire(b), deterministic(d), num_params(np) {}
 };
 
 //Must be defined in the same way as in the enum GateType (if we don't remove that one and use only this).
 const array<GateTypeInfo,5> gate_type_infos = {
-    GateTypeInfo(HADAMARD, 1, true, 0),
-    GateTypeInfo(PHASE, 1, false, 1),
-    GateTypeInfo(SWAP, 2, true, 0),
-    GateTypeInfo(NOT, 1, true, 0),
-    GateTypeInfo(PAULIZ, 1, false, 0)
+    GateTypeInfo(HADAMARD, 1, true, false, 0),
+    GateTypeInfo(PHASE, 1, false, true, 1),
+    GateTypeInfo(SWAP, 2, true, true, 0),
+    GateTypeInfo(NOT, 1, true, true, 0),
+    GateTypeInfo(PAULIZ, 1, false, true, 0)
 };
 
 // Stored on each wire it takes as argument.
@@ -102,28 +103,96 @@ string wire_to_string(const vector<ParsedGate>& wire) {
     return s;
 }
 
+//TODO: What can we call this? A GateQubit has two of these.
+// This info is needed over all histories, which is why SET is not here.
+enum InternalWireStatus {
+    NOT_REACHED,
+    INPUT,
+    OUTPUT,
+    ARTIFICIAL,
+    REACHED
+};
+
+std::string gate_qubit_status_to_string(InternalWireStatus status) {
+    switch (status) {
+        case NOT_REACHED: return "NOT_REACHED";
+        case INPUT: return "INPUT";
+        case OUTPUT: return "OUTPUT";
+        case ARTIFICIAL: return "ARTIFICIAL";
+        case REACHED: return "REACHED";
+        default: return "UNKNOWN";
+    }
+}
+
+
+// TODO: Could make another struct InternalWire that this one references.
+//       This and the next GateQubit would share InternalWire.
+//       This would remove duplicates.
+//       What about performance? We would dereference the internal wire
+//       instead of dereferencing prev and next.
 struct GateQubit {
+
+    // Consistent after analysis
     int wire;
-    int internal_index_out; // Global indexing of internal wire out if target, and both in and out if control.
     bool is_control;
-    bool at_input;
-    bool at_output;
+    InternalWireStatus input_status; // Should be the same as next->output_status
+    InternalWireStatus output_status;
+    GateQubit* prev; //Constitutes a double linked list, one for each wire.
+    GateQubit* next;
+
+    // Global indexing of artificial source in/out.
+    // Only relevant if corresponding status = artificial.
+    // Used to set val from given history.
+    int artificial_in;
+    int artificial_out;
+
+    // Decides weather val_{in/out} is valid
+    bool val_in_set;
+    bool val_out_set;
+
+    // The acctual values. Set in analysis for NATURAL, and for each history for the others.
+    bool val_in;
+    bool val_out;
 
     // Constructor
-    GateQubit(int w, int idx, bool ctrl, bool in=false, bool out=false)
-        : wire(w), internal_index_out(idx), is_control(ctrl), at_input(in), at_output(out) {}
+    GateQubit(int w, bool ctrl,
+              InternalWireStatus instat=NOT_REACHED,
+              InternalWireStatus outstat=NOT_REACHED,
+              GateQubit* prev = nullptr,
+              GateQubit* next = nullptr,
+              int art_in = -1,
+              int art_out = -1,
+              bool val_in_set = false,
+              bool val_out_set = false,
+              bool val_in = false,
+              bool val_out = false)
+        : wire(w), is_control(ctrl),
+          input_status(instat), output_status(outstat),
+          prev(prev), next(next),
+          artificial_in(art_in),
+          artificial_out(art_out),
+          val_in_set(val_in_set),
+          val_out_set(val_out_set),
+          val_in(val_in), val_out(val_out) {}
     
     // Default constructor
     GateQubit()
-        : wire(-1), internal_index_out(0), is_control(false), at_input(false), at_output(false) {} // wire -1 is means not set yet.
+        : wire(-1), is_control(false),
+          input_status(NOT_REACHED), output_status(NOT_REACHED) {} // wire -1 is means not set yet.
 };
 
 string gate_qubit_to_string(const GateQubit& gq) {
     return "(wire: " + to_string(gq.wire) +
-           ", index_out: " + to_string(gq.internal_index_out) +
            ", control: " + (gq.is_control ? "true" : "false") +
-           ", at_input: " + (gq.at_input ? "true" : "false") +
-           ", at_output: " + (gq.at_output ? "true" : "false") + ")";
+           ", input_status: " + (gate_qubit_status_to_string(gq.input_status)) +
+           ", output_status: " + (gate_qubit_status_to_string(gq.output_status)) +
+           //", prev: " + (gq.prev == nullptr ? "nullptr" : to_string((*gq.prev).id))
+           ", artificial_in: " + to_string(gq.artificial_in) +
+           ", artificial_out: " + to_string(gq.artificial_out) +
+           ", val_in_set: " + (gq.val_in_set ? "true" : "false") +
+           ", val_out_set: " + (gq.val_out_set ? "true" : "false") +
+           ", val_in: " + (gq.val_in ? "true" : "false") +
+           ", val_out: " + (gq.val_out ? "true" : "false") + ")";
 }
 
 struct Gate {
@@ -161,7 +230,7 @@ struct Circuit {
     static int n;
     static vector<Gate> gates; //TODO: Fix const
     static vector<vector<ParsedGate>> wires;
-    static int num_internal_wires;
+    static int num_artificial; // Number of artificial sources
 
     // Generate the QFT gates
     static void parse_circuit(string filename) {
@@ -286,9 +355,9 @@ struct Circuit {
             exit(1);
         }
 
-        //for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
-        //    cout << "Wire " << i << ": " << wire_to_string(wires[i]) << "\n";
-        //}
+        for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
+            cout << "Wire " << i << ": " << wire_to_string(wires[i]) << "\n";
+        }
 
         return;
     }
@@ -303,19 +372,69 @@ struct Circuit {
         return -1;
     }
 
+    // An implementation of FakeRun, which is one way to select artificial sources.
+    static int right_to_left() {
+        int artificial_index = -1; // -1 is output of wire 0
+        
+        // Iterate gate list backwards.
+        for (int i = Circuit::gates.size() - 1; i >= 0; i--) {
+            Gate& gate = Circuit::gates[i];
+            for (int q = 0; q < gate.qubits.size(); q++) {
+                GateQubit& gq = gate.qubits[q];
+                if (gate_type_infos[gate.type].deterministic || gq.is_control) {
+                    // All to right should already be reached.
+                    // Propagate determinism
+                
+                    // Check to not overwrite source
+                    if (gq.input_status == NOT_REACHED) {
+                        gq.input_status = REACHED;   
+                    }
+                    if (gq.prev != nullptr &&
+                        gq.prev->output_status == NOT_REACHED) {
+                        gq.prev->output_status = REACHED;
+                    }
+                } else { // Nondeterministic target
+                    if (gq.input_status == NOT_REACHED) {
+                        gq.input_status = ARTIFICIAL;
+                        artificial_index ++;
+                        gq.artificial_in = artificial_index;
+                    }
+                    if (gq.prev != nullptr &&
+                        // We store the same info about the wire no the other end
+                        gq.prev->output_status == NOT_REACHED) {
+                        gq.prev->output_status = ARTIFICIAL;
+                        gq.prev->artificial_out = artificial_index;
+                    }
+                }
+            }
+
+            // Iterate list
+                //// Maybe add internal wire
+                //if (is_control) {
+                //    // Control qubit. No new internal wire.
+                //} else if (!gate_type_infos[pg.type].breaks_internal_wire) {
+                //    // Target produces no new internal wire
+                //} else if (at_input || prev_over_output) {
+                //    // No new internal wire either (since circuit input/output doesn't come from histories)
+                //} else {
+                //    //printf("Internal wire found\n");
+                //    artificial_index++;
+                //}
+            //}
+        }
+        return artificial_index + 1;
+    }
+
     // Build the global gate list from parsed gates on each wire.
     // Counts internal wires.
     // Adds only the qubit on that wire.
     // Sort based on idx.
     static void build_gate_list() {
-        int internal_index = -1; // -1 is output of wire 0
         for (int wire = 0; wire < n; wire++) {
-            // TODO: Loop once left-to-right and check how long is input.
 
             int nr_pgs_on_input = 0;
             for (int pgi = 0; pgi < wires[wire].size(); pgi++) {
                 ParsedGate& pg = wires[wire][pgi];
-                //TODO: break on first breaking target.
                 if (!(pg.qparam < pg.num_controls) && gate_type_infos[pg.type].breaks_internal_wire) {
                     // Not control and target breaks wire.
                     nr_pgs_on_input = pgi + 1;
@@ -323,6 +442,9 @@ struct Circuit {
                 }
             }
 
+            cout << "wire: " << wire << ": nr_pgs_on_input=" << nr_pgs_on_input << endl;
+
+            GateQubit* next = nullptr;
             bool prev_over_output = true;
             for (int pgi = wires[wire].size() - 1; pgi >= 0; pgi--) {
                 ParsedGate& pg = wires[wire][pgi];
@@ -345,19 +467,39 @@ struct Circuit {
 
                 // Build/modify gate
                 bool is_control = (pg.qparam < pg.num_controls);
-                bool at_input = pgi < nr_pgs_on_input;
-                //TODO: Check if any parsed gate to the left of this is wire-breaking target.
+                
+                // Input bitstring propagates to inputs...
+                InternalWireStatus stat_input = pgi < nr_pgs_on_input ? INPUT : NOT_REACHED;
+                
+                // ...and outputs of gates
+                InternalWireStatus stat_output = NOT_REACHED;
+                if (is_control || !gate_type_infos[pg.type].breaks_internal_wire) {
+                    stat_output = pgi < nr_pgs_on_input ? INPUT : NOT_REACHED;
+                } else {
+                    stat_output = pgi < nr_pgs_on_input-1 ? INPUT : NOT_REACHED;
+                }
 
-                bool at_output = false;
+                // Output bitstring propagates to...
                 if (prev_over_output) {
-                    at_output = true;
+                    // ...output
+                    stat_output = OUTPUT;
                     if (!is_control && gate_type_infos[pg.type].breaks_internal_wire) {
                         // Not control and target breaks wire.
                         prev_over_output = false;
+                        stat_input = INPUT;
                     }
                 }
 
-                GateQubit q = GateQubit(wire, internal_index, is_control, at_input, at_output);
+                // Decide if they are natural sources, add Gate's.
+                // Fix linked list: Point to previous one, and make previous one point to this one.
+                // When all are added, FakeRun forward to set artificial and reached.
+                // Update using linked list.
+                GateQubit q = GateQubit(wire, is_control, stat_input, stat_output, nullptr, next);
+                //cout << "q: " << gate_qubit_to_string(q) << endl;
+                if (next != nullptr) {
+                    //cout << "*prev: " << gate_qubit_to_string(*prev) << endl;
+                    (*next).prev = &q;
+                }
 
                 //cout << "q: " << gate_qubit_to_string(q) << "\n";
 
@@ -371,23 +513,9 @@ struct Circuit {
                     gates[idx].qubits.at(pg.qparam) = q;
                 }
 
-                
-
-                // Maybe add internal wire
-                if (is_control) {
-                    // Control qubit. No new internal wire.
-                } else if (!gate_type_infos[pg.type].breaks_internal_wire) {
-                    // Target produces no new internal wire
-                } else if (at_input || prev_over_output) {
-                    // No new internal wire either (since circuit input/output doesn't come from histories)
-                } else {
-                    //printf("Internal wire found\n");
-                    internal_index++;
-                }
+                next = &q;
             }
         }
-
-        num_internal_wires = internal_index + 1;
 
         auto itbegin = gates.begin();
         auto itend = gates.end();
@@ -397,6 +525,18 @@ struct Circuit {
 
         //Sort
         std::sort(itbegin, itend, cmp);
+
+        printf("Gates before fake run:\n");
+        for (int i = 0; i < Circuit::gates.size(); i++){
+            printf("\t%s\n", gate_to_string(Circuit::gates[i]).c_str());
+        }
+
+        // Do fake run to check how sources reach,
+        // set artificial sources, and report back number of artificial sources.
+        // Begin with implementing R->L since it is optimal for QFT.
+        //Circuit::num_artificial = right_to_left();
+
+        
         return;
     }
 };
@@ -404,4 +544,4 @@ struct Circuit {
 int Circuit::n;
 vector<Gate> Circuit::gates;
 vector<vector<ParsedGate>> Circuit::wires;
-int Circuit::num_internal_wires;
+int Circuit::num_artificial;
