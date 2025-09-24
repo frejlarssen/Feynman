@@ -563,9 +563,7 @@ struct Circuit {
             // Check if activated
             bool activate = true;
             for (int c = 0; c < gate.num_controls; c++) {
-                cout << "  Checking c=" << c << endl;
                 GateQubit& the_qubit = *gate.qubits.at(c);
-                cout << "  The qubit: " << gate_qubit_to_string(the_qubit) << endl;
                 if (!gate.qubits.at(c)->wire_right->val) {
                     activate = false;
                     break;

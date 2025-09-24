@@ -108,19 +108,6 @@ complex <float> simulate(Circuit base_circ, Options opts) {
             w->val_set = true;
         }
 
-        // After deep_copy() in simulate()
-        for (const auto& w : circ.input_sources) {
-            std::cout << "InputWire addr: " << w.get() << std::endl;
-        }
-        for (const auto& w : circ.artificial_sources) {
-            std::cout << "ArtificialWire addr: " << w.get() << std::endl;
-        }
-        for (const auto& gate : circ.gates) {
-            for (const auto& gq : gate->qubits) {
-                std::cout << "GateQubit addr: " << gq.get() << std::endl;
-            }
-        }
-
         // TODO: Make a real run setting the values of all internal wires.
         // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
@@ -209,7 +196,7 @@ complex <float> simulate(Circuit base_circ, Options opts) {
             //printf("Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
 
         }
-        std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
+        //std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
         total_amplitude += contribution;
     }
 
@@ -224,10 +211,10 @@ int main(int argc, char* argv[]) {
 
     Circuit base_circ = Circuit::build_circuit();
 
-    printf("Gates after build:\n");
-    for (int i = 0; i < base_circ.gates.size(); i++){
-        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
-    }
+//    printf("Gates after build:\n");
+//    for (int i = 0; i < base_circ.gates.size(); i++){
+//        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
+//    }
 
     printf("Number of artificial sources: %d\n", Circuit::num_artificial);
     complex<float> amp = simulate(base_circ, opts);
