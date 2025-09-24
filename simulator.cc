@@ -83,7 +83,7 @@ Options get_options(int argc, char* argv[]) {
     complex_add : std::complex<float> : omp_out += omp_in) \
     initializer(omp_priv = std::complex<float>(0,0))
 
-complex <float> simulate(Options opts) {
+complex <float> simulate(Circuit base_circ, Options opts) {
     const int num_artificial = Circuit::num_artificial;
 
     // Set values of those reached from natural
@@ -94,24 +94,37 @@ complex <float> simulate(Options opts) {
     // sources, less artificial sources and exponentially less histories.
 
 
-    Circuit::right_to_left_natural(opts.input_bits, opts.output_bits);
+    Circuit::right_to_left_natural(base_circ, opts.input_bits, opts.output_bits);
 
     complex <float> total_amplitude = 0.0;
 
     // With n=16, about x3 speedup with openmp compared to without
     #pragma omp parallel for reduction(complex_add : total_amplitude)
     for (u_int64_t history = 0; history < u_int64_t(1) << num_artificial; history++) {
-        //cout << "History: " << history << "\n";
+        Circuit circ = base_circ.deep_copy(); // Implement deep_copy() in Circuit
 
-        for (const std::shared_ptr<InternalWire>& w : Circuit::artificial_sources) {
+        for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
             w->val = history >> w->artificial & 1;
             w->val_set = true;
+        }
+
+        // After deep_copy() in simulate()
+        for (const auto& w : circ.input_sources) {
+            std::cout << "InputWire addr: " << w.get() << std::endl;
+        }
+        for (const auto& w : circ.artificial_sources) {
+            std::cout << "ArtificialWire addr: " << w.get() << std::endl;
+        }
+        for (const auto& gate : circ.gates) {
+            for (const auto& gq : gate->qubits) {
+                std::cout << "GateQubit addr: " << gq.get() << std::endl;
+            }
         }
 
         // TODO: Make a real run setting the values of all internal wires.
         // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-        Circuit::right_to_left_artificial(history);
+        Circuit::right_to_left_artificial(circ, history);
 
 //        printf("Gates after artificial pass:\n");
 //        for (int i = 0; i < Circuit::gates.size(); i++) {
@@ -121,7 +134,7 @@ complex <float> simulate(Options opts) {
         // Then we need to iterate all to calculate contribution.
 
         complex <float> contribution = 1.0;
-        for (const shared_ptr<Gate>& gateptr : Circuit::gates) {
+        for (const shared_ptr<Gate>& gateptr : circ.gates) {
             Gate& gate = *gateptr;
 
             int num_ctrl = gate.num_controls;
@@ -209,15 +222,15 @@ int main(int argc, char* argv[]) {
 
     Circuit::parse_circuit(opts.circuit_file);
 
-    Circuit::build_gate_list();
+    Circuit base_circ = Circuit::build_circuit();
 
-//    printf("Gates after build:\n");
-//    for (int i = 0; i < Circuit::gates.size(); i++){
-//        printf("  %s\n", gate_to_string(*Circuit::gates[i]).c_str());
-//    }
+    printf("Gates after build:\n");
+    for (int i = 0; i < base_circ.gates.size(); i++){
+        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
+    }
 
     printf("Number of artificial sources: %d\n", Circuit::num_artificial);
-    complex<float> amp = simulate(opts);
+    complex<float> amp = simulate(base_circ, opts);
     printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     return 0;
 }
