@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #define PI 3.141592653589793
 
@@ -114,6 +115,7 @@ enum InternalWireStatus {
 };
 
 std::string internal_wire_status_to_string(InternalWireStatus status) {
+    //cout << "in internal_wire_status_to_string" << endl;
     switch (status) {
         case NOT_REACHED: return "NOT_REACHED";
         case INPUT: return "INPUT";
@@ -130,10 +132,11 @@ struct GateQubit;
 // Allows us to set an artificial source, and the value is propagated accross PHASE-gates etc instantly.
 // Multiple gates can be connected to the same InternalWire.
 struct InternalWire {
+    int id; //For debugging
     int wire;
     InternalWireStatus status;
-    GateQubit* start; //Constitutes a double linked list, one for each wire.
-    GateQubit* end;
+    //GateQubit* start; //Constitutes a double linked list, one for each wire.
+    //GateQubit* end;
 
     // Global indexing of artificial source.
     // Only relevant if corresponding status = artificial.
@@ -147,32 +150,39 @@ struct InternalWire {
     bool val;
 
     // Constructor
-    InternalWire(int w,
+    InternalWire(int id, int w,
               InternalWireStatus stat=NOT_REACHED,
-              GateQubit* start = nullptr,
-              GateQubit* end = nullptr,
+              //GateQubit* start = nullptr,
+              //GateQubit* end = nullptr,
               int artif = -1,
               bool val_set = false,
               bool val = false)
-        : wire(w),
+        : id(id),
+          wire(w),
           status(stat),
-          start(start), end(end),
+          //start(start), end(end),
           artificial(artif),
           val_set(val_set),
           val(val) {}
-
-    // Default constructor
-    InternalWire()
-        : wire(-1) {} // wire -1 is means not set yet.
 };
 
 string internal_wire_to_string(const InternalWire& iw) {
-    return "(wire: " + to_string(iw.wire) +
+    //cout << "in internal_wire_to_string" << endl;
+
+    string str = "(id: " + to_string(iw.id) + ", wire: " + to_string(iw.wire) +
            ", status: " + (internal_wire_status_to_string(iw.status)) +
            //", prev: " + (gq.prev == nullptr ? "nullptr" : to_string((*gq.prev).id))
            ", artificial: " + to_string(iw.artificial) +
            ", val_set: " + (iw.val_set ? "true" : "false") +
            ", val: " + (iw.val ? "true" : "false") + ")";
+    return str;
+}
+
+string internal_wire_to_string(const std::shared_ptr<InternalWire>& iw) {
+    if (!iw) {
+        return "no iw";
+    }
+    return internal_wire_to_string(*iw);  // delegate to the reference overload
 }
 
 
@@ -188,42 +198,47 @@ struct GateQubit {
     bool is_control;
     std::shared_ptr<InternalWire> wire_left;
     std::shared_ptr<InternalWire> wire_right; // In and out could be the same! But wire_right->end can be used to iterate list.
-    GateQubit* prev; // Constitutes a double linked list, one for each wire.
-    GateQubit* next; // Necessary?
+    std::shared_ptr<GateQubit> prev; // Constitutes a double linked list, one for each wire.
+    std::shared_ptr<GateQubit> next; // Necessary?
 
     // Constructor
     GateQubit(int w, bool ctrl,
-              std::shared_ptr<InternalWire> in=nullptr,
-              std::shared_ptr<InternalWire> out=nullptr,
-              GateQubit* prev = nullptr,
-              GateQubit* next = nullptr)
+              std::shared_ptr<InternalWire> wl=nullptr,
+              std::shared_ptr<InternalWire> wr=nullptr,
+              std::shared_ptr<GateQubit> prev = nullptr,
+              std::shared_ptr<GateQubit> next = nullptr)
         : wire(w), is_control(ctrl),
-          wire_left(in), wire_right(out),
+          wire_left(wl), wire_right(wr),
           prev(prev), next(next) {}
-    
-    // Default constructor
-    GateQubit()
-        : wire(-1), is_control(false) {} // wire -1 is means not set yet.
 };
 
-string gate_qubit_to_string(const GateQubit& gq) {
-    return "(wire: " + to_string(gq.wire) +
-           ", control: " + (gq.is_control ? "true" : "false") + 
-           ", wire_left: " + (internal_wire_to_string(*gq.wire_left)) +
-           ", wire_right: " + (internal_wire_to_string(*gq.wire_right))
+string gate_qubit_to_string(GateQubit& gq) {
+    string str = "(wire: " + to_string(gq.wire);
+    string ctrlbool = (gq.is_control ? "true" : "false");
+    str += ", control: " + ctrlbool +
+           ", wire_left: " + (internal_wire_to_string(gq.wire_left)) +
+           ", wire_right: " + (internal_wire_to_string(gq.wire_right)) +
            //", prev: " + (gq.prev == nullptr ? "nullptr" : to_string((*gq.prev).id))
-           + ")";
+            ")";
+    return str;
+}
+
+std::string gate_qubit_to_string(const std::shared_ptr<GateQubit>& gq) {
+    if (!gq) {
+        return "no GateQubit yet";
+    }
+    return gate_qubit_to_string(*gq);  // delegate to the reference overload
 }
 
 struct Gate {
     int id;
     GateType type;
     int num_controls;
-    vector<GateQubit> qubits; //Argument list. Order is same as in QASM.
+    vector<shared_ptr<GateQubit>> qubits; //Argument list. Order is same as in QASM.
     vector<float> params;
 
     // Constructor
-    Gate(int id, GateType t, int nc, vector<GateQubit> qs, vector<float> p)
+    Gate(int id, GateType t, int nc, vector<shared_ptr<GateQubit>> qs, vector<float> p)
         : id (id), type(t), num_controls(nc), qubits(std::move(qs)), params(p) {}
 };
 
@@ -245,16 +260,16 @@ string gate_to_string(const Gate& g) {
     return str;
 }
 
-//TODO: Fix internal indexing to be consistent with history indexing
+//TODO: Put everything in const datastructures after build, to optimize.
 struct Circuit {
     static int n;
-    static vector<Gate> gates; //TODO: Fix const
+    static vector<std::shared_ptr<Gate>> gates;
     static vector<vector<ParsedGate>> wires;
     static int num_artificial; // Number of artificial sources
     static vector<std::shared_ptr<InternalWire>> input_sources;
     static vector<std::shared_ptr<InternalWire>> output_sources;
     static vector<std::shared_ptr<InternalWire>> artificial_sources;
-    static vector<Gate*> deterministically_breaking;
+    static vector<std::shared_ptr<Gate>> deterministically_breaking;
 
     // Parse circuit from QASM-file
     static void parse_circuit(string filename) {
@@ -379,9 +394,9 @@ struct Circuit {
             exit(1);
         }
 
-        for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
-            cout << "Wire " << i << ": " << wire_to_string(wires[i]) << "\n";
-        }
+//        for (size_t i = wires.size() - 1; i >= 0 && i < wires.size(); i--) {
+//            cout << "Wire " << i << ": " << wire_to_string(wires[i]) << "\n";
+//        }
 
         return;
     }
@@ -389,7 +404,7 @@ struct Circuit {
     // -1 if not added yet. Otherwise idx such that gate[idx].id = id
     static int vector_idx_of_gate(int id) {
         for (int i = 0; i < gates.size(); i++) {
-            if (gates[i].id == id) {
+            if (gates[i]->id == id) {
                 return i;
             }
         }
@@ -402,10 +417,10 @@ struct Circuit {
         
         // Iterate gate list right to left.
         for (int i = Circuit::gates.size() - 1; i >= 0; i--) {
-            Gate& gate = Circuit::gates[i];
+            Gate& gate = *Circuit::gates[i];
             for (int q = 0; q < gate.qubits.size(); q++) {
                 // All to right should already be reached because we have already visited them.
-                GateQubit& gq = gate.qubits[q];
+                GateQubit& gq = *gate.qubits[q];
                 if (gq.is_control || !gate_type_infos[gate.type].breaks_internal_wire) {
                     // Same internal wire left and right => determinism have already propagated
                     continue;
@@ -445,29 +460,29 @@ struct Circuit {
 
         // Iterate gate list right to left.
         for (int i = Circuit::gates.size() - 1; i >= 0; i--) {
-            Gate& gate = Circuit::gates[i];
+            Gate& gate = *Circuit::gates.at(i);
 
-            cout << "In natural pass for gate " << gate.id << endl;
+            //cout << "In natural pass for gate " << gate.id << endl;
 
             // Check if all to right are set
             bool all_set = true;
             for (int q = 0; q < gate.qubits.size(); q++) {
-                if (!gate.qubits[q].wire_right->val_set) {
+                if (!gate.qubits[q]->wire_right->val_set) {
                     all_set = false;
                     break;
                 }
             }
 
-            cout << "all_set: " << all_set << endl;
+            //cout << "all_set: " << all_set << endl;
 
             if (all_set && gate_type_infos[gate.type].deterministic) {
                 // Set all to the left.
-                cout << "all_set and deterministic" << endl;
+                //cout << "all_set and deterministic" << endl;
 
                 // Check if activated
                 bool activate = true;
                 for (int c = 0; c < gate.num_controls; c++) {
-                    if (!gate.qubits[c].wire_right->val) {
+                    if (!gate.qubits[c]->wire_right->val) {
                         activate = false;
                         break;
                     }
@@ -475,24 +490,78 @@ struct Circuit {
 
                 if (!activate) {
                     for (int t = gate.num_controls; t < gate.num_controls + gate_type_infos[gate.type].num_targets; t++) {
-                        gate.qubits[t].wire_left->val = gate.qubits[t].wire_right->val;
+                        gate.qubits[t]->wire_left->val = gate.qubits[t]->wire_right->val;
                     }
                 }
                 else {
                     switch (gate.type) {
                     case NOT:
-                        gate.qubits[gate.num_controls].wire_left->val = !gate.qubits[gate.num_controls].wire_right->val;
-                        gate.qubits[gate.num_controls].wire_left->val_set = true;
+                        gate.qubits[gate.num_controls]->wire_left->val = !gate.qubits[gate.num_controls]->wire_right->val;
+                        gate.qubits[gate.num_controls]->wire_left->val_set = true;
                         break;
                     case SWAP:
-                        gate.qubits[gate.num_controls].wire_left->val = gate.qubits[gate.num_controls + 1].wire_right->val;
-                        gate.qubits[gate.num_controls].wire_left->val_set = true;
-                        gate.qubits[gate.num_controls + 1].wire_left->val = gate.qubits[gate.num_controls].wire_right->val;
-                        gate.qubits[gate.num_controls + 1].wire_left->val_set = true;
+                        gate.qubits[gate.num_controls]->wire_left->val = gate.qubits[gate.num_controls + 1]->wire_right->val;
+                        gate.qubits[gate.num_controls]->wire_left->val_set = true;
+                        gate.qubits[gate.num_controls + 1]->wire_left->val = gate.qubits[gate.num_controls]->wire_right->val;
+                        gate.qubits[gate.num_controls + 1]->wire_left->val_set = true;
                         break;
                     default:
                         cerr << "Gate not implemented in right to left real pass" << endl;
                     }
+                }
+            }
+        }
+        return;
+    }
+
+    // Sets values from R->L to mimic fake run
+    static void right_to_left_artificial(int history) {
+        int artificial_index = 0;
+
+        for (const std::shared_ptr<InternalWire>& w : Circuit::artificial_sources) {
+            w->val = history >> (w->artificial) & 1;
+            w->val_set = true;
+        }
+
+        // Iterate gate list right to left.
+        for (int i = Circuit::deterministically_breaking.size() - 1; i >= 0; i--) {
+            Gate& gate = *Circuit::deterministically_breaking[i];
+
+            //cout << "In artificial pass for gate with id " << gate.id << endl;
+
+            //cout << "  the gate: " << gate_to_string(gate) << endl;
+
+            // Check if activated
+            bool activate = true;
+            for (int c = 0; c < gate.num_controls; c++) {
+                cout << "  Checking c=" << c << endl;
+                GateQubit& the_qubit = *gate.qubits.at(c);
+                cout << "  The qubit: " << gate_qubit_to_string(the_qubit) << endl;
+                if (!gate.qubits.at(c)->wire_right->val) {
+                    activate = false;
+                    break;
+                }
+            }
+
+            if (!activate) {
+                for (int t = gate.num_controls; t < gate.num_controls + gate_type_infos[gate.type].num_targets; t++) {
+                    gate.qubits[t]->wire_left->val = gate.qubits[t]->wire_right->val;
+                }
+            }
+            else {
+                switch (gate.type) {
+                case NOT:
+                    gate.qubits[gate.num_controls]->wire_left->val = !gate.qubits[gate.num_controls]->wire_right->val;
+                    gate.qubits[gate.num_controls]->wire_left->val_set = true;
+                    break;
+                case SWAP:
+                    gate.qubits[gate.num_controls]->wire_left->val = gate.qubits[gate.num_controls + 1]->wire_right->val;
+                    gate.qubits[gate.num_controls]->wire_left->val_set = true;
+                    gate.qubits[gate.num_controls + 1]->wire_left->val = gate.qubits[gate.num_controls]->wire_right->val;
+                    gate.qubits[gate.num_controls + 1]->wire_left->val_set = true;
+                    break;
+                default:
+                    cerr << "  Gate not implemented in right to left real pass" << endl;
                 }
             }
         }
@@ -504,11 +573,12 @@ struct Circuit {
     // Adds only the qubit on that wire.
     // Sort based on idx.
     static void build_gate_list() {
+        int iw_id = 0;
         for (int wire = 0; wire < n; wire++) {
 
-            std::shared_ptr<InternalWire> output_wire = std::make_shared<InternalWire>(wire, OUTPUT);
-            Circuit::output_sources.push_back(output_wire);
-            GateQubit* next = nullptr;
+            std::shared_ptr<InternalWire> wire_right = std::make_shared<InternalWire>(iw_id++, wire, OUTPUT);
+            Circuit::output_sources.emplace_back(wire_right);
+            std::shared_ptr<GateQubit> next = nullptr;
             bool prev_over_output = true;
 
             // TODO: Build Gate list of GateQubit, and InternalWire's. Reference accordingly. 
@@ -525,48 +595,42 @@ struct Circuit {
                 // Build/modify gate
                 bool is_control = (pg.qparam < pg.num_controls);
 
-                std::shared_ptr<InternalWire> input_wire;
+                std::shared_ptr<InternalWire> wire_left;
                 if (!is_control && gate_type_infos[pg.type].breaks_internal_wire) {
-                    input_wire = std::make_shared<InternalWire>(wire);
+                    wire_left = std::make_shared<InternalWire>(iw_id++, wire);
                 }
                 else {
-                    input_wire = output_wire;
+                    wire_left = wire_right;
                 }
 
                 // Decide if they are natural sources, add Gate's.
                 // Fix linked list: Point to previous one, and make previous one point to this one.
                 // When all are added, FakeRun forward to set artificial and reached.
                 // Update using linked list.
-                GateQubit q = GateQubit(wire, is_control, input_wire, output_wire, nullptr, next);
+                std::shared_ptr<GateQubit> q = make_shared<GateQubit>(wire, is_control, wire_left, wire_right, nullptr, next);
 
                 if (!is_control && gate_type_infos[pg.type].breaks_internal_wire) {
-                    output_wire = input_wire;
+                    wire_right = wire_left;
                 }
 
-                //cout << "q: " << gate_qubit_to_string(q) << endl;
                 if (next != nullptr) {
-                    //cout << "*prev: " << gate_qubit_to_string(*prev) << endl;
-                    (*next).prev = &q;
+                    (*next).prev = q;
                 }
-
-                //cout << "q: " << gate_qubit_to_string(q) << "\n";
 
                 if (idx == -1) { // Add new
                     int numq = pg.num_controls + gate_type_infos[pg.type].num_targets;
 
-                    vector<GateQubit> args(numq);
+                    vector<shared_ptr<GateQubit>> args(numq);
                     args.at(pg.qparam) = q;
-                    Gate gate = Gate(pg.id, pg.type, pg.num_controls, args, pg.params);
+                    shared_ptr<Gate> gate = make_shared<Gate>(pg.id, pg.type, pg.num_controls, args, pg.params);
                     gates.emplace_back(gate);
-                    if (gate_type_infos[gate.type].deterministic && gate_type_infos[gate.type].breaks_internal_wire) {
-                        deterministically_breaking.push_back(&gate);
-                        // TODO: Compare push_back and emplace_back
+                    if (gate_type_infos[gate->type].deterministic && gate_type_infos[gate->type].breaks_internal_wire) {
+                        deterministically_breaking.emplace_back(gate);
                     }
                 } else { // Update existing
-                    gates[idx].qubits.at(pg.qparam) = q;
+                    gates[idx]->qubits.at(pg.qparam) = q;
                 }
-
-                next = &q;
+                next = q;
             }
 
             // Set the leftmost InternalWire to INPUT
@@ -576,37 +640,31 @@ struct Circuit {
 
         auto itbegin = gates.begin();
         auto itend = gates.end();
-        auto cmp = [](Gate a, Gate b) {
-                         return a.id < b.id;
+        auto cmp = [](shared_ptr<Gate> a, shared_ptr<Gate> b) {
+                         return a->id < b->id;
                      };
 
         //Sort
         std::sort(itbegin, itend, cmp);
 
-        printf("Gates before fake run:\n");
-        for (int i = 0; i < Circuit::gates.size(); i++){
-            printf("  %s\n", gate_to_string(Circuit::gates[i]).c_str());
-        }
+        auto itbegin2 = deterministically_breaking.begin();
+        auto itend2 = deterministically_breaking.end();
+        std::sort(itbegin2, itend2, cmp);
 
         // Do fake run to check how sources reach,
         // set artificial sources, and report back number of artificial sources.
         // Begin with implementing R->L since it is optimal for QFT.
         Circuit::num_artificial = right_to_left_fake();
 
-        printf("Gates after fake run:\n");
-        for (int i = 0; i < Circuit::gates.size(); i++){
-            printf("  %s\n", gate_to_string(Circuit::gates[i]).c_str());
-        }
-
         return;
     }
 };
 
 int Circuit::n;
-vector<Gate> Circuit::gates;
+vector<std::shared_ptr<Gate>> Circuit::gates;
 vector<vector<ParsedGate>> Circuit::wires;
 int Circuit::num_artificial;
 vector<std::shared_ptr<InternalWire>> Circuit::input_sources;
 vector<std::shared_ptr<InternalWire>> Circuit::output_sources;
 vector<std::shared_ptr<InternalWire>> Circuit::artificial_sources;
-vector<Gate*> Circuit::deterministically_breaking;
+vector<std::shared_ptr<Gate>> Circuit::deterministically_breaking;
