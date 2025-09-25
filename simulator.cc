@@ -94,7 +94,10 @@ complex <float> simulate(Circuit base_circ, Options opts) {
     // sources, less artificial sources and exponentially less histories.
 
 
-    Circuit::right_to_left_natural(base_circ, opts.input_bits, opts.output_bits);
+    if (!Circuit::right_to_left_natural(base_circ, opts.input_bits, opts.output_bits)) {
+        // Input and output not compatible with deterministic gates
+        return 0.0;
+    }
 
     complex <float> total_amplitude = 0.0;
 
@@ -111,7 +114,10 @@ complex <float> simulate(Circuit base_circ, Options opts) {
         // TODO: Make a real run setting the values of all internal wires.
         // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-        Circuit::right_to_left_artificial(circ, history);
+        if (!Circuit::right_to_left_artificial(circ, history)) {
+            // Input, output and artificial not compatible with deterministic gates
+            continue;
+        }
 
 //        printf("Gates after artificial pass:\n");
 //        for (int i = 0; i < Circuit::gates.size(); i++) {
@@ -196,7 +202,7 @@ complex <float> simulate(Circuit base_circ, Options opts) {
             //printf("Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
 
         }
-        //std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
+        std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
         total_amplitude += contribution;
     }
 
@@ -211,10 +217,10 @@ int main(int argc, char* argv[]) {
 
     Circuit base_circ = Circuit::build_circuit();
 
-//    printf("Gates after build:\n");
-//    for (int i = 0; i < base_circ.gates.size(); i++){
-//        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
-//    }
+    printf("Gates after build:\n");
+    for (int i = 0; i < base_circ.gates.size(); i++){
+        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
+    }
 
     printf("Number of artificial sources: %d\n", Circuit::num_artificial);
     complex<float> amp = simulate(base_circ, opts);

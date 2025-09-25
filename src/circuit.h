@@ -169,6 +169,15 @@ struct InternalWire {
     std::shared_ptr<InternalWire> clone() const {
         return std::make_shared<InternalWire>(id, wire, status, artificial, val_set, val);
     }
+
+    bool set_safe(bool new_val) {
+        if (val_set && val != new_val) {
+            return false;
+        }
+        val = new_val;
+        val_set = true;
+        return true;
+    }
 };
 
 string internal_wire_to_string(const InternalWire& iw) {
@@ -474,7 +483,8 @@ struct Circuit {
     }
 
     // Sets values from R->L to mimic fake run
-    static void right_to_left_natural(Circuit& circ, vector<bool> input_bits, vector<bool> output_bits) {
+    // Returns true if successful, false if propagated values from output and input conflicts.
+    static bool right_to_left_natural(Circuit& circ, vector<bool> input_bits, vector<bool> output_bits) {
         int artificial_index = 0;
 
         for (const std::shared_ptr<InternalWire>& w : circ.output_sources) {
@@ -483,8 +493,7 @@ struct Circuit {
         }
 
         for (const std::shared_ptr<InternalWire>& w : circ.input_sources) {
-            w->val = input_bits[w->wire];
-            w->val_set = true;
+            if (!w->set_safe(input_bits[w->wire])) { return false; }
         }
 
         // Iterate gate list right to left.
@@ -519,20 +528,17 @@ struct Circuit {
 
                 if (!activate) {
                     for (int t = gate.num_controls; t < gate.num_controls + gate_type_infos[gate.type].num_targets; t++) {
-                        gate.qubits[t]->wire_left->val = gate.qubits[t]->wire_right->val;
+                        if (!gate.qubits[t]->wire_left->set_safe(gate.qubits[t]->wire_right->val)) { return false; }
                     }
                 }
                 else {
                     switch (gate.type) {
                     case NOT:
-                        gate.qubits[gate.num_controls]->wire_left->val = !gate.qubits[gate.num_controls]->wire_right->val;
-                        gate.qubits[gate.num_controls]->wire_left->val_set = true;
+                        if (!gate.qubits[gate.num_controls]->wire_left->set_safe(!gate.qubits[gate.num_controls]->wire_right->val)) { return false; }
                         break;
                     case SWAP:
-                        gate.qubits[gate.num_controls]->wire_left->val = gate.qubits[gate.num_controls + 1]->wire_right->val;
-                        gate.qubits[gate.num_controls]->wire_left->val_set = true;
-                        gate.qubits[gate.num_controls + 1]->wire_left->val = gate.qubits[gate.num_controls]->wire_right->val;
-                        gate.qubits[gate.num_controls + 1]->wire_left->val_set = true;
+                        if (!gate.qubits[gate.num_controls]->wire_left->set_safe(gate.qubits[gate.num_controls + 1]->wire_right->val)) { return false; }
+                        if (!gate.qubits[gate.num_controls + 1]->wire_left->set_safe(gate.qubits[gate.num_controls]->wire_right->val)) { return false;}
                         break;
                     default:
                         cerr << "Gate not implemented in right to left real pass" << endl;
@@ -540,11 +546,11 @@ struct Circuit {
                 }
             }
         }
-        return;
+        return true;
     }
 
     // Sets values from R->L to mimic fake run
-    static void right_to_left_artificial(Circuit& circ, int history) {
+    static bool right_to_left_artificial(Circuit& circ, int history) {
         int artificial_index = 0;
 
         for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
@@ -582,17 +588,15 @@ struct Circuit {
                     gate.qubits[gate.num_controls]->wire_left->val_set = true;
                     break;
                 case SWAP:
-                    gate.qubits[gate.num_controls]->wire_left->val = gate.qubits[gate.num_controls + 1]->wire_right->val;
-                    gate.qubits[gate.num_controls]->wire_left->val_set = true;
-                    gate.qubits[gate.num_controls + 1]->wire_left->val = gate.qubits[gate.num_controls]->wire_right->val;
-                    gate.qubits[gate.num_controls + 1]->wire_left->val_set = true;
+                    if (!gate.qubits[gate.num_controls]->wire_left->set_safe(gate.qubits[gate.num_controls + 1]->wire_right->val)) { return false; }
+                    if (!gate.qubits[gate.num_controls + 1]->wire_left->set_safe(gate.qubits[gate.num_controls]->wire_right->val)) { return false; }
                     break;
                 default:
                     cerr << "  Gate not implemented in right to left real pass" << endl;
                 }
             }
         }
-        return;
+        return true;
     }
 
     // Build the global gate list from parsed gates on each wire.
