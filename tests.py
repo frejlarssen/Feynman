@@ -20,14 +20,101 @@ def run_simulator(qasm_file, input_bits, output_bits):
     raise RuntimeError("Simulator output did not contain amplitude.")
 
 def run_qiskit(qasm_file, input_bits, output_bits):
-    qc = qasm3.load(qasm_file)
-    #print("input_bits:", input_bits)
-    #print("int input_bits:", int(input_bits, 2))
-    state = Statevector.from_int(int(input_bits, 2), 2**qc.num_qubits)
-    state = state.evolve(qc)
-    output_index = int(output_bits, 2)
-    amp = state.data[output_index]
-    return amp
+    try:
+        qc = build_qiskit_circuit_from_custom_qasm(qasm_file)
+        #print(f"Qiskit Circuit:\n{qc.draw()}")
+        state = Statevector.from_int(int(input_bits, 2), 2**qc.num_qubits)
+        state = state.evolve(qc)
+        output_index = int(output_bits, 2)
+        amp = state.data[output_index]
+        return amp
+    except Exception as e:
+        raise RuntimeError(f"Qiskit simulation failed: {e}")
+
+def build_qiskit_circuit_from_custom_qasm(qasm_file):
+    with open(qasm_file) as f:
+        lines = f.readlines()
+
+    # Find number of qubits from 'qubit' or 'qreg' declaration
+    n_qubits = None
+    for line in lines:
+        if line.startswith("qubit"):
+            n_qubits = int(line.split("[")[1].split("]")[0])
+            break
+        elif line.startswith("qreg"):
+            n_qubits = int(line.split("[")[1].split("]")[0])
+            break
+    if n_qubits is None:
+        raise RuntimeError("Could not determine number of qubits from QASM.")
+
+    qc = QuantumCircuit(n_qubits)
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("//") or line.startswith("OPENQASM"):
+            continue
+        if line.startswith("qubit") or line.startswith("qreg") or line.startswith("include"):
+            continue
+
+        # Single-controlled phase: cp(theta) q[control],q[target]
+        if line.startswith("cp"):
+            gate, args = line.split(" ")
+            theta = float(gate.split("(")[1].split(")")[0])
+            qubits = [int(s.split("[")[1].split("]")[0]) for s in args.split(",")]
+            control, target = qubits
+            qc.cp(theta, control, target)
+        # Multi-controlled gates: c...cX, c...cZ, c...cH, etc.
+        elif line.startswith("c") and len(line.split(" ")[0]) > 1:
+            gate, args = line.split(" ")
+            num_controls = gate.count("c")
+            base_gate = gate[num_controls:]
+            qubit_indices = [int(s.split("[")[1].split("]")[0]) for s in args.split(",")]
+            controls = qubit_indices[:num_controls]
+            target = qubit_indices[num_controls]
+            if base_gate == "x":
+                qc.mcx(controls, target)
+            elif base_gate == "z":
+                qc.h(target)
+                qc.mcx(controls, target)
+                qc.h(target)
+            elif base_gate == "h":
+                if num_controls == 0:
+                    qc.h(target)
+                else:
+                    raise RuntimeError("Multi-controlled H is not natively supported in Qiskit.")
+            else:
+                raise RuntimeError(f"Unsupported multi-controlled gate: {gate}")
+        # Hadamard: h q[0]
+        elif line.startswith("h"):
+            _, arg = line.split(" ")
+            q = int(arg.split("[")[1].split("]")[0])
+            qc.h(q)
+        # Phase: p(theta) q[0]
+        elif line.startswith("p"):
+            gate, rest = line.split(" ", 1)
+            theta = float(rest.split(")")[0].split("(")[1])
+            q = int(rest.split(" ")[1].split("[")[1].split("]")[0])
+            qc.p(theta, q)
+        # X: x q[0]
+        elif line.startswith("x"):
+            _, arg = line.split(" ")
+            q = int(arg.split("[")[1].split("]")[0])
+            qc.x(q)
+        # Z: z q[0]
+        elif line.startswith("z"):
+            _, arg = line.split(" ")
+            q = int(arg.split("[")[1].split("]")[0])
+            qc.z(q)
+        # SWAP: swap q[0],q[1]
+        elif line.startswith("swap"):
+            _, args = line.split(" ")
+            q0 = int(args.split(",")[0].split("[")[1].split("]")[0])
+            q1 = int(args.split(",")[1].split("[")[1].split("]")[0])
+            qc.swap(q0, q1)
+        else:
+            raise RuntimeError(f"Unsupported gate in QASM: {line}")
+
+    return qc
 
 def bitstrings(n):
     return [format(i, f'0{n}b') for i in range(2**n)]
@@ -35,11 +122,11 @@ def bitstrings(n):
 if __name__ == "__main__":
     # Hardcoded QASM files and number of qubits for each
     qasm_files = [
+        #("./circuits/small.qasm", 2),
         ("./circuits/aa_n2_it1_mark1.qasm", 2),
         ("./circuits/qft_3.qasm", 3),
-        # ("./circuits/qwalk_n4_it1.qasm", 4),
-        # TODO: Implement multi-controll gates in main branch
-        # TODO: Report fail at python Error.
+        ("./circuits/qwalk_n2_it1.qasm", 2),
+        #("./circuits/qwalk_n4_it1.qasm", 4),
     ]
 
     all_passed = True
@@ -59,4 +146,5 @@ if __name__ == "__main__":
                     print(f"{qasm_file} | in: {input_bits} out: {output_bits} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
                 except Exception as e:
                     print(f"{qasm_file} | in: {input_bits} out: {output_bits} | ERROR: {e}")
+                    all_passed = False
     print("All tests passed!" if all_passed else "Some tests failed.")
