@@ -104,6 +104,7 @@ complex <float> simulate(Circuit base_circ, Options opts) {
     // With n=16, about x3 speedup with openmp compared to without
     #pragma omp parallel for reduction(complex_add : total_amplitude)
     for (u_int64_t history = 0; history < u_int64_t(1) << num_artificial; history++) {
+        //cout << "History " << history << endl;
         Circuit circ = base_circ.deep_copy(); // Implement deep_copy() in Circuit
 
         for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
@@ -119,9 +120,9 @@ complex <float> simulate(Circuit base_circ, Options opts) {
             continue;
         }
 
-//        printf("Gates after artificial pass:\n");
-//        for (int i = 0; i < Circuit::gates.size(); i++) {
-//            printf("  %s\n", gate_to_string(*Circuit::gates[i]).c_str());
+//        printf("Gates after aftifical pass:\n");
+//        for (int i = 0; i < circ.gates.size(); i++){
+//            printf("  %s\n", gate_to_string(*circ.gates[i]).c_str());
 //        }
 
         // Then we need to iterate all to calculate contribution.
@@ -217,10 +218,10 @@ int main(int argc, char* argv[]) {
 
     Circuit base_circ = Circuit::build_circuit();
 
-    printf("Gates after build:\n");
-    for (int i = 0; i < base_circ.gates.size(); i++){
-        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
-    }
+//    printf("Gates after build:\n");
+//    for (int i = 0; i < base_circ.gates.size(); i++){
+//        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
+//    }
 
     printf("Number of artificial sources: %d\n", Circuit::num_artificial);
     complex<float> amp = simulate(base_circ, opts);

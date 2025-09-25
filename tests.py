@@ -126,7 +126,8 @@ if __name__ == "__main__":
         ("./circuits/aa_n2_it1_mark1.qasm", 2),
         ("./circuits/qft_3.qasm", 3),
         ("./circuits/qwalk_n2_it1.qasm", 2),
-        #("./circuits/qwalk_n4_it1.qasm", 4),
+        ("./circuits/qwalk_n2_it2.qasm", 2),
+        ("./circuits/qwalk_n4_it2.qasm", 4),
     ]
 
     all_passed = True

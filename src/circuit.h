@@ -554,8 +554,7 @@ struct Circuit {
         int artificial_index = 0;
 
         for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
-            w->val = history >> (w->artificial) & 1;
-            w->val_set = true;
+            w->set_safe(history >> (w->artificial) & 1);
         }
 
         // Iterate gate list right to left.
@@ -578,14 +577,13 @@ struct Circuit {
 
             if (!activate) {
                 for (int t = gate.num_controls; t < gate.num_controls + gate_type_infos[gate.type].num_targets; t++) {
-                    gate.qubits[t]->wire_left->val = gate.qubits[t]->wire_right->val;
+                    if (!gate.qubits[t]->wire_left->set_safe(gate.qubits[t]->wire_right->val)) { return false;}
                 }
             }
             else {
                 switch (gate.type) {
                 case NOT:
-                    gate.qubits[gate.num_controls]->wire_left->val = !gate.qubits[gate.num_controls]->wire_right->val;
-                    gate.qubits[gate.num_controls]->wire_left->val_set = true;
+                    if (!gate.qubits[gate.num_controls]->wire_left->set_safe(!gate.qubits[gate.num_controls]->wire_right->val)) { return false; }
                     break;
                 case SWAP:
                     if (!gate.qubits[gate.num_controls]->wire_left->set_safe(gate.qubits[gate.num_controls + 1]->wire_right->val)) { return false; }
