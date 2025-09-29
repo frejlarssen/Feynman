@@ -3,11 +3,11 @@
 #include <vector>
 #include <string>
 #include <fstream>
-#include "src/circuit.h"
 #include <complex>
 #include <cstdio>
 #include <stdexcept>
-#include <chrono>
+#include "src/circuit.h"
+#include "src/utils.h"
 
 using namespace std;
 
@@ -101,11 +101,20 @@ complex <float> simulate(Circuit base_circ, Options opts) {
 
     complex <float> total_amplitude = 0.0;
 
+    auto simulate_start = get_time();
+    duration<double> total_coretime_deep_copy = zero_duration();
+    duration<double> total_coretime_after_deep_copy = zero_duration();
     // With n=16, about x3 speedup with openmp compared to without
     #pragma omp parallel for reduction(complex_add : total_amplitude)
     for (u_int64_t history = 0; history < u_int64_t(1) << num_artificial; history++) {
         //cout << "History " << history << endl;
+
+        auto start_deep_copy = get_time();
         Circuit circ = base_circ.deep_copy(); // Implement deep_copy() in Circuit
+        auto end_deep_copy = get_time();
+        total_coretime_deep_copy += get_duration(start_deep_copy, end_deep_copy);
+
+        auto start_after_deep_copy = get_time();
 
         for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
             w->val = history >> w->artificial & 1;
@@ -203,9 +212,17 @@ complex <float> simulate(Circuit base_circ, Options opts) {
             //printf("Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
 
         }
-        std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
+        //std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
         total_amplitude += contribution;
+
+        auto end_after_deep_copy = get_time();
+        total_coretime_after_deep_copy = end_after_deep_copy - start_after_deep_copy;
     }
+    cout << "Total core time deep_copy: " << duration_to_double(total_coretime_deep_copy) << " s" << endl;
+    cout << "Total core time after deep_copy: " << duration_to_double(total_coretime_after_deep_copy) << " s" << endl;
+
+    auto simulate_end = get_time();
+    cout << "Total clock time simulate: " << duration_to_double(simulate_start, simulate_end) << " s" << endl;
 
     return total_amplitude;
 }

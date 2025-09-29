@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+//#include "utils.h"
 
 #define PI 3.141592653589793
 
@@ -312,7 +313,6 @@ struct Circuit {
     // Parse circuit from QASM-file
     static void parse_circuit(string filename) {
 
-        cout << "Parsing circuit from file: " << filename << endl;
         ifstream file(filename);
 
         // String to store each line of the file.
