@@ -7,7 +7,6 @@
 #include <cstdio>
 #include <stdexcept>
 #include "src/circuit.h"
-#include "src/utils.h"
 
 using namespace std;
 
@@ -83,7 +82,7 @@ Options get_options(int argc, char* argv[]) {
     complex_add : std::complex<float> : omp_out += omp_in) \
     initializer(omp_priv = std::complex<float>(0,0))
 
-complex <float> simulate(Circuit base_circ, Options opts) {
+complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 0) {
     const int num_artificial = Circuit::num_artificial;
 
     // Set values of those reached from natural
@@ -94,7 +93,7 @@ complex <float> simulate(Circuit base_circ, Options opts) {
     // sources, less artificial sources and exponentially less histories.
 
 
-    if (!Circuit::right_to_left_natural(base_circ, opts.input_bits, opts.output_bits)) {
+    if (!Circuit::right_to_left_natural(opts.input_bits, opts.output_bits)) {
         // Input and output not compatible with deterministic gates
         return 0.0;
     }
@@ -102,29 +101,23 @@ complex <float> simulate(Circuit base_circ, Options opts) {
     complex <float> total_amplitude = 0.0;
 
     auto simulate_start = get_time();
-    duration<double> total_coretime_deep_copy = zero_duration();
-    duration<double> total_coretime_after_deep_copy = zero_duration();
+    duration<double> total_coretime_history = zero_duration();
     // With n=16, about x3 speedup with openmp compared to without
     #pragma omp parallel for reduction(complex_add : total_amplitude)
     for (u_int64_t history = 0; history < u_int64_t(1) << num_artificial; history++) {
-        //cout << "History " << history << endl;
+        //std::ostringstream buf_history; // Uncomment these to debug
+        //fprintf_stream(buf_history, "History: %d\n", history);
 
-        auto start_deep_copy = get_time();
-        Circuit circ = base_circ.deep_copy(); // Implement deep_copy() in Circuit
-        auto end_deep_copy = get_time();
-        total_coretime_deep_copy += get_duration(start_deep_copy, end_deep_copy);
+        auto start_history = get_time();
 
-        auto start_after_deep_copy = get_time();
-
-        for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
-            w->val = history >> w->artificial & 1;
-            w->val_set = true;
+        for (const std::shared_ptr<InternalWire>& w : Circuit::artificial_sources) {
+            w->set_safe(history, (history >> w->artificial) & 1);
         }
 
         // TODO: Make a real run setting the values of all internal wires.
         // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-        if (!Circuit::right_to_left_artificial(circ, history)) {
+        if (!Circuit::right_to_left_artificial(history/*, buf_history*/)) {
             // Input, output and artificial not compatible with deterministic gates
             continue;
         }
@@ -137,7 +130,7 @@ complex <float> simulate(Circuit base_circ, Options opts) {
         // Then we need to iterate all to calculate contribution.
 
         complex <float> contribution = 1.0;
-        for (const shared_ptr<Gate>& gateptr : circ.gates) {
+        for (const shared_ptr<Gate>& gateptr : Circuit::gates) {
             Gate& gate = *gateptr;
 
             int num_ctrl = gate.num_controls;
@@ -146,7 +139,7 @@ complex <float> simulate(Circuit base_circ, Options opts) {
             bool activate = true;
             for (int c = 0; c < num_ctrl; c++) {
                 // wire_right or wire_left doesn't matter for controls
-                if (!gate.qubits[c]->wire_right->val) {
+                if (!gate.qubits[c]->wire_right->val.at(history)) {
                     activate = false;
                     break;
                 }
@@ -156,7 +149,7 @@ complex <float> simulate(Circuit base_circ, Options opts) {
                 // Compare if input = output
                 bool accept = true;
                 for (int t = num_ctrl; t < num_ctrl + gate_type_infos[gate.type].num_targets; t++) {
-                    if (gate.qubits[t]->wire_left->val != gate.qubits[t]->wire_right->val) {
+                    if (gate.qubits[t]->wire_left->val.at(history) != gate.qubits[t]->wire_right->val.at(history)) {
                         accept = false;
                         break;
                     }
@@ -170,38 +163,38 @@ complex <float> simulate(Circuit base_circ, Options opts) {
             // Activate gate
             switch (gate.type) {
             case HADAMARD:
-                if (gate.qubits[num_ctrl]->wire_left->val && gate.qubits[num_ctrl]->wire_right->val) {
+                if (gate.qubits[num_ctrl]->wire_left->val.at(history) && gate.qubits[num_ctrl]->wire_right->val.at(history)) {
                     contribution *= -1.0 / sqrt(2.0);
                 } else {
                     contribution *= 1.0 / sqrt(2.0);
                 }
                 break;
             case NOT:
-                if (gate.qubits[num_ctrl]->wire_left->val == gate.qubits[num_ctrl]->wire_right->val) {
+                if (gate.qubits[num_ctrl]->wire_left->val.at(history) == gate.qubits[num_ctrl]->wire_right->val.at(history)) {
                     contribution = 0;
                 }
                 break;
             case PHASE:
-                if (gate.qubits[num_ctrl]->wire_left->val != gate.qubits[num_ctrl]->wire_right->val) {
+                if (gate.qubits[num_ctrl]->wire_left->val.at(history) != gate.qubits[num_ctrl]->wire_right->val.at(history)) {
                     contribution *= 0.0;
                 }
-                else if (gate.qubits[num_ctrl]->wire_left->val) {
+                else if (gate.qubits[num_ctrl]->wire_left->val.at(history)) {
                     contribution *= std::exp(complex<float>(0.0, gate.params[0]));
                 }
                 break;
             case SWAP:
-                if (gate.qubits[num_ctrl]->wire_left->val == gate.qubits[num_ctrl+1]->wire_right->val &&
-                    gate.qubits[num_ctrl+1]->wire_left->val == gate.qubits[num_ctrl]->wire_right->val) {
+                if (gate.qubits[num_ctrl]->wire_left->val.at(history) == gate.qubits[num_ctrl+1]->wire_right->val.at(history) &&
+                    gate.qubits[num_ctrl+1]->wire_left->val.at(history) == gate.qubits[num_ctrl]->wire_right->val.at(history)) {
                     contribution *= 1.0;
                 } else {
                     contribution *= 0.0;
                 }
                 break;
             case PAULIZ:
-                if (gate.qubits[num_ctrl]->wire_left->val != gate.qubits[num_ctrl]->wire_right->val) {
+                if (gate.qubits[num_ctrl]->wire_left->val.at(history) != gate.qubits[num_ctrl]->wire_right->val.at(history)) {
                     contribution *= 0.0;
                 }
-                else if (gate.qubits[num_ctrl]->wire_left->val) {
+                else if (gate.qubits[num_ctrl]->wire_left->val.at(history)) {
                     contribution *= -1;
                 }
                 break;
@@ -210,19 +203,23 @@ complex <float> simulate(Circuit base_circ, Options opts) {
                 exit(1);
             }
             //printf("Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
-
+            //fprintf_stream(buf_history, "Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
         }
-        //std::printf("Contribution from history %lu: %f + i%f\n", history, contribution.real(), contribution.imag());
+        //std::printf("Contribution from history %d: %f + i%f\n", history, contribution.real(), contribution.imag());
+
         total_amplitude += contribution;
 
-        auto end_after_deep_copy = get_time();
-        total_coretime_after_deep_copy = end_after_deep_copy - start_after_deep_copy;
+        auto end_history = get_time();
+        total_coretime_history = end_history - start_history;
     }
-    cout << "Total core time deep_copy: " << duration_to_double(total_coretime_deep_copy) << " s" << endl;
-    cout << "Total core time after deep_copy: " << duration_to_double(total_coretime_after_deep_copy) << " s" << endl;
+    if (verbosity > 2) {
+        cout << "Total core time histories: " << duration_to_double(total_coretime_history) << " s" << endl;
+    }
 
     auto simulate_end = get_time();
-    cout << "Total clock time simulate: " << duration_to_double(simulate_start, simulate_end) << " s" << endl;
+    if (verbosity > 2) {
+        cout << "Total clock time simulate: " << duration_to_double(simulate_start, simulate_end) << " s" << endl;
+    }
 
     return total_amplitude;
 }
@@ -233,15 +230,16 @@ int main(int argc, char* argv[]) {
 
     Circuit::parse_circuit(opts.circuit_file);
 
-    Circuit base_circ = Circuit::build_circuit();
+    Circuit::build_circuit();
 
 //    printf("Gates after build:\n");
 //    for (int i = 0; i < base_circ.gates.size(); i++){
 //        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
 //    }
 
+    std::ostringstream buf;
     printf("Number of artificial sources: %d\n", Circuit::num_artificial);
-    complex<float> amp = simulate(base_circ, opts);
+    complex<float> amp = simulate(opts, buf, 3);
     printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     return 0;
 }
