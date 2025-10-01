@@ -228,14 +228,17 @@ int main(int argc, char* argv[]) {
 
     Options opts = get_options(argc, argv);
 
-    Circuit::parse_circuit(opts.circuit_file);
+    ParsedCircuit::parse_circuit(opts.circuit_file);
+
+    //printf("Parsed circuit:\n");
+    //printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
 
     Circuit::build_circuit();
 
-//    printf("Gates after build:\n");
-//    for (int i = 0; i < base_circ.gates.size(); i++){
-//        printf("  %s\n", gate_to_string(*base_circ.gates[i]).c_str());
-//    }
+    //printf("Gates after build:\n");
+    //for (int i = 0; i < Circuit::gates.size(); i++){
+    //    printf("  %s\n", gate_to_string(*Circuit::gates[i]).c_str());
+    //}
 
     std::ostringstream buf;
     printf("Number of artificial sources: %d\n", Circuit::num_artificial);
