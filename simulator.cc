@@ -82,8 +82,10 @@ Options get_options(int argc, char* argv[]) {
     complex_add : std::complex<float> : omp_out += omp_in) \
     initializer(omp_priv = std::complex<float>(0,0))
 
-complex <float> simulate(Circuit circ, Options opts, std::ostringstream& buf, int verbosity = 0) {
-    const int num_artificial = Circuit::num_artificial;
+complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 0) {
+    Chunk& chunk = Circuit::chunks[0];
+    const int num_artificial = chunk.num_artificial;
+    printf("Number of artificial sources: %d\n", num_artificial);
 
     // Set values of those reached from natural
     // Implement similarly as FakeRun
@@ -93,7 +95,7 @@ complex <float> simulate(Circuit circ, Options opts, std::ostringstream& buf, in
     // sources, less artificial sources and exponentially less histories.
 
 
-    if (!circ.right_to_left_natural(opts.input_bits, opts.output_bits)) {
+    if (!chunk.right_to_left_natural(opts.input_bits, opts.output_bits)) {
         // Input and output not compatible with deterministic gates
         return 0.0;
     }
@@ -110,14 +112,14 @@ complex <float> simulate(Circuit circ, Options opts, std::ostringstream& buf, in
 
         auto start_history = get_time();
 
-        for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
+        for (const std::shared_ptr<InternalWire>& w : chunk.artificial_sources) {
             w->set_safe(history, (history >> w->artificial) & 1);
         }
 
         // TODO: Make a real run setting the values of all internal wires.
         // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-        if (!circ.right_to_left_artificial(history/*, buf_history*/)) {
+        if (!chunk.right_to_left_artificial(history/*, buf_history*/)) {
             // Input, output and artificial not compatible with deterministic gates
             continue;
         }
@@ -130,7 +132,7 @@ complex <float> simulate(Circuit circ, Options opts, std::ostringstream& buf, in
         // Then we need to iterate all to calculate contribution.
 
         complex <float> contribution = 1.0;
-        for (const shared_ptr<Gate>& gateptr : Circuit::gates) {
+        for (const shared_ptr<Gate>& gateptr : Circuit::all_gates) {
             Gate& gate = *gateptr;
 
             int num_ctrl = gate.num_controls;
@@ -233,18 +235,16 @@ int main(int argc, char* argv[]) {
     //printf("Parsed circuit:\n");
     //printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
 
-    Circuit circ = Circuit();
+    Circuit::build_circuit();
 
-    circ.build_circuit();
-
-    //printf("Gates after build:\n");
-    //for (int i = 0; i < Circuit::gates.size(); i++){
-    //    printf("  %s\n", gate_to_string(*Circuit::gates[i]).c_str());
-    //}
+    printf("Gates after build:\n");
+    for (int i = 0; i < Circuit::all_gates.size(); i++){
+        printf("  %s\n", gate_to_string(*Circuit::all_gates[i]).c_str());
+    }
 
     std::ostringstream buf;
-    printf("Number of artificial sources: %d\n", Circuit::num_artificial);
-    complex<float> amp = simulate(circ, opts, buf, 3);
+
+    complex<float> amp = simulate(opts, buf, 3);
     printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     return 0;
 }
