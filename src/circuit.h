@@ -213,10 +213,10 @@ struct Circuit {
     static vector<std::shared_ptr<Gate>> gates;
     static int num_artificial; // Number of artificial sources
     static vector<std::shared_ptr<InternalWire>> internal_wires;
-    static vector<std::shared_ptr<InternalWire>> input_sources; // Might be able to make non-static.
-    static vector<std::shared_ptr<InternalWire>> output_sources;
-    static vector<std::shared_ptr<InternalWire>> artificial_sources;
-    static vector<std::shared_ptr<Gate>> deterministically_breaking;
+    vector<std::shared_ptr<InternalWire>> input_sources; // Might be able to make non-static.
+    vector<std::shared_ptr<InternalWire>> output_sources;
+    vector<std::shared_ptr<InternalWire>> artificial_sources;
+    vector<std::shared_ptr<Gate>> deterministically_breaking;
 
     // -1 if not added yet. Otherwise idx such that gate[idx].id = id
     static int vector_idx_of_gate(int id) {
@@ -229,7 +229,7 @@ struct Circuit {
     }
 
     // An implementation of FakeRun, which is one way to select artificial sources.
-    static int right_to_left_fake() {
+    int right_to_left_fake() {
         int artificial_index = 0;
         
         // Iterate gate list right to left.
@@ -263,7 +263,7 @@ struct Circuit {
 
     // Sets values from R->L to mimic fake run
     // Returns true if successful, false if propagated values from output and input conflicts.
-    static bool right_to_left_natural(vector<bool> input_bits, vector<bool> output_bits) {
+    bool right_to_left_natural(vector<bool> input_bits, vector<bool> output_bits) {
         int artificial_index = 0;
 
         for (const std::shared_ptr<InternalWire>& w : output_sources) {
@@ -328,7 +328,7 @@ struct Circuit {
     }
 
     // Sets values from R->L to mimic fake run
-    static bool right_to_left_artificial(int history/*, std::ostringstream& buf_history*/) {
+    bool right_to_left_artificial(int history/*, std::ostringstream& buf_history*/) {
         int artificial_index = 0;
 
         for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
@@ -388,7 +388,7 @@ struct Circuit {
     // Counts internal wires.
     // Adds only the qubit on that wire.
     // Sort based on idx.
-    static void build_circuit() {
+    void build_circuit() {
 
         //cout << "Building circuit from parsed circuit" << endl;
         //printf("Parsed circuit in build:\n");
@@ -498,7 +498,3 @@ int Circuit::n;
 vector<std::shared_ptr<Gate>> Circuit::gates;
 int Circuit::num_artificial; // Number of artificial sources
 vector<std::shared_ptr<InternalWire>> Circuit::internal_wires;
-vector<std::shared_ptr<InternalWire>> Circuit::input_sources; // Might be able to make non-static.
-vector<std::shared_ptr<InternalWire>> Circuit::output_sources;
-vector<std::shared_ptr<InternalWire>> Circuit::artificial_sources;
-vector<std::shared_ptr<Gate>> Circuit::deterministically_breaking;

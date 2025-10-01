@@ -82,7 +82,7 @@ Options get_options(int argc, char* argv[]) {
     complex_add : std::complex<float> : omp_out += omp_in) \
     initializer(omp_priv = std::complex<float>(0,0))
 
-complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 0) {
+complex <float> simulate(Circuit circ, Options opts, std::ostringstream& buf, int verbosity = 0) {
     const int num_artificial = Circuit::num_artificial;
 
     // Set values of those reached from natural
@@ -93,7 +93,7 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
     // sources, less artificial sources and exponentially less histories.
 
 
-    if (!Circuit::right_to_left_natural(opts.input_bits, opts.output_bits)) {
+    if (!circ.right_to_left_natural(opts.input_bits, opts.output_bits)) {
         // Input and output not compatible with deterministic gates
         return 0.0;
     }
@@ -110,14 +110,14 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
 
         auto start_history = get_time();
 
-        for (const std::shared_ptr<InternalWire>& w : Circuit::artificial_sources) {
+        for (const std::shared_ptr<InternalWire>& w : circ.artificial_sources) {
             w->set_safe(history, (history >> w->artificial) & 1);
         }
 
         // TODO: Make a real run setting the values of all internal wires.
         // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-        if (!Circuit::right_to_left_artificial(history/*, buf_history*/)) {
+        if (!circ.right_to_left_artificial(history/*, buf_history*/)) {
             // Input, output and artificial not compatible with deterministic gates
             continue;
         }
@@ -233,7 +233,9 @@ int main(int argc, char* argv[]) {
     //printf("Parsed circuit:\n");
     //printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
 
-    Circuit::build_circuit();
+    Circuit circ = Circuit();
+
+    circ.build_circuit();
 
     //printf("Gates after build:\n");
     //for (int i = 0; i < Circuit::gates.size(); i++){
@@ -242,7 +244,7 @@ int main(int argc, char* argv[]) {
 
     std::ostringstream buf;
     printf("Number of artificial sources: %d\n", Circuit::num_artificial);
-    complex<float> amp = simulate(opts, buf, 3);
+    complex<float> amp = simulate(circ, opts, buf, 3);
     printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     return 0;
 }
