@@ -41,6 +41,7 @@ string wire_to_string(const vector<ParsedGate>& wire) {
 
 struct ParsedCircuit {
     static int n; // Number of qubits
+    static int nr_gates;
     static vector<vector<ParsedGate>> wires; // wires[i] is the list of gates on qubit i, in order.
 
     // Parse circuit from QASM-file // Make constructor?
@@ -157,6 +158,7 @@ struct ParsedCircuit {
                 }
                 gate_index++;
             }
+            ParsedCircuit::nr_gates = gate_index;
 
             file.close();
         }
@@ -183,4 +185,5 @@ struct ParsedCircuit {
 };
 
 int ParsedCircuit::n;
+int ParsedCircuit::nr_gates;
 vector<vector<ParsedGate>> ParsedCircuit::wires;

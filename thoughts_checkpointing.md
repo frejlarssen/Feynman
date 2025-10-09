@@ -75,3 +75,44 @@ _artificial iterates only deterministically breaking. But if it would have itera
 
 For now: Easy implementation with looping only deterministically breaking for propagating vals. Calc_contribution checks if activated etc.
 TODO: Investigate performance of setting vals and then calculating contribution or doing all at once. And catching rejects early vs looping only deterministically breaking gates
+
+
+
+## Testing
+We want to test for all possible selections of -p and -r.
+Run with -B first to check how many gates and artificial sources in each chunk.
+
+
+## Autotuning of checkpointing
+
+
+$G_c$ gates in chunk $c$. $T_{g}$ time for one gate application.
+
+$T_c = G_c*T_{g}$ time for gates in chunk $c$ once.
+
+$A_c$ number of artificial sources in chunk $c$.
+
+$T_{tot} = A_2 (T_2 + A_1(T_1 + A_0 T_0))$
+
+$T_{tot} = A_2 (G_2 + A_1(G_1 + A_0 G_0))T_{g}$
+
+
+-p = $G_2$ depends on how many threads we have (and desired fidelity if we don't simulate all histories).
+
+For analytical solution, we need some assumption of how $A_c$ depends on $G_c$. This is not a constant density for circuits like QFT, but might be for random circuits.
+
+We can try all values of $G_1$ in linear time. Iterate build_circuit with different num_chunk1 and calculate $A_1(G_1 + A_0 G_0)$ for each selection.
+
+
+
+
+
+
+
+
+
+
+
+
+
+TODO: Test structurally and fix remaining edge case bugs.

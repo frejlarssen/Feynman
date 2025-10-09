@@ -105,7 +105,8 @@ struct InternalWire {
     }
 };
 
-string internal_wire_to_string(const InternalWire& iw, int verbosity=0) {
+// TODO: Maybe, make thread safe by only printing it's own value
+string internal_wire_to_string(const InternalWire& iw, int thread=-1, int verbosity=0) {
     //cout << "in internal_wire_to_string" << endl;
 
     string str = "(id: " + to_string(iw.id) + ", wire: " + to_string(iw.wire) +
@@ -114,7 +115,19 @@ string internal_wire_to_string(const InternalWire& iw, int verbosity=0) {
            ", artificial: " + to_string(iw.artificial) +
            ", nr_histories: " + to_string(iw.val_set.size());
     //cout << "verbosity in internal_wire_to_string: " << verbosity << endl;
-    if (iw.val_set.size() <= 20 && verbosity > 0) {
+    if (thread != -1) {
+        if (iw.status == INPUT || iw.status == OUTPUT) {
+            thread = 0;
+        }
+        str += ", thread: " + to_string(thread);
+            if (iw.val_set.at(thread)) {
+                str += ", set:";
+                str += (iw.val.at(thread) ? "1" : "0");
+            } else {
+                str += ", not set";
+            }
+    }
+    else if (iw.val_set.size() <= 20 && verbosity > 0) {
         str += ", threads: [";
         for (size_t i = 0; i < iw.val_set.size(); i++) {
             str += "t" + to_string(i);
@@ -134,11 +147,11 @@ string internal_wire_to_string(const InternalWire& iw, int verbosity=0) {
     return str;
 }
 
-string internal_wire_to_string(const std::shared_ptr<InternalWire>& iw, int verbosity=0) {
+string internal_wire_to_string(const std::shared_ptr<InternalWire>& iw, int thread = -1, int verbosity=0) {
     if (!iw) {
         return "no iw";
     }
-    return internal_wire_to_string(*iw, verbosity);  // delegate to the reference overload
+    return internal_wire_to_string(*iw, thread, verbosity);  // delegate to the reference overload
 }
 
 
@@ -168,22 +181,22 @@ struct GateQubit {
           prev(prev), next(next) {}
 };
 
-string gate_qubit_to_string(GateQubit& gq, int verbosity=0) {
+string gate_qubit_to_string(GateQubit& gq, int thread = -1, int verbosity=0) {
     string str = "(wire: " + to_string(gq.wire);
     string ctrlbool = (gq.is_control ? "true" : "false");
     str += ", control: " + ctrlbool +
-           ", wire_left: " + (internal_wire_to_string(gq.wire_left, verbosity)) +
-           ", wire_right: " + (internal_wire_to_string(gq.wire_right, verbosity)) +
+           ", wire_left: " + (internal_wire_to_string(gq.wire_left, thread, verbosity)) +
+           ", wire_right: " + (internal_wire_to_string(gq.wire_right, thread, verbosity)) +
            //", prev: " + (gq.prev == nullptr ? "nullptr" : to_string((*gq.prev).id))
             ")";
     return str;
 }
 
-std::string gate_qubit_to_string(const std::shared_ptr<GateQubit>& gq, int verbosity=0) {
+std::string gate_qubit_to_string(const std::shared_ptr<GateQubit>& gq, int thread = -1, int verbosity=0) {
     if (!gq) {
         return "no GateQubit yet";
     }
-    return gate_qubit_to_string(*gq, verbosity);  // delegate to the reference overload
+    return gate_qubit_to_string(*gq, thread, verbosity);  // delegate to the reference overload
 }
 
 struct Gate {
@@ -198,7 +211,7 @@ struct Gate {
         : id (id), type(t), num_controls(nc), qubits(std::move(qs)), params(p) {}
 };
 
-string gate_to_string(const Gate& g, int verbosity=0) {
+string gate_to_string(const Gate& g, int thread = -1, int verbosity=0) {
     //cout << "verbosity in gate_to_string: " << verbosity << endl;
     string str = "Gate(verbosity=" + to_string(verbosity) +
     ", id="+to_string(g.id) +
@@ -206,7 +219,7 @@ string gate_to_string(const Gate& g, int verbosity=0) {
     ", num_controls="+to_string(g.num_controls) +
     ", qubits=[\n";
     for (int qi = 0; qi < g.qubits.size(); qi++) {
-        str += "    " + gate_qubit_to_string(g.qubits.at(qi), verbosity);
+        str += "    " + gate_qubit_to_string(g.qubits.at(qi), thread, verbosity);
         if (qi < g.qubits.size() - 1) str += ", \n";
     }
     str += "]";
@@ -242,11 +255,12 @@ struct Chunk {
         return -1;
     }
 
-    // Reset all values to not set. For testing.
-    void reset_values() {
+    // Reset all values to not set.
+    // Should only be done for current thread!
+    void reset_values(int thread) {
         for (const std::shared_ptr<InternalWire>& w : internal_wires) {
-            std::fill(w->val_set.begin(), w->val_set.end(), false);
-            std::fill(w->val.begin(), w->val.end(), false);
+            w->val_set.at(thread) = false;
+            w->val.at(thread) = false;
         }
     }
 
@@ -367,8 +381,7 @@ struct Chunk {
     // Returns true if successful, false if propagated values from output and input conflicts.
     bool right_to_left_vals(u_int64_t chunk_history, u_int64_t thread) {
 
-        cout << "      In vals pass for chunk " << id << " with " << gates.size() << " gates, thread: " << thread << endl;
-
+        //cout << "      In vals pass for chunk " << id << " with " << gates.size() << " gates, thread: " << thread << endl;
         for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
             //printf("  Setting artificial source: %s\n", internal_wire_to_string(w, 2).c_str());
             w->set_safe(thread, chunk_history >> (w->artificial) & 1);
@@ -381,9 +394,9 @@ struct Chunk {
         for (int i = deterministically_breaking.size() - 1; i >= 0; i--) {
             Gate& gate = *deterministically_breaking.at(i);
 
-            cout << "      In vals pass for gate " << gate.id << endl;
+            //cout << "      In vals pass for gate " << gate.id << endl;
 
-            printf("      The gate: %s\n", gate_to_string(gate, 2).c_str());
+            //printf("      The gate: %s\n", gate_to_string(gate, 2).c_str());
 
             //// Check if all to right are set (we arbitrarily use history 0)
             //bool all_set = true;
@@ -409,32 +422,32 @@ struct Chunk {
             }
 
             if (!activate) {
-                cout << "        gate not activated" << endl;
+                //cout << "        gate not activated" << endl;
 
                 for (int t = gate.num_controls; t < gate.num_controls + gate_type_infos.at(gate.type).num_targets; t++) {
                     u_int8_t setval = gate.qubits.at(t)->wire_right->get_val(thread);
-                    cout << "        setval: " << (int) setval << endl;
-                    cout << "        thread: " << thread << endl;
-                    cout << "        t: " << t << endl;
-                    printf("The gate again: %s\n", gate_to_string(gate, 2).c_str());
+                    //cout << "        setval: " << (int) setval << endl;
+                    //cout << "        thread: " << thread << endl;
+                    //cout << "        t: " << t << endl;
+                    //printf("The gate again: %s\n", gate_to_string(gate, 2).c_str());
                     if (!gate.qubits.at(t)->wire_left->set_safe(thread, setval)) {
-                        cout << "        not activated gate rejected" << endl ;
+                        //cout << "        not activated gate rejected" << endl ;
                         return false;
                     }
-                    cout << "        not activated gate accepted" << endl;
+                    //cout << "        not activated gate accepted" << endl;
                 }
             }
             else {
                 uint8_t right_val;
                 switch (gate.type) {
                 case NOT:
-                    cout << "        NOT gate activated in vals pass" << endl;
+                    //cout << "        NOT gate activated in vals pass" << endl;
                     right_val = gate.qubits.at(gate.num_controls)->wire_right->get_val(thread);
-                    cout << "        right_val: " << (int) right_val << endl;
+                    //cout << "        right_val: " << (int) right_val << endl;
                     if (!gate.qubits.at(gate.num_controls)->wire_left->set_safe(thread,
                         !gate.qubits.at(gate.num_controls)->wire_right->get_val(thread)
                         )) {
-                            cout << "        NOT gate refused" << endl;
+                            //cout << "        NOT gate refused" << endl;
                             return false; }
                     break;
                 case SWAP:
@@ -450,7 +463,7 @@ struct Chunk {
                 }
             }
 
-            cout << "      Vals pass for gate " << gate.id << " done." << endl;
+            //cout << "      Vals pass for gate " << gate.id << " done." << endl;
             //}
         }
         return true;
@@ -537,9 +550,12 @@ struct Circuit {
         //cout << "Building circuit from parsed circuit" << endl;
         //printf("Parsed circuit in build:\n");
         //printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
-
+        int nr_gates = ParsedCircuit::nr_gates;
         int iw_id = 0;
+        cout << "nr_gates: " << nr_gates << endl;
         for (int wire = 0; wire < ParsedCircuit::n; wire++) {
+
+            cout << "Wire " << wire << endl;
 
             std::shared_ptr<InternalWire> wire_right = std::make_shared<InternalWire>(iw_id++, wire, /*NUM_CHUNKS+1,*/ OUTPUT);
             all_internal_wires.emplace_back(wire_right);
@@ -552,16 +568,17 @@ struct Circuit {
 
             // We iterate backwards in case we want to number the internal wires,
             // and to keep it consistent with internal-wire-based version.
+            int leftmost_chunk_id = -1;
             for (int pgi = ParsedCircuit::wires.at(wire).size()-1; pgi >= 0; pgi--) {
                 ParsedGate& pg = ParsedCircuit::wires.at(wire).at(pgi);
                 //printf("Processing parsed gate: %s at wire %d\n", parsed_gate_to_string(pg).c_str(), wire);
 
-                //cout << "   id: " << pg.id << ", type: " << gate_type_to_string(pg.type) << ", num_controls: " << pg.num_controls << ", qparam: " << pg.qparam << endl;
+                cout << " id: " << pg.id << ", type: " << gate_type_to_string(pg.type) << ", num_controls: " << pg.num_controls << ", qparam: " << pg.qparam << endl;
 
-                int chunk_id = (pg.id < num_chunk1 ? 0 : (pg.id < num_chunk1 + num_chunk2 ? 1 : 2));
+                int chunk_id = (nr_gates - pg.id <= num_chunk2 ? 2 : (nr_gates - pg.id <= num_chunk1 + num_chunk2 ? 1 : 0));
                 Chunk& chunk = chunks.at(chunk_id);
 
-                //cout << "  In chunk " << chunk_id << " with " << chunk.gates.size() << " gates so far." << endl;
+                cout << "  In chunk " << chunk_id << " with " << chunk.gates.size() << " gates so far." << endl;
 
                 int idx = chunk.vector_idx_of_gate(pg.id);
 
@@ -570,9 +587,13 @@ struct Circuit {
 
                 std::shared_ptr<InternalWire> wire_left;
                 if (!is_control && gate_type_infos.at(pg.type).breaks_internal_wire) {
+                    leftmost_chunk_id = chunk_id;
+                    printf("    New iw at chunk %d, wire %d\n", chunk_id, wire);
                     wire_left = std::make_shared<InternalWire>(iw_id++, wire/*, chunk_id*/);
                     all_internal_wires.emplace_back(wire_left);
+                    //cout << "adding iw\n";
                     chunk.internal_wires.emplace_back(wire_left);
+                    cout << "size after emplace_back: " << chunk.internal_wires.size() << endl;
                 }
                 else {
                     wire_left = wire_right;
@@ -607,12 +628,24 @@ struct Circuit {
                     chunk.gates.at(idx)->qubits.at(pg.qparam) = q;
                 }
                 next = q;
+
+                cout << " id: " << pg.id << ", type: " << gate_type_to_string(pg.type) << ", num_controls: " << pg.num_controls << ", qparam: " << pg.qparam << " done" << endl;
             }
 
-            // Set the leftmost InternalWire to INPUT
-            next->wire_left->status = INPUT;
-            /*next->wire_left->chunk = NUM_CHUNKS;*/
-            Circuit::input_sources.push_back(next->wire_left);
+            //cout << "All gates for wire " << wire << " added" << endl;
+
+            if (leftmost_chunk_id != -1) {
+                // Set the leftmost InternalWire to INPUT
+                next->wire_left->status = INPUT;
+                //cout << "status INPUT set" << endl;
+                /*next->wire_left->chunk = NUM_CHUNKS;*/
+                Circuit::input_sources.push_back(next->wire_left);
+                //cout << "input added to input_sources" << endl;
+                //cout << "leftmost_chunk_id: " << leftmost_chunk_id << endl;
+                //cout << "size: " << Circuit::chunks.at(leftmost_chunk_id).internal_wires.size() << endl;
+                Circuit::chunks.at(leftmost_chunk_id).internal_wires.pop_back();
+                //cout << "input removed from chunk" << endl;
+            }
         }
 
         //cout << "All gates added" << endl;

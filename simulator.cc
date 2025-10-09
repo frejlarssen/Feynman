@@ -6,7 +6,10 @@
 #include <complex>
 #include <cstdio>
 #include <stdexcept>
+#include <thread>
+#include <atomic>
 #include "src/circuit.h"
+#include <mutex>
 
 using namespace std;
 
@@ -16,6 +19,7 @@ struct Options {
     vector<bool> output_bits;
     int num_chunk1 = 0;
     int num_chunk2 = 0;
+    bool only_build = false;
 };
 
 const vector<bool> bit_array_from_string(const string& s) {
@@ -48,7 +52,7 @@ const string string_from_bit_array(const vector<bool> bit_arr) {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./feynqft -c circuit_file -i input_bitstring -o output_bitstring -p num_chunk1 -r num_chunk2\n";
+    const char* helpstr = "Usage: ./feynqft -c circuit_file -i input_bitstring -o output_bitstring -p num_chunk1 -r num_chunk2 (-B)\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -69,7 +73,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:o:p:r:")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:o:p:r:B")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -81,10 +85,13 @@ Options get_options(int argc, char* argv[]) {
             opts.output_bits = bit_array_from_string(optarg);
             break;
           case 'p':
-            opts.num_chunk1 = to_int(optarg);
+            opts.num_chunk2 = to_int(optarg);
             break;
           case 'r':
-            opts.num_chunk2 = to_int(optarg);
+            opts.num_chunk1 = to_int(optarg);
+            break;
+          case 'B':
+            opts.only_build = true;
             break;
           default:
             cout << helpstr;
@@ -135,8 +142,10 @@ complex<float> chunk_contribution(const Chunk& chunk, u_int64_t thread/*, std::o
         // Activate gate
         switch (gate.type) {
         case HADAMARD:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) &&
-                gate.qubits.at(num_ctrl)->wire_right->get_val(thread)) {
+            left_val = gate.qubits.at(num_ctrl)->wire_left->get_val(thread);
+            right_val = gate.qubits.at(num_ctrl)->wire_right->get_val(thread);
+            if (left_val &&
+                right_val) {
                 contribution *= -1.0 / sqrt(2.0);
             } else {
                 contribution *= 1.0 / sqrt(2.0);
@@ -185,12 +194,13 @@ complex<float> chunk_contribution(const Chunk& chunk, u_int64_t thread/*, std::o
             cerr << "Gate not implemented!" << endl;
             exit(1);
         }
-        printf("Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
+        //printf("Contribution after %s application with id %d: %f + i%f\n", gate_type_to_string(gate.type).c_str(), gate.id, contribution.real(), contribution.imag());
         //fprintf_stream(buf_history, "Contribution after %s application: %f + i%f\n", gate_type_to_string(gate.type).c_str(), contribution.real(), contribution.imag());
     }
     return contribution;
 }
 
+// 4 warnings in total when introducing this one.
 //#pragma omp declare reduction( \
 //    complex_add : std::complex<float> : omp_out += omp_in) \
 //    initializer(omp_priv = std::complex<float>(0,0))
@@ -210,9 +220,9 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
     //array<u_int64_t, NUM_CHUNKS+2> histories = {0, 0, 0, 0, 0};
 
     for (const std::shared_ptr<InternalWire>& w : Circuit::output_sources) {
-        printf("Setting output wire: %s\n", internal_wire_to_string(w, 2).c_str());
+        printf("Setting output wire: %s\n", internal_wire_to_string(w, -1, 2).c_str());
         w->set_safe_all(1, opts.output_bits.at(w->wire));
-        printf("After setting output wire: %s\n", internal_wire_to_string(w, 2).c_str());
+        printf("After setting output wire: %s\n", internal_wire_to_string(w, -1, 2).c_str());
     }
 
     //cout << "Output set." << endl;
@@ -221,19 +231,21 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
         if (!w->set_safe_all(1, opts.input_bits.at(w->wire))) { return false; }
     }
 
-    cout << "Output and input set." << endl;
+//    cout << "Output and input set." << endl;
 
 
-    printf("Gates after output and input set:\n");
-    for (Chunk chunk : Circuit::chunks) {
-        printf("Chunk %d\n:", chunk.id);
-        for (shared_ptr<Gate>& gate : chunk.gates) {
-            printf("%s\n", gate_to_string(*gate, 2).c_str());
-        }
-    }
-    
+//    printf("Gates after output and input set:\n");
+//    for (Chunk chunk : Circuit::chunks) {
+//        printf("Chunk %d:\n", chunk.id);
+//        for (shared_ptr<Gate>& gate : chunk.gates) {
+//            printf("%s\n", gate_to_string(*gate, -1, 2).c_str());
+//        }
+//    }
+
 
     complex <float> total_amplitude = 0.0;
+    std::mutex total_mutex;
+//      int total = 0;
 
     auto simulate_start = get_time();
     duration<double> total_coretime_history2 = zero_duration();
@@ -246,117 +258,149 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
         return 0.0;
     }
 
+    // Determine the number of threads to use
+    unsigned int num_threads = thread::hardware_concurrency();
+    cout << "num_threads reported: " << num_threads << endl; 
+    if (num_threads == 0) num_threads = 4; // fallback
+    //unsigned int num_threads = 4;
+
+    vector<thread> threads;
+    threads.reserve(num_threads);
+
+    u_int64_t num_par_histories = u_int64_t(1) << num_artificial2;
+
+    if (num_threads > num_par_histories) {
+        num_threads = num_par_histories;
+    }
+
+    printf("num_par_histories: %lu\n", num_par_histories);
+
+    // Compute chunk size for each thread
+    int chunk_size = (num_par_histories + num_threads - 1) / num_threads;  // ceil division
+
+    printf("chunk_size: %d\n", chunk_size);
+
     // With n=16, about x3 speedup with openmp compared to without
 //    #pragma omp parallel for reduction(complex_add : total_amplitude)
-    for (u_int64_t history2 = 0; history2 < u_int64_t(1) << num_artificial2; history2++) {
-        u_int64_t thread = history2;
-        cout << "In history2: " << history2 << endl;
-        //histories.at(2) = history2;
-
-        //std::ostringstream buf_history; // Uncomment these to debug
-        //fprintf_stream(buf_history, "History: %d\n", history);
-
-        auto start_history2 = get_time();
-
-        // TODO: Make a real run setting the values of all internal wires.
-        // We only need to iterate a vector of all deterministic, wire-breaking gates!
-        
-        if (!chunk2.right_to_left_vals(history2, thread/*, buf_history*/)) {
-            // Input, output and artificial not compatible with deterministic gates
-            std::printf("    Vals pass rejected history --%ld.\n", history2);
-            continue;
-        }
-
-        cout << "    Chunk2 Artificial pass done." << endl;
-
-//        printf("Gates after aftifical pass:\n");
-//        for (int i = 0; i < circ.gates.size(); i++){
-//            printf("  %s\n", gate_to_string(*circ.gates.at(i)).c_str());
-//        }
-
-        // Then we need to iterate all to calculate contribution.
-
-        complex <float> contribution2 = chunk_contribution(chunk2, thread/*, buf_history*/);
-        
-        // --0 means the gates in chunk2 with C2 history 0.
-        std::printf("Contribution from history --%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
+//#pragma omp parallel for reduction(int_add : total)
 
 
-        Chunk& chunk1 = Circuit::chunks.at(1);
-        const int num_artificial1 = chunk1.num_artificial;
-        printf("  Number of artificial sources in chunk 2: %d\n", num_artificial1);
+    for (unsigned int t = 0; t < num_threads; ++t) {
+        threads.emplace_back([&, t]() {
+            std::complex<float> local_sum(0,0);
+            u_int64_t start = t * chunk_size;
+            u_int64_t end = (t == num_threads-1) ? num_par_histories : start + chunk_size;
+            //TODO: If num_threads != num_par_histories, reset chunk2.
+            for (u_int64_t history2 = start; history2 < end; history2++) {
+    //for (u_int64_t history2 = 0; history2 < u_int64_t(1) << num_artificial2; history2++) {
+//for (u_int64_t history2 = 0; history2 < u_int64_t(1) << ; history2++) {
+                u_int64_t thread_ind = history2; //TODO: Make one index for each actual thread (from hardware_concurrency) instead of history2
+                //histories.at(2) = history2;
 
-        for (u_int64_t history1 = 0; history1 < u_int64_t(1) << num_artificial1; history1++) {
-            cout << "  In history1: " << history1 << endl;
-            //histories.at(1) = history1;
+                //std::ostringstream buf_history; // Uncomment these to debug
+                //fprintf_stream(buf_history, "History: %d\n", history);
 
-            chunk1.reset_values();
+                auto start_history2 = get_time();
 
-            if (!chunk1.right_to_left_vals(history1, thread/*, buf_history*/)) {
-                std::printf("    Vals pass rejected history -%ld%ld.\n", history1, history2);
-                continue;
-            }
+                // TODO: Make a real run setting the values of all internal wires.
+                // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-            printf("Gates after vals pass of chunk 1:\n");
-            for (int i = 0; i < chunk1.gates.size(); i++){
-                printf("  %s\n", gate_to_string(*chunk1.gates.at(i), 2).c_str());
-            }
-
-            complex <float> contribution1 = contribution2 * chunk_contribution(chunk1, thread/*, buf_history*/);
-
-            std::printf("  Contribution from history -%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
-
-            Chunk& chunk0 = Circuit::chunks.at(0);
-            const int num_artificial0 = chunk0.num_artificial;
-            printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
-
-            
-
-            //printf("    Chunk0 Gates after natural pass:\n");
-            //for (shared_ptr<Gate>& gate : chunk0.gates) {
-            //    printf("    %s\n", gate_to_string(*gate, 2).c_str());
-            //}
-
-            for (u_int64_t history0 = 0; history0 < u_int64_t(1) << num_artificial0; history0++) {
-                cout << "    In history0: " << history0 << endl;
-
-                chunk0.reset_values();
-
-                //printf("    Gates in chunk 0 before vals pass in history -%ld%ld:\n", history1, history2);
-                //for (shared_ptr<Gate>& gate : chunk0.gates) {
-                //    printf("    %s\n", gate_to_string(*gate, 2).c_str());
-                //}
-
-                //histories.at(0) = history0;
-
-                if (!chunk0.right_to_left_vals(history0, thread/*, buf_history*/)) {
-                    std::printf("    Artificial pass rejected history %ld%ld%ld.\n", history0, history1, history2);
+                if (!chunk2.right_to_left_vals(history2, thread_ind/*, buf_history*/)) {
+                    // Input, output and artificial not compatible with deterministic gates
+                    std::printf("    Vals pass rejected history --%ld.\n", history2);
                     continue;
                 }
+      
+                //printf("Gates after chunk2.right_to_left_vals:\n");
+                //for (Chunk chunk : Circuit::chunks) {
+                //    printf("Chunk %d:\n", chunk.id);
+                //    for (shared_ptr<Gate>& gate : chunk.gates) {
+                //        printf("%s\n", gate_to_string(*gate, 2).c_str());
+                //    }
+                //}
+      
+                //printf("    Chunk0 Gates after chunk2.right_to_left_vals:\n");
+                //for (shared_ptr<Gate>& gate : Circuit::chunks.at(0).gates) {
+                //    printf("    %s\n", gate_to_string(*gate, 2).c_str());
+                //}
+       
+                cout << "    Chunk2 Artificial pass done." << endl;
+      
+                // Then we need to iterate all to calculate contribution.
+      
+                complex <float> contribution2 = chunk_contribution(chunk2, thread_ind/*, buf_history*/);
+      
+                //printf("    Chunk0 Gates after chunk_contribution(chunk2):\n");
+                //for (shared_ptr<Gate>& gate : Circuit::chunks.at(0).gates) {
+                //    printf("    %s\n", gate_to_string(*gate, 2).c_str());
+                //}
+                
+                // --0 means the gates in chunk2 with C2 history 0.
+                //std::printf("Contribution from history --%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
+      
+      
+                Chunk& chunk1 = Circuit::chunks.at(1);
+                const int num_artificial1 = chunk1.num_artificial;
+                //printf("  Number of artificial sources in chunk 2: %d\n", num_artificial1);
+      
+                for (u_int64_t history1 = 0; history1 < u_int64_t(1) << num_artificial1; history1++) {
+                    //cout << "  In history1: " << history1 << endl;
+                    //histories.at(1) = history1;
 
-                //cout << "    Chunk0 Artificial pass done." << endl;
-
-                complex <float> contribution0 = contribution1 * chunk_contribution(chunk0, thread/*, buf_history*/);
-
-                std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution0.real(), contribution0.imag());
-                total_amplitude += contribution0;
+                    chunk1.reset_values(thread_ind); //Introduces two warnings}
+      
+                    if (!chunk1.right_to_left_vals(history1, thread_ind/*, buf_history*/)) {
+                        //std::printf("    Vals pass rejected history -%ld%ld.\n", history1, history2);
+                        continue;
+                    }
+      
+                    complex <float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind/*, buf_history*/);
+            
+                    //std::printf("  Contribution from history -%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
+      
+                    Chunk& chunk0 = Circuit::chunks.at(0);
+                    const int num_artificial0 = chunk0.num_artificial;
+                    //printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
+      
+                    for (u_int64_t history0 = 0; history0 < u_int64_t(1) << num_artificial0; history0++) {
+                        //cout << "    In history0: " << history0 << endl;                        
+      
+                        chunk0.reset_values(thread_ind);      
+      
+                        if (!chunk0.right_to_left_vals(history0, thread_ind)) {
+                            std::printf("    Artificial pass rejected history %ld%ld%ld.\n", history0, history1, history2);
+                            continue;
+                        }
+      
+                        //printf("    contribution1: %f + i%f\n", contribution1.real(), contribution1.imag());
+      
+                        complex <float> contribution0 = contribution1 * chunk_contribution(chunk0, thread_ind);
+      
+                        //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution0.real(), contribution0.imag());
+                        local_sum += contribution0;
+                    }
+                    //std::printf("  Contribution from history A%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
+                }
+                //std::printf("Contribution from history AA%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
+      
+                //auto end_history2 = get_time();
+                //total_coretime_history2 = end_history2 - start_history2;
             }
-            std::printf("  Contribution from history A%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
-        }
-        std::printf("Contribution from history AA%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
-
-        auto end_history2 = get_time();
-        total_coretime_history2 = end_history2 - start_history2;
+            // Combine into total_amplitude safely
+            lock_guard<mutex> lock(total_mutex);
+            printf("t-%d: local_sum: %f + i%f\n", t, local_sum.real(), local_sum.imag());
+            total_amplitude += local_sum;
+            printf("t-%d: total_amplitude so far: %f + i%f\n", t, total_amplitude.real(), total_amplitude.imag());
+        });
+        printf("t-%d: Thread created\n", t);
     }
-    if (verbosity > 2) {
-        cout << "Total core time history2's: " << duration_to_double(total_coretime_history2) << " s" << endl;
-    }
+    cout << "all threads created" << endl;
 
-    auto simulate_end = get_time();
-    if (verbosity > 2) {
-        cout << "Total clock time simulate: " << duration_to_double(simulate_start, simulate_end) << " s" << endl;
-    }
 
+    // Join threads
+    for (auto &th : threads) th.join();
+
+    cout << "threads joined" << endl;
     return total_amplitude;
 }
 
@@ -371,22 +415,45 @@ int main(int argc, char* argv[]) {
 
     Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
 
-    printf("Gates after build:\n");
-    for (int i = 0; i < NUM_CHUNKS; i++) {
-        printf("Chunk %d with %d artificial sources:\n", i, Circuit::chunks.at(i).num_artificial);
-        for (const shared_ptr<Gate>& gate: Circuit::chunks.at(i).gates) {
-            printf("  %s\n", gate_to_string(*gate, 2).c_str());
+//    printf("Gates after build:\n");
+//    for (int i = 0; i < NUM_CHUNKS; i++) {
+//        printf("Chunk %d with %d artificial sources:\n", i, Circuit::chunks.at(i).num_artificial);
+//        for (const shared_ptr<Gate>& gate: Circuit::chunks.at(i).gates) {
+//            printf("  %s\n", gate_to_string(*gate, -1, 2).c_str());
+//        }
+//    }
+
+    //printf("Output wires after build:\n");
+    //for (shared_ptr<InternalWire>& iw : Circuit::output_sources) {
+    //    printf("%s\n", internal_wire_to_string(iw, 2).c_str());
+    //}
+
+//    printf("Chunks internal wires after build (to reset): \n");
+//    for (int i = 0; i < NUM_CHUNKS; i++) {
+//        printf("Chunk %d with %ld internal wires:\n", i, Circuit::chunks.at(i).internal_wires.size());
+//        for (const shared_ptr<InternalWire>& iw : Circuit::chunks.at(i).internal_wires) {
+//            printf("  %s\n", internal_wire_to_string(iw, -1, 2).c_str());
+//        }
+//    }
+
+    if (opts.only_build) {
+        size_t total_gates = 0;
+        int total_artificial_sources = 0;
+        for (int i = 0; i < NUM_CHUNKS; i++) {
+            total_gates += Circuit::chunks.at(i).gates.size();
+            total_artificial_sources += Circuit::chunks.at(i).num_artificial;
+            printf("Chunk %d: %ld gates, %d artificial sources.\n", i, Circuit::chunks.at(i).gates.size(), Circuit::chunks.at(i).num_artificial);
         }
+        printf("Total gates: %ld\n", total_gates);
+        printf("Artificial sources: %d\n", total_artificial_sources);
+    }
+    else {
+        std::ostringstream buf;
+
+        complex<float> amp = simulate(opts, buf, 3);
+//        int a = simulate();
+        printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     }
 
-    printf("Output wires after build:\n");
-    for (shared_ptr<InternalWire>& iw : Circuit::output_sources) {
-        printf("%s\n", internal_wire_to_string(iw, 2).c_str());
-    }
-
-    std::ostringstream buf;
-
-    complex<float> amp = simulate(opts, buf, 3);
-    printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     return 0;
 }

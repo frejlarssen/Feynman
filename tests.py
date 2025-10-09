@@ -7,8 +7,14 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 from qiskit import qasm3
 
-def run_simulator(qasm_file, input_bits, output_bits):
+def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None):
     cmd = ["./simulator", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
+    if p:
+        cmd.append("-p")
+        cmd.append(str(p))
+    if r:
+        cmd.append("-r")
+        cmd.append(str(r))
     #print("Running command:", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True)
     for line in result.stdout.splitlines():
@@ -16,8 +22,30 @@ def run_simulator(qasm_file, input_bits, output_bits):
         if "Total amplitude:" in line:
             amp_str = line.split("Total amplitude:")[1].strip()
             real, imag = amp_str.split("+ i")
-            return complex(float(real), float(imag))
+            return (complex(float(real), float(imag)), result.stdout)
+    print("Did not find amplitude in simulator output. Full output:")
+    for line in result.stdout.splitlines():
+        print("STDERR:", line)
     raise RuntimeError("Simulator output did not contain amplitude.")
+
+def build_simulator(qasm_file):
+    cmd = ["./simulator", "-c", qasm_file, "-B"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    nr_gates = -1
+    nr_artificial = -1
+    for line in result.stdout.splitlines():
+        if "Total gates:" in line:
+            gates_str = line.split("Total gates:")[1].strip()
+            nr_gates = int(gates_str)
+        if "Artificial sources:" in line:
+            art_str = line.split("Artificial sources:")[1].strip()
+            nr_artificial = int(art_str)
+    if (nr_gates == -1 or nr_artificial == -1):
+        print("Did not find total gates or artificial sources in simulator output. Full output:")
+        for line in result.stdout.splitlines():
+            print("STDERR:", line)
+        raise RuntimeError("Build output did not contain info.")
+    return (nr_gates, nr_artificial)
 
 def run_qiskit(qasm_file, input_bits, output_bits):
     try:
@@ -119,19 +147,48 @@ def build_qiskit_circuit_from_custom_qasm(qasm_file):
 def bitstrings(n):
     return [format(i, f'0{n}b') for i in range(2**n)]
 
-def test_case(filename, input_bits, output_bits):
-    try:
-        amp_sim = run_simulator(filename, input_bits, output_bits)
-        amp_qiskit = run_qiskit(filename, input_bits, output_bits)
-        match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
-        status = "PASS" if match else "FAIL"
-        print(f"{filename} | in: {input_bits} out: {output_bits} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
-    except Exception as e:
-        print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
-        return False
-    return match
+def test_case(filename, input_bits, output_bits, all_params = False):
+    if all_params: #TODO: If possible, test systematically but not all of the possible parameters.
+        try:
+            (nr_gates, nr_art) = build_simulator(filename)
+            print("nr_gates returned: ", nr_gates, " and nr_art: ", nr_art)
+            amp_qiskit = run_qiskit(filename, input_bits, output_bits)
+            all_params_status = True
+            for p in range(nr_gates+1):
+                for r in range(nr_gates - p + 1):
+                    try:
+                        (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits, p, r)
+                        match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
+                        status = "PASS" if match else "FAIL"
+                        print(f"{filename} | in: {input_bits} out: {output_bits} | p: {p} r: {r} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
+                        if "FAIL" in status:
+                            all_params_status = False
+                            print("Failed for this parameters. Simulator output was:")
+                            print(stdout)
+                            return False
+                    except Exception as e:
+                        print(f"{filename} | in: {input_bits} out: {output_bits} | p: {p} r: {r} | ERROR: {e}")
+                        return False
+            return all_params_status
+        except Exception as e:
+            print(f"{filename} | Build ERROR: {e}")
+            return False
+    else:
+        try:
+            (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits)
+            amp_qiskit = run_qiskit(filename, input_bits, output_bits)
+            match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
+            status = "PASS" if match else "FAIL"
+            print(f"{filename} | in: {input_bits} out: {output_bits} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
+            #if "FAIL" in status:
+            #    print("Failed. Simulator output was:")
+            #    print(stdout)
+        except Exception as e:
+            print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
+            return False
+        return match
 
-def test_exhaustive(filename, n_qubits):
+def test_exhaustive(filename, n_qubits, all_params = False):
     print(f"Testing {filename} with {n_qubits} qubits")
     inputs = bitstrings(n_qubits)
     outputs = bitstrings(n_qubits)
@@ -139,8 +196,10 @@ def test_exhaustive(filename, n_qubits):
     for input_bits in inputs:
         for output_bits in outputs:
             try:
-                match = test_case(filename, input_bits, output_bits)
+                match = test_case(filename, input_bits, output_bits, all_params)
                 all_passed = all_passed and match
+                if not match:
+                    return False
             except Exception as e:
                 print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
                 all_passed = False
@@ -150,22 +209,26 @@ def test_exhaustive(filename, n_qubits):
     else:
         print(f"Some tests failed for {filename}")
         return False
-    return all_passed
 
-def exhaustive():
+def exhaustive(all_params = False):
     # Hardcoded QASM files and number of qubits for each
     qasm_files = [
-        #("./circuits/small.qasm", 2),
+        ("./circuits/small.qasm", 2),
         ("./circuits/aa_n2_it1_mark1.qasm", 2),
         ("./circuits/qft_3.qasm", 3),
         ("./circuits/qwalk_n2_it1.qasm", 2),
-        ("./circuits/qwalk_n2_it2.qasm", 2),
-        ("./circuits/qwalk_n4_it2.qasm", 4),
+        #("./circuits/qwalk_n2_it2.qasm", 2),
+        #("./circuits/qwalk_n3_it2.qasm", 3),
+        #("./circuits/qwalk_n4_it2.qasm", 4),
     ]
 
     all_files_passed = True
     for qasm_file, n_qubits in qasm_files:
-        all_files_passed = test_exhaustive(qasm_file, n_qubits) and all_files_passed
+        file_status = test_exhaustive(qasm_file, n_qubits, all_params)
+        all_files_passed = file_status and all_files_passed
+        if not file_status:
+            return False
+
     if all_files_passed:
         print("All files passed.")
     else:
@@ -177,5 +240,5 @@ def deep():
     #test_case("./circuits/qwalk_n4_it15.qasm", "0000", "0000")
 
 if __name__ == "__main__":
-    #exhaustive()
-    deep()
+    exhaustive(all_params=True)
+    #deep()
