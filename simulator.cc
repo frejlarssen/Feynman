@@ -17,8 +17,8 @@ struct Options {
     string circuit_file;
     vector<bool> input_bits;
     vector<bool> output_bits;
-    int num_chunk1 = 0;
-    int num_chunk2 = 0;
+    int num_chunk1 = -1;
+    int num_chunk2 = -1;
     bool only_build = false;
 };
 
@@ -413,7 +413,19 @@ int main(int argc, char* argv[]) {
     //printf("Parsed circuit:\n");
     //printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
 
-    Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
+
+    //TODO: Autotuning: Build circuit many times with different cp-params, save the best params and build once more for those.
+
+    if (opts.num_chunk1 == -1 && opts.num_chunk2 == -1) {
+        Circuit::build_autotuned_circuit();
+    }
+    else if (opts.num_chunk1 > -1 && opts.num_chunk2 > -1) {
+        Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
+    }
+    else {
+        cerr << "Both -p and -r must be set, or none of them for autotuning." << endl;
+        exit(1);
+    }
 
 //    printf("Gates after build:\n");
 //    for (int i = 0; i < NUM_CHUNKS; i++) {
@@ -450,6 +462,7 @@ int main(int argc, char* argv[]) {
     else {
         std::ostringstream buf;
 
+        // TODO: For benchmarking: Run this many times with different input/output pairs.
         complex<float> amp = simulate(opts, buf, 3);
 //        int a = simulate();
         printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());

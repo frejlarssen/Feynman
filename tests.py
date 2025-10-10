@@ -3,16 +3,17 @@
 import subprocess
 import sys
 import numpy as np
+import time
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 from qiskit import qasm3
 
 def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None):
     cmd = ["./simulator", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
-    if p:
+    if p != None:
         cmd.append("-p")
         cmd.append(str(p))
-    if r:
+    if r != None:
         cmd.append("-r")
         cmd.append(str(r))
     #print("Running command:", " ".join(cmd))
@@ -240,5 +241,9 @@ def deep():
     #test_case("./circuits/qwalk_n4_it15.qasm", "0000", "0000")
 
 if __name__ == "__main__":
+    start = time.time()
     exhaustive(all_params=True)
+    end = time.time()
+    print("Time elapsed in total: ", end - start, "s")
+
     #deep()

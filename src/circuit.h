@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <climits>
 #include "utils.h"
 #include "parsed_circuit.h"
 
@@ -49,7 +50,7 @@ struct InternalWire {
     //GateQubit* start; //Constitutes a double linked list, one for each wire.
     //GateQubit* end;
 
-    // Global indexing of artificial source.
+    // Chunk indexing of artificial source.
     // Only relevant if corresponding status = artificial.
     // Used to set val from given history.
     int artificial;
@@ -542,14 +543,23 @@ struct Circuit {
     static vector<std::shared_ptr<InternalWire>> output_sources;
     static array<Chunk, NUM_CHUNKS> chunks;
 
+    static void clear_circuit() {
+        all_internal_wires.clear();
+        input_sources.clear();
+        output_sources.clear();
+        chunks = { Chunk(0), Chunk(1), Chunk(2) };
+        return;
+    }
+
     // Build the global gate list from parsed gates on each wire.
     // Counts internal wires.
     // Adds only the qubit on that wire.
     // Sort based on idx.
-    static void build_circuit(int num_chunk1, int num_chunk2) {
+    static void build_circuit(int num_chunk1, int num_chunk2, bool for_autotuning=false) {
         //cout << "Building circuit from parsed circuit" << endl;
         //printf("Parsed circuit in build:\n");
         //printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
+        Circuit::n = ParsedCircuit::n;
         int nr_gates = ParsedCircuit::nr_gates;
         int iw_id = 0;
         cout << "nr_gates: " << nr_gates << endl;
@@ -679,6 +689,10 @@ struct Circuit {
 
         //cout << "Fake run done" << endl;
 
+        if (for_autotuning) {
+            return;
+        }
+
         // Loop through all iw's that belongs to chunks, resize the val and val_set vectors.
         for (Chunk& chunk : chunks) {
             //cout << "resizing chunk " << chunk.id << endl;
@@ -702,6 +716,39 @@ struct Circuit {
         //cout << "Resized all internal wires" << endl;
 
         return;
+    }
+
+    // Builds many times, first to decide optimal parameters and then once more with those.
+    static void build_autotuned_circuit() {
+        int nr_gates = ParsedCircuit::nr_gates;
+
+        int min_nr_app = INT_MAX;
+        int opt_num_chunk1 = -1;
+        int opt_num_chunk2 = -1;
+
+        for (int num_chunk2 = 0; num_chunk2 < nr_gates; num_chunk2++) {
+            for (int num_chunk1 = 0; num_chunk1 < nr_gates - num_chunk2; num_chunk1++) {
+                build_circuit(num_chunk1, num_chunk2);
+                //2^{A_2} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))
+                int num_chunk0 = nr_gates - num_chunk2 - num_chunk1;
+
+                int a0 = chunks.at(0).num_artificial;
+                int a1 = chunks.at(1).num_artificial;
+                int a2 = chunks.at(2).num_artificial;
+
+                int nr_app = (1 << a2) * (num_chunk2 + (1 << a1) * (num_chunk1 + (1 << a0) * (nr_gates - num_chunk1)));
+
+                if (nr_app < min_nr_app) {
+                    opt_num_chunk1 = num_chunk1;
+                    opt_num_chunk2 = num_chunk2;
+                    min_nr_app = nr_app;
+                }
+
+                clear_circuit();
+            }
+        }
+
+        build_circuit(opt_num_chunk1, opt_num_chunk2);
     }
 };
 

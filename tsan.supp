@@ -1,0 +1,5 @@
+race:^__kmp_suspend_initialize_thread
+race:^__kmp_lock_suspend_mx
+race:^__kmp_resume_template
+race:^__kmp_allocate_align
+race:^__kmp_create_worker

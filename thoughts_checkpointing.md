@@ -92,27 +92,41 @@ $T_c = G_c*T_{g}$ time for gates in chunk $c$ once.
 
 $A_c$ number of artificial sources in chunk $c$.
 
-$T_{tot} = A_2 (T_2 + A_1(T_1 + A_0 T_0))$
+$T_{tot} = 2^{A_2} (T_2 + 2^{A_1}(T_1 + 2^{A_0} T_0))$
 
-$T_{tot} = A_2 (G_2 + A_1(G_1 + A_0 G_0))T_{g}$
+$T_{tot} = 2^{A_2} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))T_{g}$
 
 
--p = $G_2$ depends on how many threads we have (and desired fidelity if we don't simulate all histories).
+-p = $G_2$ depends on how many threads we have, (and desired fidelity if we don't simulate all histories), given that each thread simulate only one history, which is not necessary.
 
 For analytical solution, we need some assumption of how $A_c$ depends on $G_c$. This is not a constant density for circuits like QFT, but might be for random circuits.
 
-We can try all values of $G_1$ in linear time. Iterate build_circuit with different num_chunk1 and calculate $A_1(G_1 + A_0 G_0)$ for each selection.
+We can try all values of $G_1$ in linear time. Iterate build_circuit with different num_chunk1 and calculate $2^{A_1}(G_1 + 2^{A_0} G_0)$ for each selection.
 
 
 
 
+### What if we want to specify both -p and -r for checkpointing reasons?
+
+Given is number of cores $c$.
+
+We parallelize over c_2. A cores can run multiple histories over c_2.
+
+We want to run a fraction $f$ of all histories.
+
+$T_{clock} = \frac{2^{A_2}}{fc} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))T_{g}$
+
+Since $f$ and $c$ is given, and we can't decide $T_{g}$, minimizing the above is equivalent to minimizing:
+
+2^{A_2} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))
+
+Loop all assignments (or some smarter search) for G_2 and G_1 to minimize the above. In each iteration we need to build the circuit (at least count artificial sources).
 
 
 
+For all files in test file:
+To test all params: Time elapsed in total:  27.322856187820435 s
+Same amount of runs but not passing -p and -r: Time elapsed in total:  105.94276165962219 s
 
+It probably takes some time to build circuit. We should benchmark multiple runs of simulate, with different input/output for the same circuit.
 
-
-
-
-
-TODO: Test structurally and fix remaining edge case bugs.
