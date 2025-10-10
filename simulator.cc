@@ -19,6 +19,7 @@ struct Options {
     vector<bool> output_bits;
     int num_chunk1 = -1;
     int num_chunk2 = -1;
+    float fraction = 1.0;
     bool only_build = false;
 };
 
@@ -65,6 +66,10 @@ Options get_options(int argc, char* argv[]) {
         return std::atoi(word.c_str());
     };
 
+    auto to_float = [](const std::string& word) -> unsigned {
+        return std::atoi(word.c_str());
+    };
+
     //cout << "Parsing options" << endl;
     //cout << "argc: " << argc << endl;
     //cout << "argv: ";
@@ -90,6 +95,8 @@ Options get_options(int argc, char* argv[]) {
           case 'r':
             opts.num_chunk1 = to_int(optarg);
             break;
+          case 'f':
+            opts.fraction = to_float(optarg);
           case 'B':
             opts.only_build = true;
             break;
@@ -220,9 +227,7 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
     //array<u_int64_t, NUM_CHUNKS+2> histories = {0, 0, 0, 0, 0};
 
     for (const std::shared_ptr<InternalWire>& w : Circuit::output_sources) {
-        printf("Setting output wire: %s\n", internal_wire_to_string(w, -1, 2).c_str());
         w->set_safe_all(1, opts.output_bits.at(w->wire));
-        printf("After setting output wire: %s\n", internal_wire_to_string(w, -1, 2).c_str());
     }
 
     //cout << "Output set." << endl;
@@ -324,7 +329,6 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
                 //    printf("    %s\n", gate_to_string(*gate, 2).c_str());
                 //}
        
-                cout << "    Chunk2 Artificial pass done." << endl;
       
                 // Then we need to iterate all to calculate contribution.
       
@@ -427,13 +431,13 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-//    printf("Gates after build:\n");
-//    for (int i = 0; i < NUM_CHUNKS; i++) {
-//        printf("Chunk %d with %d artificial sources:\n", i, Circuit::chunks.at(i).num_artificial);
-//        for (const shared_ptr<Gate>& gate: Circuit::chunks.at(i).gates) {
-//            printf("  %s\n", gate_to_string(*gate, -1, 2).c_str());
-//        }
-//    }
+    printf("After build:\n");
+    for (int i = 0; i < NUM_CHUNKS; i++) {
+        printf("Chunk %d with %zu gates and %d artificial sources:\n", i, Circuit::chunks.at(i).gates.size(), Circuit::chunks.at(i).num_artificial);
+        for (const shared_ptr<Gate>& gate: Circuit::chunks.at(i).gates) {
+            printf("  %s\n", gate_to_string(*gate, -1, 2).c_str());
+        }
+    }
 
     //printf("Output wires after build:\n");
     //for (shared_ptr<InternalWire>& iw : Circuit::output_sources) {

@@ -562,14 +562,10 @@ struct Circuit {
         Circuit::n = ParsedCircuit::n;
         int nr_gates = ParsedCircuit::nr_gates;
         int iw_id = 0;
-        cout << "nr_gates: " << nr_gates << endl;
         for (int wire = 0; wire < ParsedCircuit::n; wire++) {
-
-            cout << "Wire " << wire << endl;
-
             std::shared_ptr<InternalWire> wire_right = std::make_shared<InternalWire>(iw_id++, wire, /*NUM_CHUNKS+1,*/ OUTPUT);
             all_internal_wires.emplace_back(wire_right);
-            Circuit::output_sources.emplace_back(wire_right);
+            output_sources.emplace_back(wire_right);
             std::shared_ptr<GateQubit> next = nullptr;
             bool prev_over_output = true;
 
@@ -583,12 +579,8 @@ struct Circuit {
                 ParsedGate& pg = ParsedCircuit::wires.at(wire).at(pgi);
                 //printf("Processing parsed gate: %s at wire %d\n", parsed_gate_to_string(pg).c_str(), wire);
 
-                cout << " id: " << pg.id << ", type: " << gate_type_to_string(pg.type) << ", num_controls: " << pg.num_controls << ", qparam: " << pg.qparam << endl;
-
                 int chunk_id = (nr_gates - pg.id <= num_chunk2 ? 2 : (nr_gates - pg.id <= num_chunk1 + num_chunk2 ? 1 : 0));
                 Chunk& chunk = chunks.at(chunk_id);
-
-                cout << "  In chunk " << chunk_id << " with " << chunk.gates.size() << " gates so far." << endl;
 
                 int idx = chunk.vector_idx_of_gate(pg.id);
 
@@ -598,12 +590,11 @@ struct Circuit {
                 std::shared_ptr<InternalWire> wire_left;
                 if (!is_control && gate_type_infos.at(pg.type).breaks_internal_wire) {
                     leftmost_chunk_id = chunk_id;
-                    printf("    New iw at chunk %d, wire %d\n", chunk_id, wire);
                     wire_left = std::make_shared<InternalWire>(iw_id++, wire/*, chunk_id*/);
                     all_internal_wires.emplace_back(wire_left);
                     //cout << "adding iw\n";
                     chunk.internal_wires.emplace_back(wire_left);
-                    cout << "size after emplace_back: " << chunk.internal_wires.size() << endl;
+                    //cout << "size after emplace_back: " << chunk.internal_wires.size() << endl;
                 }
                 else {
                     wire_left = wire_right;
@@ -638,8 +629,6 @@ struct Circuit {
                     chunk.gates.at(idx)->qubits.at(pg.qparam) = q;
                 }
                 next = q;
-
-                cout << " id: " << pg.id << ", type: " << gate_type_to_string(pg.type) << ", num_controls: " << pg.num_controls << ", qparam: " << pg.qparam << " done" << endl;
             }
 
             //cout << "All gates for wire " << wire << " added" << endl;
@@ -649,11 +638,11 @@ struct Circuit {
                 next->wire_left->status = INPUT;
                 //cout << "status INPUT set" << endl;
                 /*next->wire_left->chunk = NUM_CHUNKS;*/
-                Circuit::input_sources.push_back(next->wire_left);
+                input_sources.push_back(next->wire_left);
                 //cout << "input added to input_sources" << endl;
                 //cout << "leftmost_chunk_id: " << leftmost_chunk_id << endl;
                 //cout << "size: " << Circuit::chunks.at(leftmost_chunk_id).internal_wires.size() << endl;
-                Circuit::chunks.at(leftmost_chunk_id).internal_wires.pop_back();
+                chunks.at(leftmost_chunk_id).internal_wires.pop_back();
                 //cout << "input removed from chunk" << endl;
             }
         }
@@ -689,7 +678,7 @@ struct Circuit {
 
         //cout << "Fake run done" << endl;
 
-        if (for_autotuning) {
+        if (for_autotuning) { // TODO: Debug why it's out of memory in autotuning when not having this.
             return;
         }
 
@@ -722,13 +711,17 @@ struct Circuit {
     static void build_autotuned_circuit() {
         int nr_gates = ParsedCircuit::nr_gates;
 
+        printf("nr_gates=%d\n", nr_gates);
+
         int min_nr_app = INT_MAX;
         int opt_num_chunk1 = -1;
         int opt_num_chunk2 = -1;
 
         for (int num_chunk2 = 0; num_chunk2 < nr_gates; num_chunk2++) {
+            printf("Testing num_chunk2=%d\n", num_chunk2);
             for (int num_chunk1 = 0; num_chunk1 < nr_gates - num_chunk2; num_chunk1++) {
-                build_circuit(num_chunk1, num_chunk2);
+                printf("  Testing num_chunk1=%d\n", num_chunk1);
+                build_circuit(num_chunk1, num_chunk2, true);
                 //2^{A_2} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))
                 int num_chunk0 = nr_gates - num_chunk2 - num_chunk1;
 
@@ -736,7 +729,7 @@ struct Circuit {
                 int a1 = chunks.at(1).num_artificial;
                 int a2 = chunks.at(2).num_artificial;
 
-                int nr_app = (1 << a2) * (num_chunk2 + (1 << a1) * (num_chunk1 + (1 << a0) * (nr_gates - num_chunk1)));
+                int nr_app = (1 << a2) * (num_chunk2 + (1 << a1) * (num_chunk1 + (1 << a0) * num_chunk0));
 
                 if (nr_app < min_nr_app) {
                     opt_num_chunk1 = num_chunk1;
