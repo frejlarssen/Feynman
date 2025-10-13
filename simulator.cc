@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <mutex>	
 #include "src/circuit.h"
+#include "src/parallel_for.h"
 
 #define fLIMIT 0.9999999
 
@@ -255,8 +256,6 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
 //    }
 
 
-    complex <float> total_amplitude = 0.0;
-    std::mutex total_mutex;
 //      int total = 0;
 
     auto simulate_start = get_time();
@@ -270,28 +269,17 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
         return 0.0;
     }
 
-    // Determine the number of threads to use
-    unsigned int num_threads = thread::hardware_concurrency();
-    cout << "num_threads reported: " << num_threads << endl; 
-    if (num_threads == 0) num_threads = 4; // fallback
-    //unsigned int num_threads = 4;
-
-    vector<thread> threads;
-    threads.reserve(num_threads);
-
     u_int64_t num_histories_c2 = u_int64_t(1) << num_artificial2;
 
     cout << "fraction: " << opts.fraction << endl;
 
-    u_int64_t num_par_histories = static_cast<uint64_t>(static_cast<double>(num_histories_c2) * opts.fraction);
-
-    if (num_threads > num_par_histories) {
-        num_threads = num_par_histories;
-    }
+    size_t num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c2) * opts.fraction);
 
     printf("num_par_histories (to simulate): %lu\n", num_par_histories);
 
     vector<u_int64_t> par_histories(num_par_histories);
+
+    vector<complex<float>> amplitudes(num_par_histories);
 
     //srand(time({}));
     srand(0);
@@ -299,10 +287,10 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
     //for (u_int64_t i = 0; i < num_par_histories; i++) {
     //    par_histories.at(i) = std::rand() % num_histories_c2;
     //}
-    for (u_int64_t i = 0; i < num_par_histories;) {
+    for (size_t i = 0; i < num_par_histories;) {
         int cand = std::rand() % num_histories_c2;
         bool cand_ok = true;
-        for (u_int64_t j = 0; j < i; j++) {
+        for (size_t j = 0; j < i; j++) {
             if (par_histories.at(j) == cand) {
                 cand_ok = false;
                 break;
@@ -313,26 +301,17 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
         }
     }
 
-    // Compute chunk size for each thread
-    int chunk_size = (num_par_histories + num_threads - 1) / num_threads;  // ceil division
 
-    printf("chunk_size: %d\n", chunk_size);
 
     // With n=16, about x3 speedup with openmp compared to without
 //    #pragma omp parallel for reduction(complex_add : total_amplitude)
 //#pragma omp parallel for reduction(int_add : total)
 
-
-    for (unsigned int t = 0; t < num_threads; ++t) {
-        threads.emplace_back([&, t]() {
-            std::complex<float> local_sum(0,0);
-            u_int64_t start = t * chunk_size;
-            u_int64_t end = (t == num_threads-1) ? num_par_histories : start + chunk_size;
-            //TODO: If num_threads != num_par_histories, reset chunk2.
-            for (u_int64_t history2_ind = start; history2_ind < end; history2_ind++) {
+    parallel_for(0, num_par_histories, [&](size_t history2_ind) {
+                std::complex<float> local_sum(0,0);
     //for (u_int64_t history2 = 0; history2 < u_int64_t(1) << num_artificial2; history2++) {
 //for (u_int64_t history2 = 0; history2 < u_int64_t(1) << ; history2++) {
-                u_int64_t thread_ind = history2_ind; //TODO: Make one index for each actual thread (from hardware_concurrency) instead of history2
+                size_t thread_ind = history2_ind; //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
                 u_int64_t history2;
                 if (opts.fraction > fLIMIT) { //TODO: fix this
                     history2 = history2_ind;
@@ -355,7 +334,8 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
                 if (!chunk2.right_to_left_vals(history2, thread_ind/*, buf_history*/)) {
                     // Input, output and artificial not compatible with deterministic gates
                     std::printf("    Vals pass rejected history --%ld.\n", history2);
-                    continue;
+                    amplitudes.at(history2_ind) = 0;
+                    return;
                 }
       
                 //printf("Gates after chunk2.right_to_left_vals:\n");
@@ -429,22 +409,16 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
 
                 //auto end_history2 = get_time();
                 //total_coretime_history2 = end_history2 - start_history2;
-            }
-            // Combine into total_amplitude safely
-            lock_guard<mutex> lock(total_mutex);
-            printf("t-%d: local_sum: %f + i%f\n", t, local_sum.real(), local_sum.imag());
-            total_amplitude += local_sum;
-            printf("t-%d: total_amplitude so far: %f + i%f\n", t, total_amplitude.real(), total_amplitude.imag());
-        });
-        printf("t-%d: Thread created\n", t);
-    }
-    cout << "all threads created" << endl;
 
+                // Combine into total_amplitude safely
+                printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
+                amplitudes.at(history2_ind) = local_sum;
+    });
 
-    // Join threads
-    for (auto &th : threads) th.join();
+    auto total_amplitude = parallel_reduce(0, num_par_histories, [&](size_t i) {
+        return amplitudes[i];
+    });    
 
-    cout << "threads joined" << endl;
     return total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
 }
 
