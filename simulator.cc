@@ -304,115 +304,87 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
 
 
     // With n=16, about x3 speedup with openmp compared to without
-//    #pragma omp parallel for reduction(complex_add : total_amplitude)
-//#pragma omp parallel for reduction(int_add : total)
 
     parallel_for(0, num_par_histories, [&](size_t history2_ind) {
-                std::complex<float> local_sum(0,0);
-    //for (u_int64_t history2 = 0; history2 < u_int64_t(1) << num_artificial2; history2++) {
-//for (u_int64_t history2 = 0; history2 < u_int64_t(1) << ; history2++) {
-                size_t thread_ind = history2_ind; //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
-                u_int64_t history2;
-                if (opts.fraction > fLIMIT) { //TODO: fix this
-                    history2 = history2_ind;
-                }
-                else {
-                    history2 = par_histories.at(history2_ind);
-                }
+        std::complex<float> local_sum(0,0);
 
-                //printf("Simulating history2=%lu\n", history2);
-                //histories.at(2) = history2;
+        size_t thread_ind = history2_ind; //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
+        u_int64_t history2;
+        if (opts.fraction > fLIMIT) { //TODO: fix this
+            history2 = history2_ind;
+        }
+        else {
+            history2 = par_histories.at(history2_ind);
+        }
 
-                //std::ostringstream buf_history; // Uncomment these to debug
-                //fprintf_stream(buf_history, "History: %d\n", history);
+        auto start_history2 = get_time();
 
-                auto start_history2 = get_time();
+        // TODO: Make a real run setting the values of all internal wires.
+        // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-                // TODO: Make a real run setting the values of all internal wires.
-                // We only need to iterate a vector of all deterministic, wire-breaking gates!
-
-                if (!chunk2.right_to_left_vals(history2, thread_ind/*, buf_history*/)) {
-                    // Input, output and artificial not compatible with deterministic gates
-                    std::printf("    Vals pass rejected history --%ld.\n", history2);
-                    amplitudes.at(history2_ind) = 0;
-                    return;
-                }
+        if (!chunk2.right_to_left_vals(history2, thread_ind/*, buf_history*/)) {
+            // Input, output and artificial not compatible with deterministic gates
+            std::printf("    Vals pass rejected history --%ld.\n", history2);
+            amplitudes.at(history2_ind) = 0;
+            return;
+        }
       
-                //printf("Gates after chunk2.right_to_left_vals:\n");
-                //for (Chunk chunk : Circuit::chunks) {
-                //    printf("Chunk %d:\n", chunk.id);
-                //    for (shared_ptr<Gate>& gate : chunk.gates) {
-                //        printf("%s\n", gate_to_string(*gate, 2).c_str());
-                //    }
-                //}
+        // Then we need to iterate all to calculate contribution.
       
-                //printf("    Chunk0 Gates after chunk2.right_to_left_vals:\n");
-                //for (shared_ptr<Gate>& gate : Circuit::chunks.at(0).gates) {
-                //    printf("    %s\n", gate_to_string(*gate, 2).c_str());
-                //}
-       
-      
-                // Then we need to iterate all to calculate contribution.
-      
-                complex <float> contribution2 = chunk_contribution(chunk2, thread_ind/*, buf_history*/);
-      
-                //printf("    Chunk0 Gates after chunk_contribution(chunk2):\n");
-                //for (shared_ptr<Gate>& gate : Circuit::chunks.at(0).gates) {
-                //    printf("    %s\n", gate_to_string(*gate, 2).c_str());
-                //}
+        complex <float> contribution2 = chunk_contribution(chunk2, thread_ind/*, buf_history*/);
                 
-                // --0 means the gates in chunk2 with C2 history 0.
-                //std::printf("Contribution from history --%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
+        // --0 means the gates in chunk2 with C2 history 0.
+        //std::printf("Contribution from history --%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
       
       
-                Chunk& chunk1 = Circuit::chunks.at(1);
-                const int num_artificial1 = chunk1.num_artificial;
-                //printf("  Number of artificial sources in chunk 2: %d\n", num_artificial1);
+        Chunk& chunk1 = Circuit::chunks.at(1);
+        const int num_artificial1 = chunk1.num_artificial;
+        //printf("  Number of artificial sources in chunk 2: %d\n", num_artificial1);
       
-                for (u_int64_t history1 = 0; history1 < u_int64_t(1) << num_artificial1; history1++) {
-                    //cout << "  In history1: " << history1 << endl;
-                    //histories.at(1) = history1;
+        for (u_int64_t history1 = 0; history1 < u_int64_t(1) << num_artificial1; history1++) {
+            //cout << "  In history1: " << history1 << endl;
+            //histories.at(1) = history1;
 
-                    chunk1.reset_values(thread_ind); //Introduces two warnings}
+            chunk1.reset_values(thread_ind); //Introduces two warnings}
       
-                    if (!chunk1.right_to_left_vals(history1, thread_ind/*, buf_history*/)) {
-                        //std::printf("    Vals pass rejected history -%ld%ld.\n", history1, history2);
-                        continue;
-                    }
-      
-                    complex <float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind/*, buf_history*/);
+            if (!chunk1.right_to_left_vals(history1, thread_ind/*, buf_history*/)) {
+                //std::printf("    Vals pass rejected history -%ld%ld.\n", history1, history2);
+                continue;
+            }
+
+            complex <float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind/*, buf_history*/);
             
-                    //std::printf("  Contribution from history -%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
+            //std::printf("  Contribution from history -%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
       
-                    Chunk& chunk0 = Circuit::chunks.at(0);
-                    const int num_artificial0 = chunk0.num_artificial;
-                    //printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
+            Chunk& chunk0 = Circuit::chunks.at(0);
+            const int num_artificial0 = chunk0.num_artificial;
+            //printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
       
-                    for (u_int64_t history0 = 0; history0 < u_int64_t(1) << num_artificial0; history0++) {
-                        //cout << "    In history0: " << history0 << endl;                        
+            for (u_int64_t history0 = 0; history0 < u_int64_t(1) << num_artificial0; history0++) {
+                //cout << "    In history0: " << history0 << endl;                        
+
+                chunk0.reset_values(thread_ind);      
       
-                        chunk0.reset_values(thread_ind);      
-      
-                        if (!chunk0.right_to_left_vals(history0, thread_ind)) {
-                            std::printf("    Artificial pass rejected history %ld%ld%ld.\n", history0, history1, history2);
-                            continue;
-                        }
-      
-                        //printf("    contribution1: %f + i%f\n", contribution1.real(), contribution1.imag());
-      
-                        complex <float> contribution0 = contribution1 * chunk_contribution(chunk0, thread_ind);
-      
-                        //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution0.real(), contribution0.imag());
-                        local_sum += contribution0;
-                    }
+                if (!chunk0.right_to_left_vals(history0, thread_ind)) {
+                    std::printf("    Artificial pass rejected history %ld%ld%ld.\n", history0, history1, history2);
+                    continue;
                 }
+      
+                //printf("    contribution1: %f + i%f\n", contribution1.real(), contribution1.imag());
+      
+                complex <float> contribution0 = contribution1 * chunk_contribution(chunk0, thread_ind);
+      
+                //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution0.real(), contribution0.imag());
+                local_sum += contribution0;
+            }
+        }
 
-                //auto end_history2 = get_time();
-                //total_coretime_history2 = end_history2 - start_history2;
+        //auto end_history2 = get_time();
+        //total_coretime_history2 = end_history2 - start_history2;
 
-                // Combine into total_amplitude safely
-                printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
-                amplitudes.at(history2_ind) = local_sum;
+        // Combine into total_amplitude safely
+        printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
+        amplitudes.at(history2_ind) = local_sum;
     });
 
     auto total_amplitude = parallel_reduce(0, num_par_histories, [&](size_t i) {
