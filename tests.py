@@ -8,7 +8,7 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 from qiskit import qasm3
 
-def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None):
+def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None, fraction=1.0):
     cmd = ["./simulator", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
     if p != None:
         cmd.append("-p")
@@ -16,7 +16,10 @@ def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None):
     if r != None:
         cmd.append("-r")
         cmd.append(str(r))
-    #print("Running command:", " ".join(cmd))
+    
+    cmd.append("-f")
+    cmd.append(str(fraction))
+    print("Running command:", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True)
     for line in result.stdout.splitlines():
         #print(line)
@@ -148,7 +151,7 @@ def build_qiskit_circuit_from_custom_qasm(qasm_file):
 def bitstrings(n):
     return [format(i, f'0{n}b') for i in range(2**n)]
 
-def test_case(filename, input_bits, output_bits, all_params = False):
+def test_all_params(filename, input_bits, output_bits, all_params = False, fraction = 1.0):
     if all_params: #TODO: If possible, test systematically but not all of the possible parameters.
         try:
             (nr_gates, nr_art) = build_simulator(filename)
@@ -158,7 +161,7 @@ def test_case(filename, input_bits, output_bits, all_params = False):
             for p in range(nr_gates+1):
                 for r in range(nr_gates - p + 1):
                     try:
-                        (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits, p, r)
+                        (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits, p, r, fraction=fraction)
                         match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
                         status = "PASS" if match else "FAIL"
                         print(f"{filename} | in: {input_bits} out: {output_bits} | p: {p} r: {r} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
@@ -197,13 +200,53 @@ def test_exhaustive(filename, n_qubits, all_params = False):
     for input_bits in inputs:
         for output_bits in outputs:
             try:
-                match = test_case(filename, input_bits, output_bits, all_params)
+                match = test_all_params(filename, input_bits, output_bits, all_params)
                 all_passed = all_passed and match
                 if not match:
                     return False
             except Exception as e:
                 print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
                 all_passed = False
+    if all_passed:
+        print(f"All tests passed for {filename}")
+        return True
+    else:
+        print(f"Some tests failed for {filename}")
+        return False
+
+
+def test_fidelity(filename, n_qubits, fraction=1.0):
+    print(f"Testing {filename} with {n_qubits} qubits")
+    #inputs = bitstrings(n_qubits)
+    inputs = ['111']
+    outputs = bitstrings(n_qubits)
+    all_passed = True
+    for input_bits in inputs:
+        sim_results = []
+        qiskit_results = []
+        for output_bits in outputs:
+            try:
+                (sim_res, sim_out) = run_simulator(filename, input_bits, output_bits, fraction=fraction)
+                print("sim_res: ", sim_res)
+                sim_results.append(sim_res)
+                qis_res = run_qiskit(filename, input_bits, output_bits)
+                print("qis_res:", qis_res)
+                qiskit_results.append(qis_res)
+            except Exception as e:
+                print(f"In test_fidelity: {filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
+                all_passed = False
+
+        print("sim_results: ", sim_results)
+        sim_results = sim_results / np.linalg.norm(sim_results)
+        print("sim results normalized: ", sim_results)
+
+        
+
+        print("qiskit_results: ", qiskit_results)
+        dot_prod = np.dot(sim_results, qiskit_results)
+        print("dot_prod: ", dot_prod)
+        fidelity = np.abs(dot_prod) ** 2
+        print(f"{filename} | in: {input_bits} | fidelity: {fidelity}")
     if all_passed:
         print(f"All tests passed for {filename}")
         return True
@@ -237,12 +280,18 @@ def exhaustive(all_params = False):
 
 
 def deep():
-    test_case("./circuits/qwalk_n4_it10.qasm", "0000", "0000")
-    #test_case("./circuits/qwalk_n4_it15.qasm", "0000", "0000")
+    #get_prod("./circuits/qwalk_n4_it10.qasm", "0000", "0000")
+    #get_prod("./circuits/qwalk_n4_it15.qasm", "0000", "0000")
+    pass
 
 if __name__ == "__main__":
     start = time.time()
-    exhaustive(all_params=True)
+    #exhaustive(all_params=True)
+    #deep()
+
+    #test_fidelity("./circuits/aa_n2_it1_mark1.qasm", 2, 0.5)
+    test_fidelity("./circuits/aa_n3_it3_mark1.qasm", 3, 0.5)
+
     end = time.time()
     print("Time elapsed in total: ", end - start, "s")
 

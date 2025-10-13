@@ -718,9 +718,9 @@ struct Circuit {
         int opt_num_chunk2 = -1;
 
         for (int num_chunk2 = 0; num_chunk2 < nr_gates; num_chunk2++) {
-            printf("Testing num_chunk2=%d\n", num_chunk2);
+            //printf("Testing num_chunk2=%d\n", num_chunk2);
             for (int num_chunk1 = 0; num_chunk1 < nr_gates - num_chunk2; num_chunk1++) {
-                printf("  Testing num_chunk1=%d\n", num_chunk1);
+                //printf("  Testing num_chunk1=%d\n", num_chunk1);
                 build_circuit(num_chunk1, num_chunk2, true);
                 //2^{A_2} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))
                 int num_chunk0 = nr_gates - num_chunk2 - num_chunk1;

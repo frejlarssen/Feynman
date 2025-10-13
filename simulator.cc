@@ -8,8 +8,11 @@
 #include <stdexcept>
 #include <thread>
 #include <atomic>
+#include <cstdlib>
+#include <mutex>	
 #include "src/circuit.h"
-#include <mutex>
+
+#define fLIMIT 0.9999999
 
 using namespace std;
 
@@ -66,8 +69,8 @@ Options get_options(int argc, char* argv[]) {
         return std::atoi(word.c_str());
     };
 
-    auto to_float = [](const std::string& word) -> unsigned {
-        return std::atoi(word.c_str());
+    auto to_float = [](const std::string& word) -> float {
+        return std::atof(word.c_str());
     };
 
     //cout << "Parsing options" << endl;
@@ -78,7 +81,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:o:p:r:B")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:o:p:r:f:B")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -96,7 +99,11 @@ Options get_options(int argc, char* argv[]) {
             opts.num_chunk1 = to_int(optarg);
             break;
           case 'f':
+            cout << "f optarg: " << optarg << endl;
             opts.fraction = to_float(optarg);
+            printf("opts.fraction: %f\n", opts.fraction);
+            cout << "opts.fraction: " << opts.fraction << endl;
+            break;
           case 'B':
             opts.only_build = true;
             break;
@@ -272,13 +279,39 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
     vector<thread> threads;
     threads.reserve(num_threads);
 
-    u_int64_t num_par_histories = u_int64_t(1) << num_artificial2;
+    u_int64_t num_histories_c2 = u_int64_t(1) << num_artificial2;
+
+    cout << "fraction: " << opts.fraction << endl;
+
+    u_int64_t num_par_histories = static_cast<uint64_t>(static_cast<double>(num_histories_c2) * opts.fraction);
 
     if (num_threads > num_par_histories) {
         num_threads = num_par_histories;
     }
 
-    printf("num_par_histories: %lu\n", num_par_histories);
+    printf("num_par_histories (to simulate): %lu\n", num_par_histories);
+
+    vector<u_int64_t> par_histories(num_par_histories);
+
+    //srand(time({}));
+    srand(0);
+    // Non-unique should work I think?
+    //for (u_int64_t i = 0; i < num_par_histories; i++) {
+    //    par_histories.at(i) = std::rand() % num_histories_c2;
+    //}
+    for (u_int64_t i = 0; i < num_par_histories;) {
+        int cand = std::rand() % num_histories_c2;
+        bool cand_ok = true;
+        for (u_int64_t j = 0; j < i; j++) {
+            if (par_histories.at(j) == cand) {
+                cand_ok = false;
+                break;
+            }
+        }
+        if (cand_ok) {
+            par_histories.at(i++) = cand;
+        }
+    }
 
     // Compute chunk size for each thread
     int chunk_size = (num_par_histories + num_threads - 1) / num_threads;  // ceil division
@@ -296,10 +329,19 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
             u_int64_t start = t * chunk_size;
             u_int64_t end = (t == num_threads-1) ? num_par_histories : start + chunk_size;
             //TODO: If num_threads != num_par_histories, reset chunk2.
-            for (u_int64_t history2 = start; history2 < end; history2++) {
+            for (u_int64_t history2_ind = start; history2_ind < end; history2_ind++) {
     //for (u_int64_t history2 = 0; history2 < u_int64_t(1) << num_artificial2; history2++) {
 //for (u_int64_t history2 = 0; history2 < u_int64_t(1) << ; history2++) {
-                u_int64_t thread_ind = history2; //TODO: Make one index for each actual thread (from hardware_concurrency) instead of history2
+                u_int64_t thread_ind = history2_ind; //TODO: Make one index for each actual thread (from hardware_concurrency) instead of history2
+                u_int64_t history2;
+                if (opts.fraction > fLIMIT) { //TODO: fix this
+                    history2 = history2_ind;
+                }
+                else {
+                    history2 = par_histories.at(history2_ind);
+                }
+
+                //printf("Simulating history2=%lu\n", history2);
                 //histories.at(2) = history2;
 
                 //std::ostringstream buf_history; // Uncomment these to debug
@@ -383,10 +425,8 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
                         //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution0.real(), contribution0.imag());
                         local_sum += contribution0;
                     }
-                    //std::printf("  Contribution from history A%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
                 }
-                //std::printf("Contribution from history AA%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
-      
+
                 //auto end_history2 = get_time();
                 //total_coretime_history2 = end_history2 - start_history2;
             }
@@ -405,7 +445,7 @@ complex <float> simulate(Options opts, std::ostringstream& buf, int verbosity = 
     for (auto &th : threads) th.join();
 
     cout << "threads joined" << endl;
-    return total_amplitude;
+    return total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
 }
 
 int main(int argc, char* argv[]) {

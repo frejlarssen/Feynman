@@ -130,3 +130,7 @@ Same amount of runs but not passing -p and -r: Time elapsed in total:  105.94276
 
 It probably takes some time to build circuit. We should benchmark multiple runs of simulate, with different input/output for the same circuit.
 
+### How is it autotuning?
+For example QFT have all history generating gates in the first time step. Is this time step split into chunks?
+
+Iterative algorithms like qwalk and AA would split in chunks more intuitively.
