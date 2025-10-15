@@ -9,7 +9,7 @@ from qiskit.quantum_info import Statevector
 from qiskit import qasm3
 
 def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None, fraction=1.0):
-    cmd = ["./simulator", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
+    cmd = ["./bitstr", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
     if p != None:
         cmd.append("-p")
         cmd.append(str(p))
