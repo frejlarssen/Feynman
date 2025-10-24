@@ -551,6 +551,16 @@ struct Circuit {
         return;
     }
 
+    static void reset_values_all() {
+        for (const std::shared_ptr<InternalWire>& w : all_internal_wires) {
+            u_int64_t num_threads = w->val_set.size(); //TODO: Is it unnecessary that this one differs?
+            for (u_int64_t t = 0; t < num_threads; t++) {
+                w->val_set.at(t) = false;
+                w->val.at(t) = false;
+            }
+        }
+    }
+
     // Build the global gate list from parsed gates on each wire.
     // Counts internal wires.
     // Adds only the qubit on that wire.

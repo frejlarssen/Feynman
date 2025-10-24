@@ -55,7 +55,7 @@ struct ParsedCircuit {
         // TODO: Maybe use a real parser instead. Or maybe none is very up to date.
         if (file.is_open()) {
 
-            if (getline(file, line) && line != "OPENQASM 3.0;") {
+            if (getline(file, line) && line != "OPENQASM 3.0;") { //TODO: Check logic here...
                 cerr << "Only OPENQASM 3.0 supported" << endl;
                 exit(1);
             }

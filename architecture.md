@@ -208,3 +208,13 @@ If outuput is given, we can perform the swap of the output. That should give the
 
 If output bitstring is given, we can compute amplitude of that bitstring in $\mathcal{O}(n^2) = \mathcal{O}(log^2(N))$.
 
+
+## Checkpointing
+Motivation: main takes long time for qwalk_n4_it4. And join-deterministically takes long time for it15. Depth is a problem and a random walk *should* be able to be longer than 15 steps (intuitively).
+
+### How?
+Divide gates in chunks. Chunk 0 is the rightmost. Artificial sources might span multiple chunks. In that case it is the first (rightmost) chunk who is responsible for setting a value of it.
+
+Pointers to the frontier InternalWire of each wire is stored. These are set by propagation like any other wire. The next chunk sees this as natural OUTPUT sources.
+
+

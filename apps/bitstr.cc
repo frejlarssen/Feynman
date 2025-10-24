@@ -2,8 +2,6 @@
 
 #include "../src/simulator.h"
 
-using namespace std;
-
 struct Options {
     string circuit_file;
     vector<bool> input_bits;
@@ -14,37 +12,10 @@ struct Options {
     bool only_build = false;
 };
 
-const vector<bool> bit_array_from_string(const string& s) {
-    vector<bool> bits(s.size());
-    for (size_t i = 0; i < s.size(); i++) {
-        if (s.at(i) == '1') {
-            bits.at(s.size() -1 - i) = true;
-        } else if (s.at(i) == '0') {
-            bits.at(s.size() -1 - i) = false;
-        } else {
-            cerr << "Invalid bitstring!" << endl;
-            exit(1);
-        }
-    }
-    return bits;
-}
-
-const string string_from_bit_array(const vector<bool> bit_arr) {
-    string str = "";
-    for (int i = 0; i < bit_arr.size(); i++) {
-        if (bit_arr.at(bit_arr.size()-1 - i)) {
-            str += "q" + to_string(bit_arr.size()-1 - i) + "=1";
-        } else {
-            str += "q" + to_string(bit_arr.size()-1 - i) + "=0";
-        }
-    }
-    return str;
-}
-
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./feynqft -c circuit_file -i input_bitstring -o output_bitstring -p num_chunk1 -r num_chunk2 (-B)\n";
+    const char* helpstr = "Usage: ./bitstr -c circuit_file -i input_bitstring -o output_bitstring -p num_chunk1 -r num_chunk2 (-B)\n";
 
     if (argc < 4) {
         cout << helpstr;

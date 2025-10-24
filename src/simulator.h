@@ -130,6 +130,20 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
 
     cout << "In simulate" << endl;
 
+    cout << "Output bits: ";
+    for (int i = Circuit::n - 1; i >= 0; i--) {
+        cout << output_bits.at(i);
+    }
+    cout << endl;
+
+    cout << "Input bits: ";
+    for (int i = Circuit::n - 1; i >= 0; i--) {
+        cout << input_bits.at(i);
+    }
+    cout << endl;
+
+    cout << "fraction: " << fraction << endl;
+
     // One for each chunk, one for the wires that starts in INPUT, and one for OUTPUT.
     //array<u_int64_t, NUM_CHUNKS+2> histories = {0, 0, 0, 0, 0};
 
@@ -169,8 +183,6 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
     }
 
     u_int64_t num_histories_c2 = u_int64_t(1) << num_artificial2;
-
-    cout << "fraction: " << fraction << endl;
 
     size_t num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c2) * fraction);
 
@@ -290,5 +302,9 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
         return amplitudes[i];
     });    
 
-    return total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
+    complex<float> retval = total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
+
+    cout << "  Simulator returning amplitude: " << retval.real() << " + i" << retval.imag() << endl;
+    
+    return retval;
 }
