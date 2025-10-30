@@ -1,14 +1,28 @@
+# Compiler settings
+CXX       = clang++
+MPICXX    = mpic++
+CXXFLAGS  = -O2
+OMPFLAGS  = -fopenmp
+SANFLAGS  = -fsanitize=thread -g
+
+# Targets
 debug:
-	clang++ -fsanitize=thread -g apps/feynbitstr.cc -o simulator
+	$(CXX) $(SANFLAGS) apps/feynbitstr.cc -o simulator
 
 bitstr_omp:
-	clang++ -DUSE_OPENMP -fopenmp -O2 apps/bitstr.cc -o bitstr
+	$(CXX) -DUSE_OPENMP $(OMPFLAGS) $(CXXFLAGS) apps/bitstr.cc -o bitstr
 
 sv_omp:
-	clang++ -DUSE_OPENMP -fopenmp -O2 apps/sv.cc -o sv
+	$(CXX) -DUSE_OPENMP $(OMPFLAGS) $(CXXFLAGS) apps/sv.cc -o sv_omp
+
+bitstr_mpi:
+	$(MPICXX) -DUSE_MPI $(CXXFLAGS) apps/bitstr.cc -o bitstr_mpi
+
+sv_mpi:
+	$(MPICXX) -DUSE_MPI $(CXXFLAGS) apps/sv.cc -o sv_mpi
 
 sim_qft:
-	g++ simulator_qft.cc -o simulator_qft
+	g++ simulator_qft.cc -o sim_qft
 
 clean:
-	rm -f simulator debug simulator_qfts
+	rm -f simulator bitstr sv simulator_qft bitstr_mpi sv_mpi sim_qft

@@ -77,6 +77,10 @@ Options get_options(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
 
+#ifdef USE_MPI
+    MPI_Init(&argc, &argv);
+#endif
+
     Options opts = get_options(argc, argv);
 
     ParsedCircuit::parse_circuit(opts.circuit_file);
@@ -138,6 +142,10 @@ int main(int argc, char* argv[]) {
 //        int a = simulate();
         printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
     }
+
+#ifdef USE_MPI
+    MPI_Finalize();
+#endif
 
     return 0;
 }

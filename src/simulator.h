@@ -13,6 +13,10 @@
 #include "circuit.h"
 #include "parallel_for.h"
 
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
+
 #define fLIMIT 0.9999999
 
 complex<float> chunk_contribution(const Chunk& chunk, u_int64_t thread/*, std::ostringstream& buf_history*/) {
@@ -128,21 +132,21 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
     // sources, less artificial sources and exponentially less histories.
 
 
-    cout << "In simulate" << endl;
+    //cout << "In simulate" << endl;
 
-    cout << "Output bits: ";
-    for (int i = Circuit::n - 1; i >= 0; i--) {
-        cout << output_bits.at(i);
-    }
-    cout << endl;
-
-    cout << "Input bits: ";
-    for (int i = Circuit::n - 1; i >= 0; i--) {
-        cout << input_bits.at(i);
-    }
-    cout << endl;
-
-    cout << "fraction: " << fraction << endl;
+    //cout << "Output bits: ";
+    //for (int i = Circuit::n - 1; i >= 0; i--) {
+    //    cout << output_bits.at(i);
+    //}
+    //cout << endl;
+//
+    //cout << "Input bits: ";
+    //for (int i = Circuit::n - 1; i >= 0; i--) {
+    //    cout << input_bits.at(i);
+    //}
+    //cout << endl;
+//
+    //cout << "fraction: " << fraction << endl;
 
     // One for each chunk, one for the wires that starts in INPUT, and one for OUTPUT.
     //array<u_int64_t, NUM_CHUNKS+2> histories = {0, 0, 0, 0, 0};
@@ -217,6 +221,16 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
     // With n=16, about x3 speedup with openmp compared to without
 
     parallel_for(0, num_par_histories, [&](size_t history2_ind) {
+
+#ifdef USE_MPI
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        printf("MPI rank %d processing history2_ind %lu / %lu\n", rank, history2_ind, num_par_histories);
+#else
+        printf("Processing history2_ind %lu / %lu\n", history2_ind, num_par_histories);
+#endif
+
+
         std::complex<float> local_sum(0,0);
 
         size_t thread_ind = history2_ind; //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
