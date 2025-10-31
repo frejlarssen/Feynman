@@ -15,7 +15,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./bitstr -c circuit_file -i input_bitstring -o output_bitstring -p num_chunk1 -r num_chunk2 (-B)\n";
+    const char* helpstr = "Usage: ./bitstr(_mpi/omp).x -c circuit_file -i input_bitstring -o output_bitstring -p num_chunk1 -r num_chunk2 (-B)\n";
 
     if (argc < 4) {
         cout << helpstr;

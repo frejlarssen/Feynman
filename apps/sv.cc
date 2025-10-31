@@ -2,6 +2,8 @@
 
 #include "../src/simulator.h"
 
+#define SPARSE_LIMIT 1e-6
+
 using namespace std;
 
 struct Options {
@@ -11,12 +13,13 @@ struct Options {
     int num_chunk1 = -1;
     int num_chunk2 = -1;
     float fraction = 1.0;
+    bool dense = false;
 };
 
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2\n";
+    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 (-D [Dense])\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -41,7 +44,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:o:p:r:f:")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:o:p:r:f:D")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -63,6 +66,9 @@ Options get_options(int argc, char* argv[]) {
             opts.fraction = to_float(optarg);
             printf("opts.fraction: %f\n", opts.fraction);
             cout << "opts.fraction: " << opts.fraction << endl;
+            break;
+          case 'D':
+            opts.dense = true;
             break;
           default:
             cout << helpstr;
@@ -132,14 +138,22 @@ int main(int argc, char* argv[]) {
 
         ifstream in_file(opts.input_statevector_file);
 
-        // String to store each line of the file.
         string in_line;
         u_int64_t input_int = 0;
         std::ostringstream buf;
         while (getline(in_file, in_line)) {
-
-            vector<bool> input_bits = bit_array_from_int(input_int++, Circuit::n);
-
+            vector<bool> input_bits;
+            complex<float> amp_in;
+            if (opts.dense) {
+                input_bits = bit_array_from_int(input_int++, Circuit::n);
+                amp_in = string_to_complex(in_line);
+            }
+            else {
+                size_t colon_pos = in_line.find(':');
+                string basis_state_str = in_line.substr(0, colon_pos);
+                input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
+                amp_in = string_to_complex(in_line.substr(colon_pos + 1));
+            }
 
             cout << "Input state |";
             for (int i = Circuit::n - 1; i >= 0; i--) {
@@ -153,7 +167,7 @@ int main(int argc, char* argv[]) {
 
             complex<float> amp = simulate(output_bits, input_bits, opts.fraction, buf, 3);
             printf("  Amplitude: %f + i%f\n", amp.real(), amp.imag());
-            output_amp += string_to_complex(in_line) * amp;
+            output_amp += amp_in * amp;
 
             // Reset all values for all threads
             Circuit::reset_values_all();
@@ -166,9 +180,16 @@ int main(int argc, char* argv[]) {
         }
         cout << "> : " << output_amp.real() << " + i" << output_amp.imag() << "\n";
 
-        string out_line = to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
-
-        out_file << out_line;
+        if (opts.dense) {
+            string out_line = to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
+            out_file << out_line;
+        }
+        else {
+            if (abs(output_amp) > SPARSE_LIMIT) {
+                string out_line = to_string(output_int) + ":" + to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
+                out_file << out_line;
+            }
+        }
 
         in_file.close();
     }
