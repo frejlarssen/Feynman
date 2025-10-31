@@ -105,13 +105,13 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    printf("After build:\n");
-    for (int i = 0; i < NUM_CHUNKS; i++) {
-        printf("Chunk %d with %zu gates and %d artificial sources:\n", i, Circuit::chunks.at(i).gates.size(), Circuit::chunks.at(i).num_artificial);
-        for (const shared_ptr<Gate>& gate: Circuit::chunks.at(i).gates) {
-            printf("  %s\n", gate_to_string(*gate, -1, 2).c_str());
-        }
-    }
+    //printf("After build:\n");
+    //for (int i = 0; i < NUM_CHUNKS; i++) {
+    //    printf("Chunk %d with %zu gates and %d artificial sources:\n", i, Circuit::chunks.at(i).gates.size(), Circuit::chunks.at(i).num_artificial);
+    //    for (const shared_ptr<Gate>& gate: Circuit::chunks.at(i).gates) {
+    //        printf("  %s\n", gate_to_string(*gate, -1, 2).c_str());
+    //    }
+    //}
 
     //printf("Output wires after build:\n");
     //for (shared_ptr<InternalWire>& iw : Circuit::output_sources) {
@@ -155,18 +155,18 @@ int main(int argc, char* argv[]) {
                 amp_in = string_to_complex(in_line.substr(colon_pos + 1));
             }
 
-            cout << "Input state |";
-            for (int i = Circuit::n - 1; i >= 0; i--) {
-                cout << (input_bits[i] ? "1" : "0");
-            }
-            cout << "> to output state |";
-            for (int i = Circuit::n - 1; i >= 0; i--) {
-                cout << (output_bits[i] ? "1" : "0");
-            }
-            cout << ">\n";
+            //cout << "Input state |";
+            //for (int i = Circuit::n - 1; i >= 0; i--) {
+            //    cout << (input_bits[i] ? "1" : "0");
+            //}
+            //cout << "> to output state |";
+            //for (int i = Circuit::n - 1; i >= 0; i--) {
+            //    cout << (output_bits[i] ? "1" : "0");
+            //}
+            //cout << ">\n";
 
             complex<float> amp = simulate(output_bits, input_bits, opts.fraction, buf, 3);
-            printf("  Amplitude: %f + i%f\n", amp.real(), amp.imag());
+            //printf("  Amplitude: %f + i%f\n", amp.real(), amp.imag());
             output_amp += amp_in * amp;
 
             // Reset all values for all threads
@@ -174,11 +174,11 @@ int main(int argc, char* argv[]) {
         }
 
 
-        cout << "Total amplitude to output state |";
-        for (int i = Circuit::n - 1; i >= 0; i--) {
-            cout << (output_bits[i] ? "1" : "0");
-        }
-        cout << "> : " << output_amp.real() << " + i" << output_amp.imag() << "\n";
+        //cout << "Total amplitude to output state |";
+        //for (int i = Circuit::n - 1; i >= 0; i--) {
+        //    cout << (output_bits[i] ? "1" : "0");
+        //}
+        //cout << "> : " << output_amp.real() << " + i" << output_amp.imag() << "\n";
 
         if (opts.dense) {
             string out_line = to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";

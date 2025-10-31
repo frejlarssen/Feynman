@@ -22,7 +22,7 @@ inline void parallel_for(size_t start, size_t end, const std::function<void(size
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    printf("MPI rank %d of %d starting parallel_for from %lu to %lu\n", rank, size, start, end);
+    //printf("MPI rank %d of %d starting parallel_for from %lu to %lu\n", rank, size, start, end);
 
     size_t total = end - start;
     size_t chunk_size = (total + size - 1) / size;

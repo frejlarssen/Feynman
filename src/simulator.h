@@ -180,7 +180,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
 
     Chunk& chunk2 = Circuit::chunks.at(2);
     const int num_artificial2 = chunk2.num_artificial;
-    printf("Number of artificial sources in chunk 2: %d\n", num_artificial2);
+    //printf("Number of artificial sources in chunk 2: %d\n", num_artificial2);
 
     if (!chunk2.right_to_left_natural_all(1 << num_artificial2)) {
         return 0.0;
@@ -190,7 +190,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
 
     size_t num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c2) * fraction);
 
-    printf("num_par_histories (to simulate): %lu\n", num_par_histories);
+    //printf("num_par_histories (to simulate): %lu\n", num_par_histories);
 
     vector<u_int64_t> par_histories(num_par_histories);
 
@@ -225,9 +225,9 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
 #ifdef USE_MPI
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        printf("MPI rank %d processing history2_ind %lu / %lu\n", rank, history2_ind, num_par_histories);
+        //printf("MPI rank %d processing history2_ind %lu / %lu\n", rank, history2_ind, num_par_histories);
 #else
-        printf("Processing history2_ind %lu / %lu\n", history2_ind, num_par_histories);
+        //printf("Processing history2_ind %lu / %lu\n", history2_ind, num_par_histories);
 #endif
 
 
@@ -291,7 +291,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
                 chunk0.reset_values(thread_ind);      
       
                 if (!chunk0.right_to_left_vals(history0, thread_ind)) {
-                    std::printf("    Artificial pass rejected history %ld%ld%ld.\n", history0, history1, history2);
+                    //std::printf("    Artificial pass rejected history %ld%ld%ld.\n", history0, history1, history2);
                     continue;
                 }
       
@@ -308,7 +308,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
         //total_coretime_history2 = end_history2 - start_history2;
 
         // Combine into total_amplitude safely
-        printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
+        //printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
         amplitudes.at(history2_ind) = local_sum;
     });
 
@@ -318,7 +318,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
 
     complex<float> retval = total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
 
-    cout << "  Simulator returning amplitude: " << retval.real() << " + i" << retval.imag() << endl;
+    //cout << "  Simulator returning amplitude: " << retval.real() << " + i" << retval.imag() << endl;
     
     return retval;
 }
