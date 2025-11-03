@@ -175,7 +175,6 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
 
 //      int total = 0;
 
-    auto simulate_start = get_time();
     duration<double> total_coretime_history2 = zero_duration();
 
     Chunk& chunk2 = Circuit::chunks.at(2);

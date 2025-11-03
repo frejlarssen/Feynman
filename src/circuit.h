@@ -721,8 +721,6 @@ struct Circuit {
     static void build_autotuned_circuit() {
         int nr_gates = ParsedCircuit::nr_gates;
 
-        printf("nr_gates=%d\n", nr_gates);
-
         int min_nr_app = INT_MAX;
         int opt_num_chunk1 = -1;
         int opt_num_chunk2 = -1;

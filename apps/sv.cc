@@ -13,13 +13,14 @@ struct Options {
     int num_chunk1 = -1;
     int num_chunk2 = -1;
     float fraction = 1.0;
+    int verbosity = 1;
     bool dense = false;
 };
 
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 (-D [Dense])\n";
+    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense])\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -44,7 +45,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:o:p:r:f:D")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:o:p:r:f:v:D")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -62,10 +63,10 @@ Options get_options(int argc, char* argv[]) {
             opts.num_chunk1 = to_int(optarg);
             break;
           case 'f':
-            cout << "f optarg: " << optarg << endl;
             opts.fraction = to_float(optarg);
-            printf("opts.fraction: %f\n", opts.fraction);
-            cout << "opts.fraction: " << opts.fraction << endl;
+            break;
+          case 'v':
+            opts.verbosity = to_int(optarg);
             break;
           case 'D':
             opts.dense = true;
@@ -82,9 +83,21 @@ int main(int argc, char* argv[]) {
 
 #ifdef USE_MPI
     MPI_Init(&argc, &argv);
+    int world_rank; // For debugging
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 #endif
 
+    auto start_svcc = get_time();
+
     Options opts = get_options(argc, argv);
+
+    // Debugging that should be printed only by one rank.
+    bool print_rank0_timings = (opts.verbosity >= 1);
+#ifdef USE_MPI
+    if (world_rank != 0) {
+        print_rank0_timings = false;
+    }
+#endif
 
     ParsedCircuit::parse_circuit(opts.circuit_file);
 
@@ -132,6 +145,9 @@ int main(int argc, char* argv[]) {
     
     ofstream out_file(opts.output_statevector_file);
 
+    duration<double> total_clocktime_simulate = zero_duration();
+    int num_calls_simulate = 0;
+
     for (int output_int = 0; output_int < (1ULL << Circuit::n); output_int++) {
         vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
         complex<float> output_amp(0,0);
@@ -155,17 +171,27 @@ int main(int argc, char* argv[]) {
                 amp_in = string_to_complex(in_line.substr(colon_pos + 1));
             }
 
-            //cout << "Input state |";
-            //for (int i = Circuit::n - 1; i >= 0; i--) {
-            //    cout << (input_bits[i] ? "1" : "0");
-            //}
-            //cout << "> to output state |";
-            //for (int i = Circuit::n - 1; i >= 0; i--) {
-            //    cout << (output_bits[i] ? "1" : "0");
-            //}
-            //cout << ">\n";
-
+            auto start_simulate = get_time();
             complex<float> amp = simulate(output_bits, input_bits, opts.fraction, buf, 3);
+            auto end_simulate = get_time();
+            num_calls_simulate++;
+
+            duration<double> clocktime_simulate = end_simulate - start_simulate;
+
+            if (print_rank0_timings && opts.verbosity >= 2) {
+                printf("  Clocktime to simulate input |");
+                for (int i = Circuit::n - 1; i >= 0; i--) {
+                    printf("%d", input_bits[i] ? 1 : 0);
+                }
+                printf("> to output |");
+                for (int i = Circuit::n - 1; i >= 0; i--) {
+                    printf("%d", output_bits[i] ? 1 : 0);
+                }
+                printf("> : %f seconds\n", clocktime_simulate.count());
+            }
+
+            total_clocktime_simulate += clocktime_simulate;
+
             //printf("  Amplitude: %f + i%f\n", amp.real(), amp.imag());
             output_amp += amp_in * amp;
 
@@ -194,7 +220,20 @@ int main(int argc, char* argv[]) {
         in_file.close();
     }
 
+    if (print_rank0_timings) {
+        printf("Number of simulate calls: %d\n", num_calls_simulate);
+        printf("Total clocktime for all simulate calls: %f seconds\n", total_clocktime_simulate.count());
+
+        printf("Average clocktime per simulate call: %f seconds\n", total_clocktime_simulate.count() / num_calls_simulate);
+    }
+
     out_file.close();
+
+    auto end_svcc = get_time();
+    duration<double> total_clocktime_svcc = end_svcc - start_svcc;
+
+    if (print_rank0_timings)
+        printf("Total clocktime for sv.cc: %f seconds\n", total_clocktime_svcc.count());
 
 #ifdef USE_MPI
     MPI_Finalize();
