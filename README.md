@@ -1,5 +1,5 @@
 # FeynQFT
-A Feynman simulator, and a version tailored to solve QFT
+A Feynman simulator.
 
 Example usage:
 
