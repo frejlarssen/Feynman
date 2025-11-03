@@ -37,9 +37,6 @@ Options get_options(int argc, char* argv[]) {
         return std::atof(word.c_str());
     };
 
-    //cout << "Parsing options" << endl;
-    //cout << "argc: " << argc << endl;
-    //cout << "argv: ";
     for (int i = 0; i < argc; i++) {
         cout << argv[i] << " ";
     }
@@ -101,13 +98,8 @@ int main(int argc, char* argv[]) {
 
     ParsedCircuit::parse_circuit(opts.circuit_file);
 
-    //printf("Parsed circuit:\n");
-    //printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
-
-
-    //TODO: Autotuning: Build circuit many times with different cp-params, save the best params and build once more for those.
-
     if (opts.num_chunk1 == -1 && opts.num_chunk2 == -1) {
+        // Autotune if checkpoints not given. (This takes longer time initially.)
         Circuit::build_autotuned_circuit();
     }
     else if (opts.num_chunk1 > -1 && opts.num_chunk2 > -1) {
@@ -118,36 +110,40 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    //printf("After build:\n");
-    //for (int i = 0; i < NUM_CHUNKS; i++) {
-    //    printf("Chunk %d with %zu gates and %d artificial sources:\n", i, Circuit::chunks.at(i).gates.size(), Circuit::chunks.at(i).num_artificial);
-    //    for (const shared_ptr<Gate>& gate: Circuit::chunks.at(i).gates) {
-    //        printf("  %s\n", gate_to_string(*gate, -1, 2).c_str());
-    //    }
-    //}
+    if (print_rank0_timings && opts.verbosity >= 3)
+        printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
 
-    //printf("Output wires after build:\n");
-    //for (shared_ptr<InternalWire>& iw : Circuit::output_sources) {
-    //    printf("%s\n", internal_wire_to_string(iw, 2).c_str());
-    //}
+    if (print_rank0_timings >= 1) {
+        const int num_artificial = Circuit::chunks.at(0).num_artificial +
+                                        Circuit::chunks.at(1).num_artificial +
+                                        Circuit::chunks.at(2).num_artificial;
+        printf("Total number of artificial sources: %d. Distributed as:\n", num_artificial);
+        printf("  Chunk 0: %d\n", Circuit::chunks.at(0).num_artificial);
+        printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
+        printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
+        
+        const u_int64_t num_histories_total = (u_int64_t(1) << Circuit::chunks.at(0).num_artificial) *
+                                               (u_int64_t(1) << Circuit::chunks.at(1).num_artificial) *
+                                               (u_int64_t(1) << Circuit::chunks.at(2).num_artificial);
+        
+        
+        
+        printf("For each simulate call we simulate over: \n");
+        printf("  %lu histories in total.\n", num_histories_total);
+        printf("  %lu histories in parallel.\n", (1 << Circuit::chunks.at(2).num_artificial));
+    }
 
-//    printf("Chunks internal wires after build (to reset): \n");
-//    for (int i = 0; i < NUM_CHUNKS; i++) {
-//        printf("Chunk %d with %ld internal wires:\n", i, Circuit::chunks.at(i).internal_wires.size());
-//        for (const shared_ptr<InternalWire>& iw : Circuit::chunks.at(i).internal_wires) {
-//            printf("  %s\n", internal_wire_to_string(iw, -1, 2).c_str());
-//        }
-//    }
-
-
-    
     // Loop through all input-output pairs. Start with amplitude depending on input statevector.
-    
+
     ofstream out_file(opts.output_statevector_file);
 
     duration<double> total_clocktime_simulate = zero_duration();
     int num_calls_simulate = 0;
 
+    if (print_rank0_timings && opts.verbosity >= 2)
+        printf("Starting simulation over all input-output pairs:\n");
+
+    // Loop though all output bitstrings
     for (int output_int = 0; output_int < (1ULL << Circuit::n); output_int++) {
         vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
         complex<float> output_amp(0,0);
@@ -156,15 +152,17 @@ int main(int argc, char* argv[]) {
 
         string in_line;
         u_int64_t input_int = 0;
-        std::ostringstream buf;
+        // Loop through the input bitstrings specified in input file
         while (getline(in_file, in_line)) {
             vector<bool> input_bits;
+
+            // Parse input bitstring and amplitude
             complex<float> amp_in;
             if (opts.dense) {
                 input_bits = bit_array_from_int(input_int++, Circuit::n);
                 amp_in = string_to_complex(in_line);
             }
-            else {
+            else { // Sparse is default
                 size_t colon_pos = in_line.find(':');
                 string basis_state_str = in_line.substr(0, colon_pos);
                 input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
@@ -172,7 +170,7 @@ int main(int argc, char* argv[]) {
             }
 
             auto start_simulate = get_time();
-            complex<float> amp = simulate(output_bits, input_bits, opts.fraction, buf, 3);
+            complex<float> amp = simulate(output_bits, input_bits, opts.fraction, 3);
             auto end_simulate = get_time();
             num_calls_simulate++;
 
@@ -192,26 +190,19 @@ int main(int argc, char* argv[]) {
 
             total_clocktime_simulate += clocktime_simulate;
 
-            //printf("  Amplitude: %f + i%f\n", amp.real(), amp.imag());
             output_amp += amp_in * amp;
 
-            // Reset all values for all threads
+            // Reset all values (for all threads if OpenMP is used)
             Circuit::reset_values_all();
         }
 
-
-        //cout << "Total amplitude to output state |";
-        //for (int i = Circuit::n - 1; i >= 0; i--) {
-        //    cout << (output_bits[i] ? "1" : "0");
-        //}
-        //cout << "> : " << output_amp.real() << " + i" << output_amp.imag() << "\n";
-
+        // Write to output file
         if (opts.dense) {
             string out_line = to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
             out_file << out_line;
         }
         else {
-            if (abs(output_amp) > SPARSE_LIMIT) {
+            if (abs(output_amp) > SPARSE_LIMIT) { // If in sparse mode, only output non-zero amplitudes
                 string out_line = to_string(output_int) + ":" + to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
                 out_file << out_line;
             }
