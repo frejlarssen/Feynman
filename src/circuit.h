@@ -98,6 +98,7 @@ struct InternalWire {
 
     // thread could be the history for chunk 2 if we parallelize over chunk 2.
     // TODO: If possible, don't do this check every time we need a value.
+    // TODO: Indexing by "thread" is not necessary for MPI-parallelization.
     uint8_t get_val(u_int64_t thread) {
         if (status == INPUT || status == OUTPUT) {
             return val.at(0);
@@ -717,7 +718,8 @@ struct Circuit {
         return;
     }
 
-    // Builds many times, first to decide optimal parameters and then once more with those.
+    // Builds many times, first to decide optimal parameters and then build with those.
+    // Minimize number of gate applications over all histories and nodes.
     static void build_autotuned_circuit() {
         int nr_gates = ParsedCircuit::nr_gates;
 
@@ -737,6 +739,7 @@ struct Circuit {
                 int a1 = chunks.at(1).num_artificial;
                 int a2 = chunks.at(2).num_artificial;
 
+                // Calculate number of gate applications over all histories and nodes.
                 int nr_app = (1 << a2) * (num_chunk2 + (1 << a1) * (num_chunk1 + (1 << a0) * num_chunk0));
 
                 if (nr_app < min_nr_app) {
@@ -750,6 +753,24 @@ struct Circuit {
         }
 
         build_circuit(opt_num_chunk1, opt_num_chunk2);
+    }
+
+    static string circuit_to_string(int thread = -1, int verbosity=0) {
+        string str = "Circuit(verbosity=" + to_string(verbosity) +
+        ", n=" + to_string(n) +
+        ", all_internal_wires=[\n";
+        for (const std::shared_ptr<InternalWire>& iw : all_internal_wires) {
+            str += "    " + internal_wire_to_string(iw, thread, verbosity) + "\n";
+        }
+        str += "]\n";
+        for (int i = 0; i < NUM_CHUNKS; i++) {
+            str += "Chunk " + to_string(i) + ":\n";
+            for (const std::shared_ptr<Gate>& g : chunks.at(i).gates) {
+                str += "    " + gate_to_string(*g, thread, verbosity) + "\n";
+            }
+        }
+        str += ")";
+        return str;
     }
 };
 
