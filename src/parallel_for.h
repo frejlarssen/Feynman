@@ -41,10 +41,14 @@ parallel_reduce(size_t start, size_t end,
                 const function<complex<float>(size_t)>& func)
 {
 #ifdef USE_OPENMP
-    complex<float> result(0.0f, 0.0f);
-    #pragma omp parallel for reduction(+:result)
-    for (size_t i = start; i < end; ++i)
-        result += func(i);
+    float re = 0.0f, im = 0.0f;
+    #pragma omp parallel for reduction(+:re, im)
+    for (size_t i = start; i < end; ++i) {
+        auto v = func(i);
+        re += v.real();
+        im += v.imag();
+    }
+    std::complex<float> result(re, im);
     return result;
 
 #else

@@ -1,7 +1,8 @@
 // Executable for a Feynman simulation but with statevectors as input and output
 
-#include "../src/simulator.h"
 #include "../src/typedef.h"
+#include "../src/simulator.h"
+#include "../src/mpiScheduler.h"
 #include <iostream>
 
 #define SPARSE_LIMIT 1e-6
@@ -87,7 +88,7 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);  // my rank
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);  // total ranks
 
-    auto start_svcc = get_time();
+    auto start_svcc_all = get_time();
 
     Options opts = get_options(argc, argv);
 
@@ -139,6 +140,15 @@ int main(int argc, char* argv[]) {
 
     //ofstream out_file(opts.output_statevector_file);
 
+    TypeLongInt total_output_bitstrings = 1ULL << Circuit::n;              // overflow if n >= 128
+    TypeLongInt num_batches = ( total_output_bitstrings + world_size - 1) / world_size;
+    std::size_t num_workers = world_size;
+    std::size_t my_worker = world_rank;
+    std::string local_buf;
+    local_buf.reserve(1<<20);
+    const std::size_t BATCH_SIZE = 32;  // try 1k–64k depending on cost per index
+    MPI_Barrier(MPI_COMM_WORLD);
+
     duration<double> total_clocktime_simulate = zero_duration();
     int num_calls_simulate = 0;
 
@@ -147,93 +157,82 @@ int main(int argc, char* argv[]) {
 
 
     // Loop though all output bitstrings
-    TypeLongInt total_output_bitstrings = 1ULL << Circuit::n;              // overflow if n >= 128
-    TypeLongInt num_batches = ( total_output_bitstrings + world_size - 1) / world_size;
-    std::size_t num_workers = world_size;
-    std::size_t my_worker = world_rank;
-    std::string local_buf;
-    local_buf.reserve(1<<20); // guess
+    auto start_svcc_sim = get_time();
+    if (world_rank == 0) {
+        // Pure master
+        run_master(total_output_bitstrings, BATCH_SIZE, MPI_COMM_WORLD);
+    }else{
+        std::size_t start = 0, count = 0;
+        while (request_next_batch(start, count, MPI_COMM_WORLD)) {
+            std::size_t end = start + count;
+            for(std::size_t output_int = start; output_int < end; ++output_int){
+            
+                vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
+                complex<float> output_amp(0,0);
 
-    for(std::size_t output_int = my_worker; output_int < total_output_bitstrings; output_int += num_workers ){
-    
-        vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
-        complex<float> output_amp(0,0);
+                ifstream in_file(opts.input_statevector_file);
 
-        ifstream in_file(opts.input_statevector_file);
+                string in_line;
+                TypeLongInt input_int = 0;
+                // Loop through the input bitstrings specified in input file
+                while (getline(in_file, in_line)) {
+                    vector<bool> input_bits;
 
-        string in_line;
-        TypeLongInt input_int = 0;
-        // Loop through the input bitstrings specified in input file
-        while (getline(in_file, in_line)) {
-            vector<bool> input_bits;
+                    // Parse input bitstring and amplitude
+                    complex<float> amp_in;
+                    if (opts.dense) {
+                        input_bits = bit_array_from_int(input_int++, Circuit::n);
+                        amp_in = string_to_complex(in_line);
+                    }
+                    else { // Sparse is default
+                        size_t colon_pos = in_line.find(':');
+                        string basis_state_str = in_line.substr(0, colon_pos);
+                        input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
+                        amp_in = string_to_complex(in_line.substr(colon_pos + 1));
+                    }
 
-            // Parse input bitstring and amplitude
-            complex<float> amp_in;
-            if (opts.dense) {
-                input_bits = bit_array_from_int(input_int++, Circuit::n);
-                amp_in = string_to_complex(in_line);
-            }
-            else { // Sparse is default
-                size_t colon_pos = in_line.find(':');
-                string basis_state_str = in_line.substr(0, colon_pos);
-                input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
-                amp_in = string_to_complex(in_line.substr(colon_pos + 1));
-            }
+                    auto start_simulate = get_time();
+                    complex<float> amp = simulate(output_bits, input_bits, opts.fraction, 3);
+                    auto end_simulate = get_time();
+                    num_calls_simulate++;
 
-            auto start_simulate = get_time();
-            complex<float> amp = simulate(output_bits, input_bits, opts.fraction, 3);
-            auto end_simulate = get_time();
-            num_calls_simulate++;
+                    duration<double> clocktime_simulate = end_simulate - start_simulate;
 
-            duration<double> clocktime_simulate = end_simulate - start_simulate;
+                    if (opts.verbosity >= 2) {
+                        printf("Worker %d - Clocktime to simulate input |", my_worker);
+                        for (int i = Circuit::n - 1; i >= 0; i--) {
+                            printf("%d", input_bits[i] ? 1 : 0);
+                        }
+                        printf("> to output |");
+                        for (int i = Circuit::n - 1; i >= 0; i--) {
+                            printf("%d", output_bits[i] ? 1 : 0);
+                        }
+                        printf("> : %f seconds\n", clocktime_simulate.count());
+                    }
 
-            if (opts.verbosity >= 2) {
-                printf("Worker %d - Clocktime to simulate input |", my_worker);
-                for (int i = Circuit::n - 1; i >= 0; i--) {
-                    printf("%d", input_bits[i] ? 1 : 0);
+                    total_clocktime_simulate += clocktime_simulate;
+
+                    output_amp += amp_in * amp;
+
+                    // Reset all values (for all threads if OpenMP is used)
+                    Circuit::reset_values_all();
                 }
-                printf("> to output |");
-                for (int i = Circuit::n - 1; i >= 0; i--) {
-                    printf("%d", output_bits[i] ? 1 : 0);
+
+                // Write to output file
+                bool writeFlag = 0;
+                if (opts.dense || (std::abs(output_amp) > SPARSE_LIMIT) ) writeFlag = 1;
+                if (writeFlag){
+                    local_buf += std::to_string(output_int);
+                    local_buf += ":";
+                    local_buf += std::to_string(output_amp.real());
+                    local_buf += "+";
+                    local_buf += std::to_string(output_amp.imag());
+                    local_buf += "i\n";
                 }
-                printf("> : %f seconds\n", clocktime_simulate.count());
-            }
-
-            total_clocktime_simulate += clocktime_simulate;
-
-            output_amp += amp_in * amp;
-
-            // Reset all values (for all threads if OpenMP is used)
-            Circuit::reset_values_all();
-        }
-
-        // Write to output file
-        /*
-        if (opts.dense) {
-            string out_line = to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
-            out_file << out_line;
-        }
-        else {
-            if (abs(output_amp) > SPARSE_LIMIT) { // If in sparse mode, only output non-zero amplitudes
-                string out_line = to_string(output_int) + ":" + to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
-                out_file << out_line;
             }
         }
-        in_file.close();
-        */
-       if (opts.dense){
-
-       }else{
-            if (std::abs(output_amp) > SPARSE_LIMIT) {
-                local_buf += std::to_string(output_int);
-                local_buf += ":";
-                local_buf += std::to_string(output_amp.real());
-                local_buf += "+";
-                local_buf += std::to_string(output_amp.imag());
-                local_buf += "i\n";
-            }
-       }
     }
+
 
     auto end_svcc_simulation = get_time();
 
@@ -269,12 +268,15 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
 
     auto end_svcc_full = get_time();
-    duration<double> total_clocktime_svcc_sim = end_svcc_simulation - start_svcc;
-    duration<double> total_clocktime_svcc_full = end_svcc_full - start_svcc;
+
+    duration<double> total_clocktime_svcc_sim = end_svcc_simulation - start_svcc_sim;
+    duration<double> total_clocktime_svcc_full = end_svcc_full - start_svcc_all;
+    duration<double> total_clocktime_svcc_writing = end_svcc_full - end_svcc_simulation;
 
     if (print_rank0_timings){
         printf("Total clocktime sim for sv.cc: %f seconds\n", total_clocktime_svcc_sim.count());
-        printf("Total clocktime (including writing to dsik) for sv.cc: %f seconds\n", total_clocktime_svcc_full.count());   
+        printf("Total clocktime writing to disk for sv.cc: %f seconds\n", total_clocktime_svcc_writing.count());
+        printf("Total clocktime (including I/O) for sv.cc: %f seconds\n", total_clocktime_svcc_full.count());
     }
 
     MPI_Finalize();

@@ -1,5 +1,5 @@
-n = 7
-it = 10
+n = 10
+it = 16
 # n=4 and it=2 is fast. it=3 (23 internal wires) takes long time with breaking over deterministic gates.
 # n=4 fast when joining over deterministic gates.
 
