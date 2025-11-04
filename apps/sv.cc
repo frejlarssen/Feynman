@@ -2,7 +2,7 @@
 
 #include "../src/simulator.h"
 
-#define SPARSE_LIMIT 1e-6
+#define CLOSE_TO_ZERO 1e-8
 
 using namespace std;
 
@@ -13,6 +13,7 @@ struct Options {
     int num_chunk1 = -1;
     int num_chunk2 = -1;
     float fraction = 1.0;
+    float threshold = CLOSE_TO_ZERO;
     int verbosity = 1;
     bool dense = false;
 };
@@ -20,7 +21,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense])\n";
+    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -t threshold -v verbosity (-D [Dense])\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -42,7 +43,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:o:p:r:f:v:D")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:o:p:r:f:t:v:D")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -61,6 +62,9 @@ Options get_options(int argc, char* argv[]) {
             break;
           case 'f':
             opts.fraction = to_float(optarg);
+            break;
+          case 't':
+            opts.threshold = to_float(optarg);
             break;
           case 'v':
             opts.verbosity = to_int(optarg);
@@ -148,7 +152,7 @@ int main(int argc, char* argv[]) {
         printf("Starting simulation over all input-output pairs:\n");
 
     // Loop though all output bitstrings
-    for (int output_int = 0; output_int < (1ULL << Circuit::n); output_int++) {
+    for (__int128 output_int = 0; output_int < (__int128(1) << Circuit::n); output_int++) {
         vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
         complex<float> output_amp(0,0);
 
@@ -169,12 +173,12 @@ int main(int argc, char* argv[]) {
             else { // Sparse is default
                 size_t colon_pos = in_line.find(':');
                 string basis_state_str = in_line.substr(0, colon_pos);
-                input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
+                input_bits = bit_array_from_int(string_to_int128(basis_state_str), Circuit::n);
                 amp_in = string_to_complex(in_line.substr(colon_pos + 1));
             }
 
             auto start_simulate = get_time();
-            complex<float> amp = simulate(output_bits, input_bits, opts.fraction, 3);
+            output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction, opts.threshold, 3);
             auto end_simulate = get_time();
             num_calls_simulate++;
 
@@ -194,8 +198,6 @@ int main(int argc, char* argv[]) {
 
             total_clocktime_simulate += clocktime_simulate;
 
-            output_amp += amp_in * amp;
-
             // Reset all values (for all threads if OpenMP is used)
             Circuit::reset_values_all();
         }
@@ -206,8 +208,8 @@ int main(int argc, char* argv[]) {
             out_file << out_line;
         }
         else {
-            if (abs(output_amp) > SPARSE_LIMIT) { // If in sparse mode, only output non-zero amplitudes
-                string out_line = to_string(output_int) + ":" + to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
+            if (abs(output_amp) > opts.threshold) { // If in sparse mode, only output non-zero amplitudes
+                string out_line = int128_to_string(output_int) + ":" + to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
                 out_file << out_line;
             }
         }

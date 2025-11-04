@@ -103,3 +103,38 @@ const complex<float> string_to_complex(const string& s) {
     float imag_part = std::stof(s.substr(plus_pos + 1, i_pos - plus_pos - 1));
     return complex<float>(real_part, imag_part);
 }
+
+string int128_to_string(__int128 value) {
+    if (value == 0) return "0";
+    
+    bool negative = value < 0;
+    unsigned __int128 temp = negative ? -value : value;
+
+    string result;
+    while (temp > 0) {
+        int digit = temp % 10;
+        result += '0' + digit;
+        temp /= 10;
+    }
+
+    if (negative) result += '-';
+    reverse(result.begin(), result.end());
+    return result;
+}
+
+__int128 string_to_int128(const string& s) {
+    __int128 result = 0;
+    size_t start = 0;
+    bool negative = false;
+
+    if (s[0] == '-') {
+        negative = true;
+        start = 1;
+    }
+
+    for (size_t i = start; i < s.size(); i++) {
+        result = result * 10 + (s[i] - '0');
+    }
+
+    return negative ? -result : result;
+}

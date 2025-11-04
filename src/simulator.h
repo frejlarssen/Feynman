@@ -106,7 +106,7 @@ complex<float> chunk_contribution(const Chunk& chunk, __int128 thread) {
     return contribution;
 }
 
-complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, float fraction, int verbosity = 1) {
+complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, complex<float> input_amp, float fraction, float threshold = 0.0, int verbosity = 1) {
 
     // Debugging that should be printed only by one rank.
     bool print_rank0_timings = (verbosity >= 1);
@@ -184,8 +184,14 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
             return;
         }
       
-        complex <float> contribution2 = chunk_contribution(chunk2, thread_ind);
-                
+        complex <float> contribution2 = input_amp * chunk_contribution(chunk2, thread_ind);
+
+        //Check if amplitude so far is small enough to neglect.
+        if (abs(contribution2) < threshold) {
+            amplitudes.at(history2_ind) = 0.0;
+            return;
+        }
+
         // --0 means the gates in chunk2 with C2 history 0.
         //std::printf("Contribution from history --%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
 
@@ -205,7 +211,11 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
             }
 
             complex <float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind);
-            
+
+            if (abs(contribution1) < threshold) {
+                continue; // Continue with another history1.
+            }
+
             //std::printf("  Contribution from history -%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
       
             Chunk& chunk0 = Circuit::chunks.at(0);
