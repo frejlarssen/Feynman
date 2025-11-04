@@ -7,8 +7,6 @@
 
 #ifdef USE_OPENMP
     #include <omp.h>
-#elif defined(USE_MPI)
-    #include <mpi.h>
 #endif
 
 inline void parallel_for(size_t start, size_t end, const std::function<void(size_t)>& func) {
@@ -16,24 +14,6 @@ inline void parallel_for(size_t start, size_t end, const std::function<void(size
     #pragma omp parallel for
     for (size_t i = start; i < end; ++i)
         func(i);
-
-#elif defined(USE_MPI)
-    int rank, size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-    //printf("MPI rank %d of %d starting parallel_for from %lu to %lu\n", rank, size, start, end);
-
-    size_t total = end - start;
-    size_t chunk_size = (total + size - 1) / size;
-
-    size_t chunk_start = start + rank * chunk_size;
-    size_t chunk_end   = min(chunk_start + chunk_size, end);
-
-    for (size_t i = chunk_start; i < chunk_end; ++i)
-        func(i);
-
-    MPI_Barrier(MPI_COMM_WORLD);
 
 #else
     unsigned int num_threads = std::thread::hardware_concurrency();
@@ -66,31 +46,6 @@ parallel_reduce(size_t start, size_t end,
     for (size_t i = start; i < end; ++i)
         result += func(i);
     return result;
-
-#elif defined(USE_MPI)
-    int rank, size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-    size_t total = end - start;
-    size_t chunk_size = (total + size - 1) / size;
-    size_t chunk_start = start + rank * chunk_size;
-    size_t chunk_end   = min(chunk_start + chunk_size, end);
-
-    complex<float> local_sum(0.0f, 0.0f);
-    for (size_t i = chunk_start; i < chunk_end; ++i)
-        local_sum += func(i);
-
-    complex<float> global_sum(0.0f, 0.0f);
-
-    // MPI can’t directly reduce complex<float>, so treat as 2 floats
-    float local_data[2]  = { local_sum.real(), local_sum.imag() };
-    float global_data[2] = { 0.0f, 0.0f };
-
-    MPI_Allreduce(local_data, global_data, 2, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-
-    global_sum = { global_data[0], global_data[1] };
-    return global_sum;
 
 #else
     unsigned int num_threads = thread::hardware_concurrency();

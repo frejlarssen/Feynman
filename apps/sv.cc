@@ -1,6 +1,8 @@
 // Executable for a Feynman simulation but with statevectors as input and output
 
 #include "../src/simulator.h"
+#include "../src/typedef.h"
+#include <iostream>
 
 #define SPARSE_LIMIT 1e-6
 
@@ -78,11 +80,12 @@ Options get_options(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
 
-#ifdef USE_MPI
+
     MPI_Init(&argc, &argv);
-    int world_rank; // For debugging
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-#endif
+    int world_rank = -1;
+    int world_size = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);  // my rank
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);  // total ranks
 
     auto start_svcc = get_time();
 
@@ -90,11 +93,10 @@ int main(int argc, char* argv[]) {
 
     // Debugging that should be printed only by one rank.
     bool print_rank0_timings = (opts.verbosity >= 1);
-#ifdef USE_MPI
+
     if (world_rank != 0) {
         print_rank0_timings = false;
     }
-#endif
 
     ParsedCircuit::parse_circuit(opts.circuit_file);
 
@@ -122,9 +124,9 @@ int main(int argc, char* argv[]) {
         printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
         printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
         
-        const u_int64_t num_histories_total = (u_int64_t(1) << Circuit::chunks.at(0).num_artificial) *
-                                               (u_int64_t(1) << Circuit::chunks.at(1).num_artificial) *
-                                               (u_int64_t(1) << Circuit::chunks.at(2).num_artificial);
+        const TypeLongInt num_histories_total = (TypeLongInt(1) << Circuit::chunks.at(0).num_artificial) *
+                                               (TypeLongInt(1) << Circuit::chunks.at(1).num_artificial) *
+                                               (TypeLongInt(1) << Circuit::chunks.at(2).num_artificial);
         
         
         
@@ -135,7 +137,7 @@ int main(int argc, char* argv[]) {
 
     // Loop through all input-output pairs. Start with amplitude depending on input statevector.
 
-    ofstream out_file(opts.output_statevector_file);
+    //ofstream out_file(opts.output_statevector_file);
 
     duration<double> total_clocktime_simulate = zero_duration();
     int num_calls_simulate = 0;
@@ -143,15 +145,24 @@ int main(int argc, char* argv[]) {
     if (print_rank0_timings && opts.verbosity >= 2)
         printf("Starting simulation over all input-output pairs:\n");
 
+
     // Loop though all output bitstrings
-    for (int output_int = 0; output_int < (1ULL << Circuit::n); output_int++) {
+    TypeLongInt total_output_bitstrings = 1ULL << Circuit::n;              // overflow if n >= 128
+    TypeLongInt num_batches = ( total_output_bitstrings + world_size - 1) / world_size;
+    std::size_t num_workers = world_size;
+    std::size_t my_worker = world_rank;
+    std::string local_buf;
+    local_buf.reserve(1<<20); // guess
+
+    for(std::size_t output_int = my_worker; output_int < total_output_bitstrings; output_int += num_workers ){
+    
         vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
         complex<float> output_amp(0,0);
 
         ifstream in_file(opts.input_statevector_file);
 
         string in_line;
-        u_int64_t input_int = 0;
+        TypeLongInt input_int = 0;
         // Loop through the input bitstrings specified in input file
         while (getline(in_file, in_line)) {
             vector<bool> input_bits;
@@ -176,8 +187,8 @@ int main(int argc, char* argv[]) {
 
             duration<double> clocktime_simulate = end_simulate - start_simulate;
 
-            if (print_rank0_timings && opts.verbosity >= 2) {
-                printf("  Clocktime to simulate input |");
+            if (opts.verbosity >= 2) {
+                printf("Worker %d - Clocktime to simulate input |", my_worker);
                 for (int i = Circuit::n - 1; i >= 0; i--) {
                     printf("%d", input_bits[i] ? 1 : 0);
                 }
@@ -197,6 +208,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Write to output file
+        /*
         if (opts.dense) {
             string out_line = to_string(output_amp.real()) + "+" + to_string(output_amp.imag()) + "i\n";
             out_file << out_line;
@@ -207,28 +219,65 @@ int main(int argc, char* argv[]) {
                 out_file << out_line;
             }
         }
-
         in_file.close();
+        */
+       if (opts.dense){
+
+       }else{
+            if (std::abs(output_amp) > SPARSE_LIMIT) {
+                local_buf += std::to_string(output_int);
+                local_buf += ":";
+                local_buf += std::to_string(output_amp.real());
+                local_buf += "+";
+                local_buf += std::to_string(output_amp.imag());
+                local_buf += "i\n";
+            }
+       }
     }
 
+    auto end_svcc_simulation = get_time();
+
+    // parallel output to disk
+    MPI_File fh;
+    if (world_rank == 0)MPI_File_delete(opts.output_statevector_file.c_str(), MPI_INFO_NULL);
+    MPI_Barrier(MPI_COMM_WORLD);
+    int rc = MPI_File_open(MPI_COMM_WORLD,
+                        opts.output_statevector_file.c_str(),
+                        MPI_MODE_CREATE | MPI_MODE_WRONLY,
+                        MPI_INFO_NULL,
+                        &fh);
+    MPI_Offset my_bytes  = static_cast<MPI_Offset>(local_buf.size());
+    MPI_Offset my_offset = 0;
+    MPI_Exscan(&my_bytes, &my_offset, 1, MPI_OFFSET, MPI_SUM, MPI_COMM_WORLD);
+    if (world_rank == 0) my_offset = 0;
+    MPI_Status st;
+    MPI_File_write_at_all(fh, my_offset, (void*)local_buf.data(), (int)my_bytes, MPI_BYTE, &st);
+    MPI_File_close(&fh);
+
+
+    int tot_num_calls_simulate = 0;
+    MPI_Reduce(&num_calls_simulate, &tot_num_calls_simulate, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
     if (print_rank0_timings) {
-        printf("Number of simulate calls: %d\n", num_calls_simulate);
+        printf("Number of simulate calls: %d\n", tot_num_calls_simulate);
         printf("Total clocktime for all simulate calls: %f seconds\n", total_clocktime_simulate.count());
 
-        printf("Average clocktime per simulate call: %f seconds\n", total_clocktime_simulate.count() / num_calls_simulate);
+        printf("Average clocktime per simulate call: %f seconds\n", total_clocktime_simulate.count() / tot_num_calls_simulate);
     }
 
-    out_file.close();
+    //out_file.close();
+    fflush(stdin);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    auto end_svcc = get_time();
-    duration<double> total_clocktime_svcc = end_svcc - start_svcc;
+    auto end_svcc_full = get_time();
+    duration<double> total_clocktime_svcc_sim = end_svcc_simulation - start_svcc;
+    duration<double> total_clocktime_svcc_full = end_svcc_full - start_svcc;
 
-    if (print_rank0_timings)
-        printf("Total clocktime for sv.cc: %f seconds\n", total_clocktime_svcc.count());
+    if (print_rank0_timings){
+        printf("Total clocktime sim for sv.cc: %f seconds\n", total_clocktime_svcc_sim.count());
+        printf("Total clocktime (including writing to dsik) for sv.cc: %f seconds\n", total_clocktime_svcc_full.count());   
+    }
 
-#ifdef USE_MPI
     MPI_Finalize();
-#endif
 
     return 0;
 }

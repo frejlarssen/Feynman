@@ -1,6 +1,6 @@
 # Compiler settings
-CXX       = clang++
-MPICXX    = mpic++
+CXX       = CC
+MPICXX    = CC
 CXXFLAGS  = -O2
 OMPFLAGS  = -fopenmp
 SANFLAGS  = -fsanitize=thread -g
@@ -20,6 +20,9 @@ bitstr_mpi:
 
 sv_mpi:
 	$(MPICXX) -DUSE_MPI $(CXXFLAGS) apps/sv.cc -o sv_mpi.x
+
+sv_mpi_scheduler:
+	$(MPICXX) $(CXXFLAGS) -DUSE_OPENMP $(OMPFLAGS) apps/sv.cc -o sv_mpi_scheduler.x
 
 sim_qft:
 	g++ simulator_qft.cc -o sim_qft.x
