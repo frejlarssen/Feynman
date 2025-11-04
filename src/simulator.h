@@ -12,14 +12,13 @@
 #include <mutex>	
 #include "circuit.h"
 #include "parallel_for.h"
-
-#ifdef USE_MPI
 #include <mpi.h>
-#endif
+#include "typedef.h"
+
 
 #define fLIMIT 0.9999999 // If fraction > fLIMIT, we make an exact simulation.
 
-complex<float> chunk_contribution(const Chunk& chunk, __int128 thread) {
+complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
     complex <float> contribution = 1.0;
     for (const shared_ptr<Gate>& gateptr : chunk.gates) {
         Gate& gate = *gateptr;
@@ -110,13 +109,6 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
 
     // Debugging that should be printed only by one rank.
     bool print_rank0_timings = (verbosity >= 1);
-#ifdef USE_MPI
-    int world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    if (world_rank != 0) {
-        print_rank0_timings = false;
-    }
-#endif
 
     // Set output and input bits given from caller.
     for (const std::shared_ptr<InternalWire>& w : Circuit::output_sources) {
@@ -136,11 +128,11 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
         return 0.0;
     }
 
-    __int128 num_histories_c2 = __int128(1) << num_artificial2;
+    TypeLongInt num_histories_c2 = TypeLongInt(1) << num_artificial2;
 
     size_t num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c2) * fraction);
 
-    vector<__int128> par_histories(num_par_histories);
+    vector<TypeLongInt> par_histories(num_par_histories);
 
     vector<complex<float>> amplitudes(num_par_histories);
 
@@ -149,23 +141,19 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
     srand(0);
 
     // TODO: Check if non-unique histories is ok.
-    for (__int128 i = 0; i < num_par_histories; i++) {
+    for (TypeLongInt i = 0; i < num_par_histories; i++) {
         par_histories.at(i) = std::rand() % num_histories_c2;
     }
 
     // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
     parallel_for(0, num_par_histories, [&](size_t history2_ind) {
 
-#ifdef USE_MPI
-        MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-#endif
-
         std::complex<float> local_sum(0,0);
 
         //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
         //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
         size_t thread_ind = history2_ind;
-        __int128 history2;
+        TypeLongInt history2;
         if (fraction > fLIMIT) {
             history2 = history2_ind;
         }
@@ -199,7 +187,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
         const int num_artificial1 = chunk1.num_artificial;
         //printf("  Number of artificial sources in chunk 2: %d\n", num_artificial1);
       
-        for (__int128 history1 = 0; history1 < __int128(1) << num_artificial1; history1++) {
+        for (TypeLongInt history1 = 0; history1 < TypeLongInt(1) << num_artificial1; history1++) {
             //cout << "  In history1: " << history1 << endl;
             //histories.at(1) = history1;
 
@@ -222,7 +210,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
             const int num_artificial0 = chunk0.num_artificial;
             //printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
       
-            for (__int128 history0 = 0; history0 < __int128(1) << num_artificial0; history0++) {
+            for (TypeLongInt history0 = 0; history0 < TypeLongInt(1) << num_artificial0; history0++) {
                 //cout << "    In history0: " << history0 << endl;                        
 
                 chunk0.reset_values(thread_ind);      

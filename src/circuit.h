@@ -12,6 +12,7 @@
 #include <limits>
 #include "utils.h"
 #include "parsed_circuit.h"
+#include "typedef.h"
 
 #define PI 3.141592653589793
 #define NUM_CHUNKS 3
@@ -78,7 +79,7 @@ struct InternalWire {
           val_set(nr_hists, false),
           val(nr_hists, false) {}
 
-    bool set_safe(__int128 thread, bool new_val) {
+    bool set_safe(TypeLongInt thread, bool new_val) {
         if (status == INPUT || status == OUTPUT) { thread = 0; }
         if (val_set.at(thread) && (val.at(thread) != new_val)) {
             return false;
@@ -88,8 +89,8 @@ struct InternalWire {
         return true;
     }
 
-    bool set_safe_all(__int128 num_threads, bool new_val) {
-        for (__int128 t = 0; t < num_threads; t++) {
+    bool set_safe_all(TypeLongInt num_threads, bool new_val) {
+        for (TypeLongInt t = 0; t < num_threads; t++) {
             if (!set_safe(t, new_val)) {
                 return false;
             }
@@ -100,7 +101,7 @@ struct InternalWire {
     // thread could be the history for chunk 2 if we parallelize over chunk 2.
     // TODO: If possible, don't do this check every time we need a value.
     // TODO: Indexing by "thread" is not necessary for MPI-parallelization.
-    uint8_t get_val(__int128 thread) {
+    uint8_t get_val(TypeLongInt thread) {
         if (status == INPUT || status == OUTPUT) {
             return val.at(0);
         }
@@ -306,7 +307,7 @@ struct Chunk {
 
     // Sets values from R->L to mimic fake run
     // Returns true if successful, false if propagated values from output and input conflicts.
-    bool right_to_left_natural_all(__int128 num_threads) {
+    bool right_to_left_natural_all(TypeLongInt num_threads) {
 
         //cout << "      In natural_pass_all for chunk " << id << " with " << gates.size() << " gates." << endl;
 
@@ -382,7 +383,7 @@ struct Chunk {
 
     // Sets values from R->L to mimic fake run
     // Returns true if successful, false if propagated values from output and input conflicts.
-    bool right_to_left_vals(__int128 chunk_history, __int128 thread) {
+    bool right_to_left_vals(TypeLongInt chunk_history, TypeLongInt thread) {
 
         //cout << "      In vals pass for chunk " << id << " with " << gates.size() << " gates, thread: " << thread << endl;
         for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
@@ -474,7 +475,7 @@ struct Chunk {
 
 //    // Sets values from R->L to mimic fake run
 //    // TODO: This can often set things that were already set in natual pass. Look into optimizing.
-//    bool right_to_left_artificial(__int128 chunk_history, __int128 thread/*, std::ostringstream& buf_history*/) {
+//    bool right_to_left_artificial(TypeLongInt chunk_history, TypeLongInt thread/*, std::ostringstream& buf_history*/) {
 //        cout << "  In right_to_left_artificial" << endl;
 //        for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
 //            printf("  Setting artificial source: %s\n", internal_wire_to_string(w, 2).c_str());
@@ -555,8 +556,8 @@ struct Circuit {
 
     static void reset_values_all() {
         for (const std::shared_ptr<InternalWire>& w : all_internal_wires) {
-            __int128 num_threads = w->val_set.size(); //TODO: Is it unnecessary that this one differs?
-            for (__int128 t = 0; t < num_threads; t++) {
+            TypeLongInt num_threads = w->val_set.size(); //TODO: Is it unnecessary that this one differs?
+            for (TypeLongInt t = 0; t < num_threads; t++) {
                 w->val_set.at(t) = false;
                 w->val.at(t) = false;
             }
@@ -723,8 +724,7 @@ struct Circuit {
     // Minimize number of gate applications over all histories and nodes.
     static void build_autotuned_circuit() {
         int nr_gates = ParsedCircuit::nr_gates;
-
-        __int128 min_nr_app = std::numeric_limits<__int128>::max();;
+        TypeLongInt min_nr_app = std::numeric_limits<TypeLongInt>::max();
         int opt_num_chunk1 = -1;
         int opt_num_chunk2 = -1;
 

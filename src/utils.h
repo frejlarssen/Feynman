@@ -4,6 +4,7 @@
 #include <cstdarg>
 #include <vector>
 #include <cstdio>
+#include "typedef.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -84,7 +85,7 @@ const string string_from_bit_array(const vector<bool> bit_arr) {
     return str;
 }
 
-const vector<bool> bit_array_from_int(__int128 value, int n) {
+const vector<bool> bit_array_from_int(TypeLongInt value, int n) {
     vector<bool> bits(n, false);
     for (int i = 0; i < n; i++) {
         bits[i] = (value >> i) & 1;
