@@ -9,6 +9,7 @@
 #include <optional>
 #include <unordered_map>
 #include <climits>
+#include <limits>
 #include "utils.h"
 #include "parsed_circuit.h"
 
@@ -77,7 +78,7 @@ struct InternalWire {
           val_set(nr_hists, false),
           val(nr_hists, false) {}
 
-    bool set_safe(u_int64_t thread, bool new_val) {
+    bool set_safe(__int128 thread, bool new_val) {
         if (status == INPUT || status == OUTPUT) { thread = 0; }
         if (val_set.at(thread) && (val.at(thread) != new_val)) {
             return false;
@@ -87,8 +88,8 @@ struct InternalWire {
         return true;
     }
 
-    bool set_safe_all(u_int64_t num_threads, bool new_val) {
-        for (u_int64_t t = 0; t < num_threads; t++) {
+    bool set_safe_all(__int128 num_threads, bool new_val) {
+        for (__int128 t = 0; t < num_threads; t++) {
             if (!set_safe(t, new_val)) {
                 return false;
             }
@@ -99,7 +100,7 @@ struct InternalWire {
     // thread could be the history for chunk 2 if we parallelize over chunk 2.
     // TODO: If possible, don't do this check every time we need a value.
     // TODO: Indexing by "thread" is not necessary for MPI-parallelization.
-    uint8_t get_val(u_int64_t thread) {
+    uint8_t get_val(__int128 thread) {
         if (status == INPUT || status == OUTPUT) {
             return val.at(0);
         }
@@ -305,7 +306,7 @@ struct Chunk {
 
     // Sets values from R->L to mimic fake run
     // Returns true if successful, false if propagated values from output and input conflicts.
-    bool right_to_left_natural_all(u_int64_t num_threads) {
+    bool right_to_left_natural_all(__int128 num_threads) {
 
         //cout << "      In natural_pass_all for chunk " << id << " with " << gates.size() << " gates." << endl;
 
@@ -381,7 +382,7 @@ struct Chunk {
 
     // Sets values from R->L to mimic fake run
     // Returns true if successful, false if propagated values from output and input conflicts.
-    bool right_to_left_vals(u_int64_t chunk_history, u_int64_t thread) {
+    bool right_to_left_vals(__int128 chunk_history, __int128 thread) {
 
         //cout << "      In vals pass for chunk " << id << " with " << gates.size() << " gates, thread: " << thread << endl;
         for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
@@ -473,7 +474,7 @@ struct Chunk {
 
 //    // Sets values from R->L to mimic fake run
 //    // TODO: This can often set things that were already set in natual pass. Look into optimizing.
-//    bool right_to_left_artificial(u_int64_t chunk_history, u_int64_t thread/*, std::ostringstream& buf_history*/) {
+//    bool right_to_left_artificial(__int128 chunk_history, __int128 thread/*, std::ostringstream& buf_history*/) {
 //        cout << "  In right_to_left_artificial" << endl;
 //        for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
 //            printf("  Setting artificial source: %s\n", internal_wire_to_string(w, 2).c_str());
@@ -554,8 +555,8 @@ struct Circuit {
 
     static void reset_values_all() {
         for (const std::shared_ptr<InternalWire>& w : all_internal_wires) {
-            u_int64_t num_threads = w->val_set.size(); //TODO: Is it unnecessary that this one differs?
-            for (u_int64_t t = 0; t < num_threads; t++) {
+            __int128 num_threads = w->val_set.size(); //TODO: Is it unnecessary that this one differs?
+            for (__int128 t = 0; t < num_threads; t++) {
                 w->val_set.at(t) = false;
                 w->val.at(t) = false;
             }
@@ -723,7 +724,7 @@ struct Circuit {
     static void build_autotuned_circuit() {
         int nr_gates = ParsedCircuit::nr_gates;
 
-        int min_nr_app = INT_MAX;
+        __int128 min_nr_app = std::numeric_limits<__int128>::max();;
         int opt_num_chunk1 = -1;
         int opt_num_chunk2 = -1;
 
@@ -740,7 +741,7 @@ struct Circuit {
                 int a2 = chunks.at(2).num_artificial;
 
                 // Calculate number of gate applications over all histories and nodes.
-                int nr_app = (1 << a2) * (num_chunk2 + (1 << a1) * (num_chunk1 + (1 << a0) * num_chunk0));
+                __int128 nr_app = (__int128(1) << a2) * (num_chunk2 + (__int128(1) << a1) * (num_chunk1 + (__int128(1) << a0) * num_chunk0));
 
                 if (nr_app < min_nr_app) {
                     opt_num_chunk1 = num_chunk1;

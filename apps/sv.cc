@@ -114,6 +114,12 @@ int main(int argc, char* argv[]) {
         printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
 
     if (print_rank0_timings >= 1) {
+        const int num_gates = ParsedCircuit::nr_gates;
+        printf("Circuit has %d gates. Distributed as:\n", num_gates, Circuit::n);
+        printf("  Chunk 0: %d gates\n", Circuit::chunks.at(0).gates.size());
+        printf("  Chunk 1: %d gates\n", Circuit::chunks.at(1).gates.size());
+        printf("  Chunk 2: %d gates\n", Circuit::chunks.at(2).gates.size());
+
         const int num_artificial = Circuit::chunks.at(0).num_artificial +
                                         Circuit::chunks.at(1).num_artificial +
                                         Circuit::chunks.at(2).num_artificial;
@@ -122,12 +128,10 @@ int main(int argc, char* argv[]) {
         printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
         printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
         
-        const u_int64_t num_histories_total = (u_int64_t(1) << Circuit::chunks.at(0).num_artificial) *
-                                               (u_int64_t(1) << Circuit::chunks.at(1).num_artificial) *
-                                               (u_int64_t(1) << Circuit::chunks.at(2).num_artificial);
-        
-        
-        
+        const __int128 num_histories_total = (__int128(1) << Circuit::chunks.at(0).num_artificial) *
+                                               (__int128(1) << Circuit::chunks.at(1).num_artificial) *
+                                               (__int128(1) << Circuit::chunks.at(2).num_artificial);
+
         printf("For each simulate call we simulate over: \n");
         printf("  %lu histories in total.\n", num_histories_total);
         printf("  %lu histories in parallel.\n", (1 << Circuit::chunks.at(2).num_artificial));
@@ -151,7 +155,7 @@ int main(int argc, char* argv[]) {
         ifstream in_file(opts.input_statevector_file);
 
         string in_line;
-        u_int64_t input_int = 0;
+        __int128 input_int = 0;
         // Loop through the input bitstrings specified in input file
         while (getline(in_file, in_line)) {
             vector<bool> input_bits;

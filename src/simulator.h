@@ -19,7 +19,7 @@
 
 #define fLIMIT 0.9999999 // If fraction > fLIMIT, we make an exact simulation.
 
-complex<float> chunk_contribution(const Chunk& chunk, u_int64_t thread) {
+complex<float> chunk_contribution(const Chunk& chunk, __int128 thread) {
     complex <float> contribution = 1.0;
     for (const shared_ptr<Gate>& gateptr : chunk.gates) {
         Gate& gate = *gateptr;
@@ -136,11 +136,11 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
         return 0.0;
     }
 
-    u_int64_t num_histories_c2 = u_int64_t(1) << num_artificial2;
+    __int128 num_histories_c2 = __int128(1) << num_artificial2;
 
     size_t num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c2) * fraction);
 
-    vector<u_int64_t> par_histories(num_par_histories);
+    vector<__int128> par_histories(num_par_histories);
 
     vector<complex<float>> amplitudes(num_par_histories);
 
@@ -149,7 +149,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
     srand(0);
 
     // TODO: Check if non-unique histories is ok.
-    for (u_int64_t i = 0; i < num_par_histories; i++) {
+    for (__int128 i = 0; i < num_par_histories; i++) {
         par_histories.at(i) = std::rand() % num_histories_c2;
     }
 
@@ -165,7 +165,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
         //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
         //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
         size_t thread_ind = history2_ind;
-        u_int64_t history2;
+        __int128 history2;
         if (fraction > fLIMIT) {
             history2 = history2_ind;
         }
@@ -193,7 +193,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
         const int num_artificial1 = chunk1.num_artificial;
         //printf("  Number of artificial sources in chunk 2: %d\n", num_artificial1);
       
-        for (u_int64_t history1 = 0; history1 < u_int64_t(1) << num_artificial1; history1++) {
+        for (__int128 history1 = 0; history1 < __int128(1) << num_artificial1; history1++) {
             //cout << "  In history1: " << history1 << endl;
             //histories.at(1) = history1;
 
@@ -212,7 +212,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
             const int num_artificial0 = chunk0.num_artificial;
             //printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
       
-            for (u_int64_t history0 = 0; history0 < u_int64_t(1) << num_artificial0; history0++) {
+            for (__int128 history0 = 0; history0 < __int128(1) << num_artificial0; history0++) {
                 //cout << "    In history0: " << history0 << endl;                        
 
                 chunk0.reset_values(thread_ind);      
