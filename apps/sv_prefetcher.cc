@@ -163,6 +163,8 @@ int main(int argc, char* argv[]) {
     std::size_t my_worker = world_rank;
     std::string local_buf;
     local_buf.reserve(1<<20);
+    std::string local_buf_timing;
+    local_buf_timing.reserve(1<<16);
     const std::size_t BATCH_SIZE = 64;
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -189,17 +191,19 @@ int main(int argc, char* argv[]) {
                 pf.prefetch_next(MPI_COMM_WORLD);     // overlap comm with compute
                 std::size_t end = start + count;
                 for(std::size_t output_int = start; output_int < end; ++output_int){
-                    ++count_processed_bitstrings;
 #ifdef USE_SUBSET_OUTBITSTRINGS
-                    vector<bool> output_bits = bit_array_from_int(output_bitstrings[output_int], Circuit::n);
+                    const std::size_t bitstringDecimal = output_bitstrings[output_int];
 #else
-                    vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
-#endif
+                    const std::size_t bitstringDecimal = output_int;
+#endif 
+                    auto start_simulate_bitstring = get_time();
+                    ++count_processed_bitstrings;
+                    vector<bool> output_bits = bit_array_from_int(bitstringDecimal, Circuit::n);
                     complex<float> output_amp(0,0);
 
                     TypeLongInt input_int = 0;
                     // Loop through the input bitstrings specified in input file
-                     for (const auto& input : input_bistrings) {
+                    for (const auto& input : input_bistrings) {
                         
                         // Parse input bitstring and amplitude
                         vector<bool> input_bits = bit_array_from_int(input.index, Circuit::n);
@@ -210,7 +214,7 @@ int main(int argc, char* argv[]) {
                         auto end_simulate = get_time();
                         num_calls_simulate++;
 
-                        duration<double> clocktime_simulate = end_simulate - start_simulate;
+                        const duration<double> clocktime_simulate = end_simulate - start_simulate;
 
                         if (opts.verbosity >= 2) {
                             printf("Worker %d - Clocktime to simulate input |", my_worker);
@@ -229,16 +233,17 @@ int main(int argc, char* argv[]) {
                         // Reset all values (for all threads if OpenMP is used)
                         Circuit::reset_values_all();
                     }
-
+                    auto end_simulate_bitstring = get_time();
+                    const duration<double> clocktime_bitstring = end_simulate_bitstring - start_simulate_bitstring;
+                    local_buf_timing += std::to_string(bitstringDecimal);
+                    local_buf_timing += ":";
+                    local_buf_timing += std::to_string(clocktime_bitstring.count());
+                    local_buf_timing += "\n";
                     // Write to output file
                     bool writeFlag = 0;
                     if (opts.dense || (std::abs(output_amp) >  opts.threshold) ) writeFlag = 1;
                     if (writeFlag){
-#ifdef USE_SUBSET_OUTBITSTRINGS
-                        local_buf += std::to_string(output_bitstrings[output_int]);
-#else
-                        local_buf += std::to_string(output_int);
-#endif
+                        local_buf += std::to_string(bitstringDecimal);
                         local_buf += ":";
                         local_buf += std::to_string(output_amp.real());
                         local_buf += "+";
@@ -251,11 +256,13 @@ int main(int argc, char* argv[]) {
         }
     }
 
-
+    MPI_Barrier(MPI_COMM_WORLD);
     auto end_svcc_simulation = get_time();
 
     // parallel output to disk
     int err = write_output_to_disk(opts.output_statevector_file, local_buf, world_rank, MPI_COMM_WORLD);
+    auto timing_file_path = replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
+    int err1 = write_output_to_disk(timing_file_path, local_buf_timing, world_rank, MPI_COMM_WORLD);
 
 
     int tot_num_calls_simulate = 0;

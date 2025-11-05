@@ -6,9 +6,17 @@
 #include <vector>
 #include <cstdio>
 #include "typedef.h"
+#include <string>
 
 using namespace std;
 using namespace std::chrono;
+
+std::string replace_filename(const std::string& path_str, const std::string& new_filename){
+    const auto pos = path_str.find_last_of("/\\");
+    if (pos == std::string::npos) return new_filename;
+    return path_str.substr(0, pos + 1) + new_filename;
+}
+
 
 inline duration<double> zero_duration() {
     return duration<double>::zero();

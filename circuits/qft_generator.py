@@ -1,5 +1,5 @@
 import math
-n=3
+n=102
 
 # Same convention as https://oreilly-qc.github.io/#
 with open(f"qft_{n}.qasm", "w", encoding="utf-8") as f:

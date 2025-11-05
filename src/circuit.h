@@ -728,6 +728,19 @@ struct Circuit {
         TypeLongInt min_nr_app = std::numeric_limits<TypeLongInt>::max();
         int opt_num_chunk1 = -1;
         int opt_num_chunk2 = -1;
+        
+        // Just to get number of artificial sources.
+        build_circuit(0, 0, true);
+        int total_artificial = 0;
+        for (int i = 0; i < NUM_CHUNKS; i++) {
+            total_artificial += chunks.at(i).num_artificial;
+        }
+        clear_circuit();
+        if (total_artificial == 0) {
+            // No histories => The chunk division only matters for pruning. A third in each is fine.
+            build_circuit(nr_gates/3, nr_gates/3, false);
+            return;
+        }
 
         // step_size = 1 for perfect autotuning.
         int step_size = std::max(1, nr_gates / AUTOTUNING_STEPS);
