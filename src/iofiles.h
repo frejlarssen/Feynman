@@ -29,7 +29,7 @@ static inline bool parse_int(const char* b, const char* e, TypeLongInt& out) {
 static inline std::vector<InputBitstrings>
 read_input_bitstrings(const std::string& path, const bool dense){
     std::ifstream in(path);
-    if (!in) throw std::runtime_error("Cannot open " + path);
+    if (!in) throw std::runtime_error("Cannot open input bitstring file " + path);
 
     std::vector<InputBitstrings> entries;
     entries.reserve(1 << 16);
@@ -89,7 +89,7 @@ read_output_bitstrings(const std::string& path){
     std::vector<std::size_t> output_bitstrings;
     std::ifstream in(path);
     if (!in) {
-        throw std::runtime_error("Cannot open file: " + path);
+        throw std::runtime_error("Cannot open output bitstring file: " + path);
     }
     std::string line;
     while (std::getline(in, line)) {

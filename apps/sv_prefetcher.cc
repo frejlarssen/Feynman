@@ -126,6 +126,11 @@ int main(int argc, char* argv[]) {
         printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
 
     if (print_rank0_timings >= 1) {
+        const int num_gates = ParsedCircuit::nr_gates;
+        printf("Circuit has %d gates. Distributed as:\n", num_gates, Circuit::n);
+        printf("  Chunk 0: %d gates\n", Circuit::chunks.at(0).gates.size());
+        printf("  Chunk 1: %d gates\n", Circuit::chunks.at(1).gates.size());
+        printf("  Chunk 2: %d gates\n", Circuit::chunks.at(2).gates.size());
         const int num_artificial = Circuit::chunks.at(0).num_artificial +
                                         Circuit::chunks.at(1).num_artificial +
                                         Circuit::chunks.at(2).num_artificial;
