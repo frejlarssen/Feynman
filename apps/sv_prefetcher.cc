@@ -3,6 +3,7 @@
 #include "../src/typedef.h"
 #include "../src/simulator.h"
 #include "../src/mpiScheduler.h"
+#include "../src/iofiles.h"
 #include <iostream>
 
 #define CLOSE_TO_ZERO 1e-8
@@ -12,6 +13,7 @@ using namespace std;
 struct Options {
     string circuit_file;
     string input_statevector_file;
+    string output_bitstring_subset;
     string output_statevector_file;
     int num_chunk1 = -1;
     int num_chunk2 = -1;
@@ -24,7 +26,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense])\n";
+    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -b output_bitstring_subset -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense])\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -46,13 +48,16 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:o:p:r:f:t:v:D")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:b:o:p:r:f:t:v:D")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
             break;
           case 'i':
             opts.input_statevector_file = optarg;
+            break;
+          case 'b':
+            opts.output_bitstring_subset = optarg;
             break;
           case 'o':
             opts.output_statevector_file = optarg;
@@ -140,12 +145,20 @@ int main(int argc, char* argv[]) {
         printf("  %lu histories in parallel.\n", (1 << Circuit::chunks.at(2).num_artificial));
     }
 
-    // Loop through all input-output pairs. Start with amplitude depending on input statevector.
+    // Load input bitstrings
+    vector<InputBitstrings> input_bistrings = load_input_bitstrings_from_master(opts.input_statevector_file, opts.dense, world_rank, MPI_COMM_WORLD);
 
-    //ofstream out_file(opts.output_statevector_file);
-
+    // Load output bitstrings to simulate (if the option is ON)
+#ifdef USE_SUBSET_OUTBITSTRINGS
+    vector<std::size_t> output_bitstrings = load_output_bitstrings_from_master(opts.output_bitstring_subset, world_rank, MPI_COMM_WORLD);
+    TypeLongInt total_output_bitstrings = output_bitstrings.size();              // overflow if n >= 128
+    if(print_rank0_timings)
+    std::cout << "Total output bitstrings to simulate: " << static_cast<std::size_t>(total_output_bitstrings) <<std::endl;
+#else
     TypeLongInt total_output_bitstrings = 1ULL << Circuit::n;              // overflow if n >= 128
-    TypeLongInt num_batches = ( total_output_bitstrings + world_size - 1) / world_size;
+#endif
+
+    // Loop through all input-output pairs. Start with amplitude depending on input statevector.
     std::size_t num_workers = world_size;
     std::size_t my_worker = world_rank;
     std::string local_buf;
@@ -177,29 +190,20 @@ int main(int argc, char* argv[]) {
                 std::size_t end = start + count;
                 for(std::size_t output_int = start; output_int < end; ++output_int){
                     ++count_processed_bitstrings;
+#ifdef USE_SUBSET_OUTBITSTRINGS
+                    vector<bool> output_bits = bit_array_from_int(output_bitstrings[output_int], Circuit::n);
+#else
                     vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
+#endif
                     complex<float> output_amp(0,0);
 
-                    ifstream in_file(opts.input_statevector_file);
-
-                    string in_line;
                     TypeLongInt input_int = 0;
                     // Loop through the input bitstrings specified in input file
-                    while (getline(in_file, in_line)) {
-                        vector<bool> input_bits;
-
+                     for (const auto& input : input_bistrings) {
+                        
                         // Parse input bitstring and amplitude
-                        complex<float> amp_in;
-                        if (opts.dense) {
-                            input_bits = bit_array_from_int(input_int++, Circuit::n);
-                            amp_in = string_to_complex(in_line);
-                        }
-                        else { // Sparse is default
-                            size_t colon_pos = in_line.find(':');
-                            string basis_state_str = in_line.substr(0, colon_pos);
-                            input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
-                            amp_in = string_to_complex(in_line.substr(colon_pos + 1));
-                        }
+                        vector<bool> input_bits = bit_array_from_int(input.index, Circuit::n);
+                        complex<float> amp_in = input.amp;
 
                         auto start_simulate = get_time();
                         output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction, opts.threshold, 3);
@@ -230,7 +234,11 @@ int main(int argc, char* argv[]) {
                     bool writeFlag = 0;
                     if (opts.dense || (std::abs(output_amp) >  opts.threshold) ) writeFlag = 1;
                     if (writeFlag){
+#ifdef USE_SUBSET_OUTBITSTRINGS
+                        local_buf += std::to_string(output_bitstrings[output_int]);
+#else
                         local_buf += std::to_string(output_int);
+#endif
                         local_buf += ":";
                         local_buf += std::to_string(output_amp.real());
                         local_buf += "+";
@@ -247,21 +255,7 @@ int main(int argc, char* argv[]) {
     auto end_svcc_simulation = get_time();
 
     // parallel output to disk
-    MPI_File fh;
-    if (world_rank == 0)MPI_File_delete(opts.output_statevector_file.c_str(), MPI_INFO_NULL);
-    MPI_Barrier(MPI_COMM_WORLD);
-    int rc = MPI_File_open(MPI_COMM_WORLD,
-                        opts.output_statevector_file.c_str(),
-                        MPI_MODE_CREATE | MPI_MODE_WRONLY,
-                        MPI_INFO_NULL,
-                        &fh);
-    MPI_Offset my_bytes  = static_cast<MPI_Offset>(local_buf.size());
-    MPI_Offset my_offset = 0;
-    MPI_Exscan(&my_bytes, &my_offset, 1, MPI_OFFSET, MPI_SUM, MPI_COMM_WORLD);
-    if (world_rank == 0) my_offset = 0;
-    MPI_Status st;
-    MPI_File_write_at_all(fh, my_offset, (void*)local_buf.data(), (int)my_bytes, MPI_BYTE, &st);
-    MPI_File_close(&fh);
+    int err = write_output_to_disk(opts.output_statevector_file, local_buf, world_rank, MPI_COMM_WORLD);
 
 
     int tot_num_calls_simulate = 0;

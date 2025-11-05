@@ -3,6 +3,7 @@
 #include "../src/typedef.h"
 #include "../src/simulator.h"
 #include "../src/mpiScheduler.h"
+#include "../src/iofiles.h"
 #include <iostream>
 
 #define CLOSE_TO_ZERO 1e-6
@@ -244,22 +245,7 @@ int main(int argc, char* argv[]) {
     auto end_svcc_simulation = get_time();
 
     // parallel output to disk
-    MPI_File fh;
-    if (world_rank == 0)MPI_File_delete(opts.output_statevector_file.c_str(), MPI_INFO_NULL);
-    MPI_Barrier(MPI_COMM_WORLD);
-    int rc = MPI_File_open(MPI_COMM_WORLD,
-                        opts.output_statevector_file.c_str(),
-                        MPI_MODE_CREATE | MPI_MODE_WRONLY,
-                        MPI_INFO_NULL,
-                        &fh);
-    MPI_Offset my_bytes  = static_cast<MPI_Offset>(local_buf.size());
-    MPI_Offset my_offset = 0;
-    MPI_Exscan(&my_bytes, &my_offset, 1, MPI_OFFSET, MPI_SUM, MPI_COMM_WORLD);
-    if (world_rank == 0) my_offset = 0;
-    MPI_Status st;
-    MPI_File_write_at_all(fh, my_offset, (void*)local_buf.data(), (int)my_bytes, MPI_BYTE, &st);
-    MPI_File_close(&fh);
-
+    int err = write_output_to_disk(opts.output_statevector_file, local_buf, world_rank, MPI_COMM_WORLD);
 
     int tot_num_calls_simulate = 0;
     MPI_Reduce(&num_calls_simulate, &tot_num_calls_simulate, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);

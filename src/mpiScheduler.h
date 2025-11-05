@@ -108,7 +108,7 @@ void run_master_async(std::size_t total_sz, std::size_t batch_size_hint, MPI_Com
             --active_workers;
             continue;
         }
-        const std::size_t count = batch_size_hint;
+        const std::size_t count = std::min<std::size_t>(batch_size_hint,total - next_start);
         std::size_t payload[2] = { next_start, count };
         next_start += count;
 
