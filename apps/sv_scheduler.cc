@@ -5,7 +5,7 @@
 #include "../src/mpiScheduler.h"
 #include <iostream>
 
-#define SPARSE_LIMIT 1e-6
+#define CLOSE_TO_ZERO 1e-6
 
 using namespace std;
 
@@ -16,6 +16,7 @@ struct Options {
     int num_chunk1 = -1;
     int num_chunk2 = -1;
     float fraction = 1.0;
+    float threshold = CLOSE_TO_ZERO;
     int verbosity = 1;
     bool dense = false;
 };
@@ -23,7 +24,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense])\n";
+    const char* helpstr = "Usage: ./sv_scheduler_mpi.x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -t threshold -v verbosity (-D [Dense])\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -45,7 +46,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:o:p:r:f:v:D")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:o:p:r:f:t:v:D")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -64,6 +65,9 @@ Options get_options(int argc, char* argv[]) {
             break;
           case 'f':
             opts.fraction = to_float(optarg);
+            break;
+          case 't':
+            opts.threshold = to_float(optarg);
             break;
           case 'v':
             opts.verbosity = to_int(optarg);
@@ -117,6 +121,12 @@ int main(int argc, char* argv[]) {
         printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
 
     if (print_rank0_timings >= 1) {
+        const int num_gates = ParsedCircuit::nr_gates;
+        printf("Circuit has %d gates. Distributed as:\n", num_gates, Circuit::n);
+        printf("  Chunk 0: %d gates\n", Circuit::chunks.at(0).gates.size());
+        printf("  Chunk 1: %d gates\n", Circuit::chunks.at(1).gates.size());
+        printf("  Chunk 2: %d gates\n", Circuit::chunks.at(2).gates.size());
+
         const int num_artificial = Circuit::chunks.at(0).num_artificial +
                                         Circuit::chunks.at(1).num_artificial +
                                         Circuit::chunks.at(2).num_artificial;
@@ -192,7 +202,7 @@ int main(int argc, char* argv[]) {
                     }
 
                     auto start_simulate = get_time();
-                    complex<float> amp = simulate(output_bits, input_bits, opts.fraction, 3);
+                    complex<float> amp = simulate(output_bits, input_bits, opts.fraction, opts.threshold, 3);
                     auto end_simulate = get_time();
                     num_calls_simulate++;
 
@@ -220,7 +230,7 @@ int main(int argc, char* argv[]) {
 
                 // Write to output file
                 bool writeFlag = 0;
-                if (opts.dense || (std::abs(output_amp) > SPARSE_LIMIT) ) writeFlag = 1;
+                if (opts.dense || (std::abs(output_amp) > opts.threshold) ) writeFlag = 1;
                 if (writeFlag){
                     local_buf += std::to_string(output_int);
                     local_buf += ":";
