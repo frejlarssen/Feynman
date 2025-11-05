@@ -146,6 +146,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
     }
 
     // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
+    const float threshold2 = threshold * threshold;
     parallel_for(0, num_par_histories, [&](size_t history2_ind) {
 
         std::complex<float> local_sum(0,0);
@@ -153,13 +154,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
         //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
         //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
         size_t thread_ind = history2_ind;
-        TypeLongInt history2;
-        if (fraction > fLIMIT) {
-            history2 = history2_ind;
-        }
-        else {
-            history2 = par_histories.at(history2_ind);
-        }
+        TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
         auto start_history2 = get_time();
 
@@ -168,18 +163,18 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
 
         if (!chunk2.right_to_left_vals(history2, thread_ind)) {
             // Input, output and artificial not compatible with deterministic gates. The history is rejected.
-            amplitudes.at(history2_ind) = 0;
+            amplitudes[history2_ind] = std::complex<float>{0.f, 0.f};
             return;
         }
       
         complex <float> contribution2 = input_amp * chunk_contribution(chunk2, thread_ind);
 
         //Check if amplitude so far is small enough to neglect.
-        if (abs(contribution2) < threshold) {
-            amplitudes.at(history2_ind) = 0.0;
+        if (std::norm(contribution2) < threshold2) {
+            amplitudes[history2_ind] = std::complex<float>{0.f, 0.f};
             return;
         }
-
+        
         // --0 means the gates in chunk2 with C2 history 0.
         //std::printf("Contribution from history --%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
 
@@ -198,11 +193,8 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
                 continue;
             }
 
-            complex <float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind);
-
-            if (abs(contribution1) < threshold) {
-                continue; // Continue with another history1.
-            }
+            const std::complex<float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind);
+            if (std::norm(contribution1) < threshold2) continue;
 
             //std::printf("  Contribution from history -%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
       
@@ -215,9 +207,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
 
                 chunk0.reset_values(thread_ind);      
       
-                if (!chunk0.right_to_left_vals(history0, thread_ind)) {
-                    continue;
-                }
+                if (!chunk0.right_to_left_vals(history0, thread_ind)) continue;
       
                 //printf("    contribution1: %f + i%f\n", contribution1.real(), contribution1.imag());
       

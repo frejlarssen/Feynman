@@ -43,22 +43,77 @@ void run_master(std::size_t total, std::size_t batch_size, MPI_Comm comm) {
     }
 }
 
-// Worker: request work until STOP; returns false when stopped
+// Worker: one-step receive
 bool request_next_batch(std::size_t &start, std::size_t &count, MPI_Comm comm) {
-    MPI_Status st;
     // Ask for work
     MPI_Send(nullptr, 0, MPI_BYTE, 0, TAG_REQUEST, comm);
-    // Receive either WORK (with payload) or STOP
-    // Master will answer immediately with either WORK or STOP; just Recv
-    MPI_Probe(0, MPI_ANY_TAG, comm, &st);
-    if (st.MPI_TAG == TAG_STOP) {
-        MPI_Recv(nullptr, 0, MPI_BYTE, 0, TAG_STOP, comm, MPI_STATUS_IGNORE);
-        return false;
-    }
-    // WORK payload: two std::size_t
+
+    MPI_Status st;
     std::size_t payload[2];
-    MPI_Recv(payload, 2, MPI_UINT64_T, 0, TAG_WORK, comm, MPI_STATUS_IGNORE);
+    // Master sends either STOP (0B) or WORK (2x uint64)
+    MPI_Recv(payload, 2, MPI_UINT64_T, 0, MPI_ANY_TAG, comm, &st);
+
+    if (st.MPI_TAG == TAG_STOP) return false;
     start = payload[0];
     count = payload[1];
     return true;
+}
+
+struct Prefetcher {
+    MPI_Request req = MPI_REQUEST_NULL;
+    MPI_Status  st{};
+    std::size_t buf[2];
+
+    // Get the very first batch (blocking)
+    bool first(std::size_t &start, std::size_t &count, MPI_Comm comm) {
+        MPI_Send(nullptr, 0, MPI_BYTE, 0, TAG_REQUEST, comm);
+        MPI_Recv(buf, 2, MPI_UINT64_T, 0, MPI_ANY_TAG, comm, &st);
+        if (st.MPI_TAG == TAG_STOP) return false;
+        start = buf[0]; count = buf[1];
+        return true;
+    }
+
+    // While computing the current batch, ask for the next one
+    void prefetch_next(MPI_Comm comm) {
+        MPI_Send(nullptr, 0, MPI_BYTE, 0, TAG_REQUEST, comm);
+        MPI_Irecv(buf, 2, MPI_UINT64_T, 0, MPI_ANY_TAG, comm, &req);
+    }
+
+    // After compute, finish the nonblocking receive
+    bool finish(std::size_t &start, std::size_t &count) {
+        MPI_Wait(&req, &st);
+        if (st.MPI_TAG == TAG_STOP) return false;
+        start = buf[0]; count = buf[1];
+        return true;
+    }
+};
+
+void run_master_async(std::size_t total_sz, std::size_t batch_size_hint, MPI_Comm comm) {
+    std::size_t total = static_cast<std::size_t>(total_sz);
+
+    int world_size; MPI_Comm_size(comm, &world_size);
+    int active_workers = std::max(0, world_size - 1);
+    std::size_t next_start = 0;
+
+    MPI_Status st;
+    while (active_workers > 0) {
+        // Wait for a request from any worker
+        MPI_Recv(nullptr, 0, MPI_BYTE, MPI_ANY_SOURCE, TAG_REQUEST, comm, &st);
+        int w = st.MPI_SOURCE;
+
+        if (next_start >= total) {
+            MPI_Request r; // zero-byte STOP
+            MPI_Isend(nullptr, 0, MPI_BYTE, w, TAG_STOP, comm, &r);
+            MPI_Request_free(&r);
+            --active_workers;
+            continue;
+        }
+        const std::size_t count = batch_size_hint;
+        std::size_t payload[2] = { next_start, count };
+        next_start += count;
+
+        MPI_Request r;
+        MPI_Isend(payload, 2, MPI_UINT64_T, w, TAG_WORK, comm, &r);
+        MPI_Request_free(&r);
+    }
 }

@@ -5,7 +5,7 @@
 #include "../src/mpiScheduler.h"
 #include <iostream>
 
-#define CLOSE_TO_ZERO 1e-6
+#define CLOSE_TO_ZERO 1e-8
 
 using namespace std;
 
@@ -24,7 +24,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv_scheduler_mpi.x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -t threshold -v verbosity (-D [Dense])\n";
+    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense])\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -121,12 +121,6 @@ int main(int argc, char* argv[]) {
         printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
 
     if (print_rank0_timings >= 1) {
-        const int num_gates = ParsedCircuit::nr_gates;
-        printf("Circuit has %d gates. Distributed as:\n", num_gates, Circuit::n);
-        printf("  Chunk 0: %d gates\n", Circuit::chunks.at(0).gates.size());
-        printf("  Chunk 1: %d gates\n", Circuit::chunks.at(1).gates.size());
-        printf("  Chunk 2: %d gates\n", Circuit::chunks.at(2).gates.size());
-
         const int num_artificial = Circuit::chunks.at(0).num_artificial +
                                         Circuit::chunks.at(1).num_artificial +
                                         Circuit::chunks.at(2).num_artificial;
@@ -156,7 +150,7 @@ int main(int argc, char* argv[]) {
     std::size_t my_worker = world_rank;
     std::string local_buf;
     local_buf.reserve(1<<20);
-    const std::size_t BATCH_SIZE = 32;
+    const std::size_t BATCH_SIZE = 64;
     MPI_Barrier(MPI_COMM_WORLD);
 
     duration<double> total_clocktime_simulate = zero_duration();
@@ -167,75 +161,84 @@ int main(int argc, char* argv[]) {
 
 
     // Loop though all output bitstrings
+    std::size_t count_processed_bitstrings = 0;
     auto start_svcc_sim = get_time();
     if (world_rank == 0) {
         // Pure master
-        run_master(total_output_bitstrings, BATCH_SIZE, MPI_COMM_WORLD);
+        run_master_async(total_output_bitstrings, BATCH_SIZE, MPI_COMM_WORLD);
     }else{
+        Prefetcher pf;
         std::size_t start = 0, count = 0;
-        while (request_next_batch(start, count, MPI_COMM_WORLD)) {
-            std::size_t end = start + count;
-            for(std::size_t output_int = start; output_int < end; ++output_int){
-            
-                vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
-                complex<float> output_amp(0,0);
+        if (!pf.first(start, count, MPI_COMM_WORLD)) {
+            // nothing to do
+        }else{
+            for(;;) {
+                pf.prefetch_next(MPI_COMM_WORLD);     // overlap comm with compute
+                std::size_t end = start + count;
+                for(std::size_t output_int = start; output_int < end; ++output_int){
+                    ++count_processed_bitstrings;
+                    vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
+                    complex<float> output_amp(0,0);
 
-                ifstream in_file(opts.input_statevector_file);
+                    ifstream in_file(opts.input_statevector_file);
 
-                string in_line;
-                TypeLongInt input_int = 0;
-                // Loop through the input bitstrings specified in input file
-                while (getline(in_file, in_line)) {
-                    vector<bool> input_bits;
+                    string in_line;
+                    TypeLongInt input_int = 0;
+                    // Loop through the input bitstrings specified in input file
+                    while (getline(in_file, in_line)) {
+                        vector<bool> input_bits;
 
-                    // Parse input bitstring and amplitude
-                    complex<float> amp_in;
-                    if (opts.dense) {
-                        input_bits = bit_array_from_int(input_int++, Circuit::n);
-                        amp_in = string_to_complex(in_line);
-                    }
-                    else { // Sparse is default
-                        size_t colon_pos = in_line.find(':');
-                        string basis_state_str = in_line.substr(0, colon_pos);
-                        input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
-                        amp_in = string_to_complex(in_line.substr(colon_pos + 1));
-                    }
-
-                    auto start_simulate = get_time();
-                    output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction, opts.threshold, 3);
-                    auto end_simulate = get_time();
-                    num_calls_simulate++;
-
-                    duration<double> clocktime_simulate = end_simulate - start_simulate;
-
-                    if (opts.verbosity >= 2) {
-                        printf("Worker %d - Clocktime to simulate input |", my_worker);
-                        for (int i = Circuit::n - 1; i >= 0; i--) {
-                            printf("%d", input_bits[i] ? 1 : 0);
+                        // Parse input bitstring and amplitude
+                        complex<float> amp_in;
+                        if (opts.dense) {
+                            input_bits = bit_array_from_int(input_int++, Circuit::n);
+                            amp_in = string_to_complex(in_line);
                         }
-                        printf("> to output |");
-                        for (int i = Circuit::n - 1; i >= 0; i--) {
-                            printf("%d", output_bits[i] ? 1 : 0);
+                        else { // Sparse is default
+                            size_t colon_pos = in_line.find(':');
+                            string basis_state_str = in_line.substr(0, colon_pos);
+                            input_bits = bit_array_from_int(std::atoi(basis_state_str.c_str()), Circuit::n);
+                            amp_in = string_to_complex(in_line.substr(colon_pos + 1));
                         }
-                        printf("> : %f seconds\n", clocktime_simulate.count());
+
+                        auto start_simulate = get_time();
+                        output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction, opts.threshold, 3);
+                        auto end_simulate = get_time();
+                        num_calls_simulate++;
+
+                        duration<double> clocktime_simulate = end_simulate - start_simulate;
+
+                        if (opts.verbosity >= 2) {
+                            printf("Worker %d - Clocktime to simulate input |", my_worker);
+                            for (int i = Circuit::n - 1; i >= 0; i--) {
+                                printf("%d", input_bits[i] ? 1 : 0);
+                            }
+                            printf("> to output |");
+                            for (int i = Circuit::n - 1; i >= 0; i--) {
+                                printf("%d", output_bits[i] ? 1 : 0);
+                            }
+                            printf("> : %f seconds\n", clocktime_simulate.count());
+                        }
+
+                        total_clocktime_simulate += clocktime_simulate;
+
+                        // Reset all values (for all threads if OpenMP is used)
+                        Circuit::reset_values_all();
                     }
 
-                    total_clocktime_simulate += clocktime_simulate;
-                    // Reset all values (for all threads if OpenMP is used)
-                    Circuit::reset_values_all();
+                    // Write to output file
+                    bool writeFlag = 0;
+                    if (opts.dense || (std::abs(output_amp) >  opts.threshold) ) writeFlag = 1;
+                    if (writeFlag){
+                        local_buf += std::to_string(output_int);
+                        local_buf += ":";
+                        local_buf += std::to_string(output_amp.real());
+                        local_buf += "+";
+                        local_buf += std::to_string(output_amp.imag());
+                        local_buf += "i\n";
+                    }
                 }
-
-                // Write to output file
-                bool writeFlag = 0;
-                if (opts.dense || (std::abs(output_amp) > opts.threshold) ) writeFlag = 1;
-                if (writeFlag){
-                    local_buf += std::to_string(output_int);
-                    local_buf += ":";
-                    local_buf += std::to_string(output_amp.real());
-                    local_buf += "+";
-                    local_buf += std::to_string(output_amp.imag());
-                    local_buf += "i\n";
-                }
+                if (!pf.finish(start, count)) break;  // next becomes current
             }
         }
     }
@@ -266,8 +269,12 @@ int main(int argc, char* argv[]) {
     if (print_rank0_timings) {
         printf("Number of simulate calls: %d\n", tot_num_calls_simulate);
         printf("Total clocktime for all simulate calls: %f seconds\n", total_clocktime_simulate.count());
-
         printf("Average clocktime per simulate call: %f seconds\n", total_clocktime_simulate.count() / tot_num_calls_simulate);
+    }
+    if(opts.verbosity >= 1){
+        fflush(stdin);
+        MPI_Barrier(MPI_COMM_WORLD);
+        printf("Worker %d - processed %d / %d bitstrings\n", my_worker, count_processed_bitstrings, total_output_bitstrings);
     }
 
     //out_file.close();

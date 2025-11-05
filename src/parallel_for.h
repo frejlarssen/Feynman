@@ -8,13 +8,23 @@
 #ifdef USE_OPENMP
     #include <omp.h>
 #endif
-
-inline void parallel_for(size_t start, size_t end, const std::function<void(size_t)>& func) {
+template<typename F>
+inline void parallel_for(size_t start, size_t end, F&& func) {
 #ifdef USE_OPENMP
-    #pragma omp parallel for
-    for (size_t i = start; i < end; ++i)
-        func(i);
+    if (end <= start) return;
+    const std::size_t n = static_cast<std::size_t>(end - start);
+    const int T = omp_get_max_threads();
+    const int ntasks = (int)std::min<std::size_t>(n, 2 * T);
+    const int gs = (int)std::max<std::size_t>(1, (n + ntasks - 1) / ntasks);
 
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            #pragma omp taskloop grainsize(gs)
+            for (std::size_t i = start; i < end; ++i) func(i);
+        }
+    }
 #else
     unsigned int num_threads = std::thread::hardware_concurrency();
     if (num_threads == 0) num_threads = 4;
@@ -36,9 +46,9 @@ inline void parallel_for(size_t start, size_t end, const std::function<void(size
 }
 
 // sum complex values across all indices
+template<typename F>
 inline complex<float>
-parallel_reduce(size_t start, size_t end,
-                const function<complex<float>(size_t)>& func)
+parallel_reduce(size_t start, size_t end, F&& func)
 {
 #ifdef USE_OPENMP
     float re = 0.0f, im = 0.0f;
