@@ -157,6 +157,7 @@ int main(int argc, char* argv[]) {
 
 
     // Loop though all output bitstrings
+    std::size_t count_processed_bitstrings = 0;
     auto start_svcc_sim = get_time();
     if (world_rank == 0) {
         // Pure master
@@ -171,7 +172,7 @@ int main(int argc, char* argv[]) {
                 pf.prefetch_next(MPI_COMM_WORLD);     // overlap comm with compute
                 std::size_t end = start + count;
                 for(std::size_t output_int = start; output_int < end; ++output_int){
-                
+                    ++count_processed_bitstrings;
                     vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
                     complex<float> output_amp(0,0);
 
@@ -266,8 +267,12 @@ int main(int argc, char* argv[]) {
     if (print_rank0_timings) {
         printf("Number of simulate calls: %d\n", tot_num_calls_simulate);
         printf("Total clocktime for all simulate calls: %f seconds\n", total_clocktime_simulate.count());
-
         printf("Average clocktime per simulate call: %f seconds\n", total_clocktime_simulate.count() / tot_num_calls_simulate);
+    }
+    if(opts.verbosity >= 1){
+        fflush(stdin);
+        MPI_Barrier(MPI_COMM_WORLD);
+        printf("Worker %d - processed %d / %d bitstrings\n", my_worker, count_processed_bitstrings, total_output_bitstrings);
     }
 
     //out_file.close();

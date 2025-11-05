@@ -27,6 +27,9 @@ sv_scheduler_mpi:
 sv_prefetcher_mpi:
 	$(MPICXX) $(CXXFLAGS) -DUSE_OPENMP $(OMPFLAGS) apps/sv_prefetcher.cc -o sv_prefetcher_mpi.x
 
+sv_prefetcher_mpi_noOMP:
+	$(MPICXX) $(CXXFLAGS) apps/sv_prefetcher.cc -o sv_prefetcher_mpi.x
+
 sim_qft:
 	g++ simulator_qft.cc -o sim_qft.x
 

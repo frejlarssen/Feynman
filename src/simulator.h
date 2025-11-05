@@ -15,6 +15,10 @@
 #include <mpi.h>
 #include "typedef.h"
 
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
+#define USE_SEPARATE_PARALLEL_FOR_REDUCE 1
 
 #define fLIMIT 0.9999999 // If fraction > fLIMIT, we make an exact simulation.
 
@@ -144,8 +148,10 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
     for (TypeLongInt i = 0; i < num_par_histories; i++) {
         par_histories.at(i) = std::rand() % num_histories_c2;
     }
+#if USE_SEPARATE_PARALLEL_FOR_REDUCE
+#pragma message("USE_SEPARATE_PARALLEL_FOR_REDUCE=" STR(USE_SEPARATE_PARALLEL_FOR_REDUCE))
 
-    // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
+// MPI, OpenMP, or threads parallelizing over histories in chunk 2.
     parallel_for(0, num_par_histories, [&](size_t history2_ind) {
 
         std::complex<float> local_sum(0,0);
@@ -153,13 +159,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
         //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
         //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
         size_t thread_ind = history2_ind;
-        TypeLongInt history2;
-        if (fraction > fLIMIT) {
-            history2 = history2_ind;
-        }
-        else {
-            history2 = par_histories.at(history2_ind);
-        }
+        TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
         auto start_history2 = get_time();
 
@@ -199,23 +199,18 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
             Chunk& chunk0 = Circuit::chunks.at(0);
             const int num_artificial0 = chunk0.num_artificial;
             //printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
-      
+            float sum_r = 0.f, sum_i = 0.f;
             for (TypeLongInt history0 = 0; history0 < TypeLongInt(1) << num_artificial0; history0++) {
                 //cout << "    In history0: " << history0 << endl;                        
 
                 chunk0.reset_values(thread_ind);      
-      
-                if (!chunk0.right_to_left_vals(history0, thread_ind)) {
-                    continue;
-                }
-      
+                if (!chunk0.right_to_left_vals(history0, thread_ind)) continue;
                 //printf("    contribution1: %f + i%f\n", contribution1.real(), contribution1.imag());
-      
-                complex <float> contribution0 = contribution1 * chunk_contribution(chunk0, thread_ind);
-      
+                std::complex<float> contribution0 = contribution1 * chunk_contribution(chunk0, thread_ind);
+                sum_r += contribution0.real(); sum_i += contribution0.imag();
                 //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution0.real(), contribution0.imag());
-                local_sum += contribution0;
             }
+            local_sum += std::complex<float>(sum_r, sum_i);
         }
 
         //auto end_history2 = get_time();
@@ -228,6 +223,73 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, floa
     auto total_amplitude = parallel_reduce(0, num_par_histories, [&](size_t i) {
         return amplitudes[i];
     });    
+#else
+
+    float re = 0.0f, im = 0.0f;             // reduction scalars
+
+    #pragma omp parallel
+    {
+        // use real thread id for per-thread scratch
+        // (ensure your Chunk methods use this tid internally)
+        #pragma omp single nowait
+        {
+            const int threads = omp_get_num_threads();
+            const int oversub = 4;                       // 2–8 is typical; tune
+            const int ntasks  = std::max(1, threads * oversub);
+
+            #pragma omp taskloop num_tasks(ntasks) reduction(+:re, im)
+            for (std::size_t history2_ind = 0; history2_ind < num_par_histories; ++history2_ind) {
+                const int tid = omp_get_thread_num();
+                std::size_t thread_ind = history2_ind;
+
+                // -------- your original body (compute local_sum) --------
+                std::complex<float> local_sum(0.f, 0.f);
+
+                TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
+
+                if (!chunk2.right_to_left_vals(history2, thread_ind)) {
+                    // contributes 0 to the reduction
+                } else {
+                    std::complex<float> contribution2 = chunk_contribution(chunk2, thread_ind);
+
+                    Chunk& chunk1 = Circuit::chunks.at(1);
+                    const int num_artificial1 = chunk1.num_artificial;
+                    const TypeLongInt H1_MAX = TypeLongInt(1) << num_artificial1;
+
+                    for (TypeLongInt history1 = 0; history1 < H1_MAX; ++history1) {
+                        chunk1.reset_values(thread_ind);
+                        if (!chunk1.right_to_left_vals(history1, thread_ind)) continue;
+
+                        std::complex<float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind);
+
+                        Chunk& chunk0 = Circuit::chunks.at(0);
+                        const int num_artificial0 = chunk0.num_artificial;
+                        const TypeLongInt H0_MAX = TypeLongInt(1) << num_artificial0;
+
+                        float sum_r = 0.f, sum_i = 0.f;
+
+                        // Optional: keep scalar reduction to help vectorization
+                        for (TypeLongInt history0 = 0; history0 < H0_MAX; ++history0) {
+                            chunk0.reset_values(thread_ind);
+                            if (!chunk0.right_to_left_vals(history0, thread_ind)) continue;
+
+                            std::complex<float> c0 = contribution1 * chunk_contribution(chunk0, thread_ind);
+                            sum_r += c0.real();
+                            sum_i += c0.imag();
+                        }
+                        local_sum += std::complex<float>(sum_r, sum_i);
+                    }
+                }
+                // -------- contribute to global reduction once per task --------
+                re += local_sum.real();
+                im += local_sum.imag();
+            }
+        } // single
+    } // parallel
+
+    std::complex<float> total_amplitude(re, im);
+
+#endif
 
     complex<float> retval = total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
 
