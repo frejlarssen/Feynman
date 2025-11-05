@@ -16,6 +16,7 @@
 
 #define PI 3.141592653589793
 #define NUM_CHUNKS 3
+#define AUTOTUNING_STEPS 20 // The number of builds scale quadratically with this.
 
 using namespace std;
 
@@ -728,9 +729,12 @@ struct Circuit {
         int opt_num_chunk1 = -1;
         int opt_num_chunk2 = -1;
 
-        for (int num_chunk2 = 0; num_chunk2 < nr_gates; num_chunk2++) {
+        // step_size = 1 for perfect autotuning.
+        int step_size = std::max(1, nr_gates / AUTOTUNING_STEPS);
+
+        for (int num_chunk2 = 0; num_chunk2 < nr_gates; num_chunk2 += step_size) {
             //printf("Testing num_chunk2=%d\n", num_chunk2);
-            for (int num_chunk1 = 0; num_chunk1 < nr_gates - num_chunk2; num_chunk1++) {
+            for (int num_chunk1 = 0; num_chunk1 < nr_gates - num_chunk2; num_chunk1 += step_size) {
                 //printf("  Testing num_chunk1=%d\n", num_chunk1);
                 build_circuit(num_chunk1, num_chunk2, true);
                 //2^{A_2} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))
