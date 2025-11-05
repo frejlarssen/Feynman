@@ -88,6 +88,17 @@ struct Prefetcher {
     }
 };
 
+template<typename PF, typename Func>
+void run_worker_with(PF& pf, MPI_Comm comm, Func&& process_outputs) {
+    std::size_t start = 0, count = 0;
+    if (!pf.first(start, count, comm)) return;
+    for (;;) {
+        pf.prefetch_next(comm);                 // overlap comm with compute
+        process_outputs(start, start + count);
+        if (!pf.finish(start, count)) break;    // next becomes current
+    }
+}
+
 void run_master_async(std::size_t total_sz, std::size_t batch_size_hint, MPI_Comm comm) {
     std::size_t total = static_cast<std::size_t>(total_sz);
 

@@ -183,81 +183,73 @@ int main(int argc, char* argv[]) {
     // Loop though all output bitstrings
     std::size_t count_processed_bitstrings = 0;
     auto start_svcc_sim = get_time();
-    if (world_rank == 0) {
-        // Pure master
-        run_master_async(total_output_bitstrings, BATCH_SIZE, MPI_COMM_WORLD);
-    }else{
-        Prefetcher pf;
-        std::size_t start = 0, count = 0;
-        if (!pf.first(start, count, MPI_COMM_WORLD)) {
-            // nothing to do
-        }else{
-            for(;;) {
-                pf.prefetch_next(MPI_COMM_WORLD);     // overlap comm with compute
-                std::size_t end = start + count;
-                for(std::size_t output_int = start; output_int < end; ++output_int){
-#ifdef USE_SUBSET_OUTBITSTRINGS
-                    const std::size_t bitstringDecimal = output_bitstrings[output_int];
-#else
-                    const std::size_t bitstringDecimal = output_int;
-#endif 
-                    auto start_simulate_bitstring = get_time();
-                    ++count_processed_bitstrings;
-                    vector<bool> output_bits = bit_array_from_int(bitstringDecimal, Circuit::n);
-                    complex<float> output_amp(0,0);
 
-                    TypeLongInt input_int = 0;
-                    // Loop through the input bitstrings specified in input file
-                    for (const auto& input : input_bistrings) {
-                        
-                        // Parse input bitstring and amplitude
-                        vector<bool> input_bits = bit_array_from_int(input.index, Circuit::n);
-                        complex<float> amp_in = input.amp;
+    // Worker body
+    auto process_outputs = [&](std::size_t start, std::size_t end){
+        for (std::size_t output_int = start; output_int < end; ++output_int) {
+    #ifdef USE_SUBSET_OUTBITSTRINGS
+            const std::size_t bitstringDecimal = output_bitstrings[output_int];
+    #else
+            const std::size_t bitstringDecimal = output_int;
+    #endif
+            auto start_simulate_bitstring = get_time();
+            ++count_processed_bitstrings;
 
-                        auto start_simulate = get_time();
-                        output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction, opts.threshold, 3);
-                        auto end_simulate = get_time();
-                        num_calls_simulate++;
+            std::vector<bool> output_bits = bit_array_from_int(bitstringDecimal, Circuit::n);
+            std::complex<float> output_amp(0, 0);
 
-                        const duration<double> clocktime_simulate = end_simulate - start_simulate;
+            // Loop through the input bitstrings specified in input file
+            for (const auto& input : input_bistrings) {
+                std::vector<bool> input_bits = bit_array_from_int(input.index, Circuit::n);
+                std::complex<float> amp_in = input.amp;
 
-                        if (opts.verbosity >= 2) {
-                            printf("Worker %d - Clocktime to simulate input |", my_worker);
-                            for (int i = Circuit::n - 1; i >= 0; i--) {
-                                printf("%d", input_bits[i] ? 1 : 0);
-                            }
-                            printf("> to output |");
-                            for (int i = Circuit::n - 1; i >= 0; i--) {
-                                printf("%d", output_bits[i] ? 1 : 0);
-                            }
-                            printf("> : %f seconds\n", clocktime_simulate.count());
-                        }
+                auto start_simulate = get_time();
+                output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction, opts.threshold, 3);
+                auto end_simulate = get_time();
+                num_calls_simulate++;
 
-                        total_clocktime_simulate += clocktime_simulate;
+                const duration<double> clocktime_simulate = end_simulate - start_simulate;
 
-                        // Reset all values (for all threads if OpenMP is used)
-                        Circuit::reset_values_all();
-                    }
-                    auto end_simulate_bitstring = get_time();
-                    const duration<double> clocktime_bitstring = end_simulate_bitstring - start_simulate_bitstring;
-                    local_buf_timing += std::to_string(bitstringDecimal);
-                    local_buf_timing += ":";
-                    local_buf_timing += std::to_string(clocktime_bitstring.count());
-                    local_buf_timing += "\n";
-                    // Write to output file
-                    bool writeFlag = 0;
-                    if (opts.dense || (std::abs(output_amp) >  opts.threshold) ) writeFlag = 1;
-                    if (writeFlag){
-                        local_buf += std::to_string(bitstringDecimal);
-                        local_buf += ":";
-                        local_buf += std::to_string(output_amp.real());
-                        local_buf += "+";
-                        local_buf += std::to_string(output_amp.imag());
-                        local_buf += "i\n";
-                    }
+                if (opts.verbosity >= 2) {
+                    printf("Worker %d - Clocktime to simulate input |", my_worker);
+                    for (int i = Circuit::n - 1; i >= 0; --i) printf("%d", input_bits[i] ? 1 : 0);
+                    printf("> to output |");
+                    for (int i = Circuit::n - 1; i >= 0; --i) printf("%d", output_bits[i] ? 1 : 0);
+                    printf("> : %f seconds\n", clocktime_simulate.count());
                 }
-                if (!pf.finish(start, count)) break;  // next becomes current
+
+                total_clocktime_simulate += clocktime_simulate;
+                // Reset all values (for all threads if OpenMP is used)
+                Circuit::reset_values_all();
             }
+
+            auto end_simulate_bitstring = get_time();
+            const duration<double> clocktime_bitstring = end_simulate_bitstring - start_simulate_bitstring;
+            local_buf_timing += std::to_string(bitstringDecimal) + ":" +
+                                std::to_string(clocktime_bitstring.count()) + "\n";
+
+            // Write to output file
+            bool writeFlag = (opts.dense || (std::abs(output_amp) > opts.threshold));
+            if (writeFlag) {
+                local_buf += std::to_string(bitstringDecimal) + ":" +
+                            std::to_string(output_amp.real()) + "+" +
+                            std::to_string(output_amp.imag()) + "i\n";
+            }
+        }
+    };
+
+    // Run the simulation
+    if (world_size == 1){
+        if (world_rank == 0){
+            process_outputs(0, total_output_bitstrings);
+        }
+    }else{
+        // Multi-rank: server/worker structure
+        if (world_rank == 0){
+            run_master_async(total_output_bitstrings, BATCH_SIZE, MPI_COMM_WORLD);
+        }else{
+            Prefetcher pf;
+            run_worker_with(pf, MPI_COMM_WORLD, process_outputs);
         }
     }
 
