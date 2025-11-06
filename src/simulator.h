@@ -61,41 +61,19 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
                 contribution *= 1.0 / sqrt(2.0);
             }
             break;
-        case NOT:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) ==
-                gate.qubits.at(num_ctrl)->wire_right->get_val(thread)) {
-                contribution = 0.0;
-            }
-            break;
         case PHASE:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) !=
-                gate.qubits.at(num_ctrl)->wire_right->get_val(thread)) {
-                contribution = 0.0;
-            }
-            else if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread)) {
+            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread)) {
                 contribution *= std::exp(complex<float>(0.0, gate.params.at(0)));
             }
             break;
-        case SWAP:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) ==
-                gate.qubits.at(num_ctrl+1)->wire_right->get_val(thread)
-                &&
-                gate.qubits.at(num_ctrl+1)->wire_left->get_val(thread) ==
-                gate.qubits.at(num_ctrl)->wire_right->get_val(thread)
-                ) {
-                contribution *= 1.0;
-            } else {
-                contribution *= 0.0;
-            }
-            break;
         case PAULIZ:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) !=
-                gate.qubits.at(num_ctrl)->wire_right->get_val(thread)) {
-                contribution *= 0.0;
-            }
-            else if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread)) {
+            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread)) {
                 contribution *= -1;
             }
+            break;
+        case NOT:
+            break;
+        case SWAP:
             break;
         default:
             cerr << "Gate not implemented!" << endl;
