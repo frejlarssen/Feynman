@@ -6,7 +6,11 @@
 #include "../src/iofiles.h"
 #include "../src/utils.h"
 #include <iostream>
+#ifdef USE_OPENMP
+    #include <omp.h>
+#endif
 
+#define PERF_INSTRUMENT 0
 #define CLOSE_TO_ZERO 1e-8
 
 using namespace std;
@@ -18,6 +22,7 @@ struct Options {
     string output_statevector_file;
     int num_chunk1 = -1;
     int num_chunk2 = -1;
+    std::size_t batch_size = 64;
     float fraction = 1.0;
     float threshold = CLOSE_TO_ZERO;
     int verbosity = 1;
@@ -27,7 +32,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -b output_bitstring_subset -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense])\n";
+    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -b output_bitstring_subset -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense]) -s batch_size\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -49,7 +54,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:b:o:p:r:f:t:v:D")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:b:o:p:r:s:f:t:v:D")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -68,6 +73,9 @@ Options get_options(int argc, char* argv[]) {
             break;
           case 'r':
             opts.num_chunk1 = to_int(optarg);
+            break;
+          case 's':
+            opts.batch_size = to_int(optarg);
             break;
           case 'f':
             opts.fraction = to_float(optarg);
@@ -96,9 +104,17 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);  // my rank
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);  // total ranks
 
-    //prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
-    int fd = open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
+#ifdef USE_OPENMP
+    const int t_omp = omp_get_max_threads();
+#else
+    const int t_omp = 0;
+#endif
 
+
+    //prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
+#if PERF_INSTRUMENT
+    int fd = open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
+#endif
     auto start_svcc_all = get_time();
 
     Options opts = get_options(argc, argv);
@@ -166,21 +182,20 @@ int main(int argc, char* argv[]) {
 #endif
 
     // Loop through all input-output pairs. Start with amplitude depending on input statevector.
-    std::size_t num_workers = world_size;
+    std::size_t num_workers = std::max(1,world_size - 1);
     std::size_t my_worker = world_rank;
     std::string local_buf;
     local_buf.reserve(1<<20);
     std::string local_buf_timing;
     local_buf_timing.reserve(1<<16);
-    const std::size_t BATCH_SIZE = 64;
+
+    if (print_rank0_timings && opts.verbosity >= 1){
+        printf("Starting simulation over all input-output pairs:\n -- active workers = %d - OMP_THREADS per worker = %d - batch_size = %d --:\n", num_workers, t_omp, opts.batch_size);
+    }
     MPI_Barrier(MPI_COMM_WORLD);
 
     duration<double> total_clocktime_simulate = zero_duration();
     int num_calls_simulate = 0;
-
-    if (print_rank0_timings && opts.verbosity >= 2)
-        printf("Starting simulation over all input-output pairs:\n");
-
 
     // Loop though all output bitstrings
     std::size_t count_processed_bitstrings = 0;
@@ -240,8 +255,10 @@ int main(int argc, char* argv[]) {
         }
     };
     //prctl(PR_TASK_PERF_EVENTS_ENABLE, 0, 0, 0, 0);
+#if PERF_INSTRUMENT
     ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);   // zero all
     ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);  // begin region
+#endif
     // Run the simulation
     if (world_size == 1){
         if (world_rank == 0){
@@ -250,14 +267,16 @@ int main(int argc, char* argv[]) {
     }else{
         // Multi-rank: server/worker structure
         if (world_rank == 0){
-            run_master_async(total_output_bitstrings, BATCH_SIZE, MPI_COMM_WORLD);
+            run_master_async(total_output_bitstrings, opts.batch_size, MPI_COMM_WORLD);
         }else{
             Prefetcher pf;
             run_worker_with(pf, MPI_COMM_WORLD, process_outputs);
         }
     }
+#if PERF_INSTRUMENT
     ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
     //prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
+#endif
 
     MPI_Barrier(MPI_COMM_WORLD);
     auto end_svcc_simulation = get_time();

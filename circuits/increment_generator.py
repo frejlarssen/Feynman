@@ -1,4 +1,4 @@
-n = 100
+n = 120
 # 1024 in ~3 sec with all ones as input.
 
 with open(f"increment_n{n}.qasm", "w", encoding="utf-8") as f:

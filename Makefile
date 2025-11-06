@@ -1,6 +1,6 @@
 # Compiler settings
-CXX       = g++
-MPICXX    = mpic++
+CXX       = CC
+MPICXX    = CC
 CXXFLAGS  = -O2
 OMPFLAGS  = -fopenmp
 SANFLAGS  = -fsanitize=thread -g

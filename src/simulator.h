@@ -64,13 +64,13 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
         case NOT:
             if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) ==
                 gate.qubits.at(num_ctrl)->wire_right->get_val(thread)) {
-                contribution = 0;
+                contribution = 0.0;
             }
             break;
         case PHASE:
             if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) !=
                 gate.qubits.at(num_ctrl)->wire_right->get_val(thread)) {
-                contribution *= 0.0;
+                contribution = 0.0;
             }
             else if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread)) {
                 contribution *= std::exp(complex<float>(0.0, gate.params.at(0)));
