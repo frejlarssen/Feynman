@@ -1,3 +1,4 @@
+#pragma once
 #include <unistd.h>
 #include <iostream>
 #include <vector>
@@ -15,6 +16,9 @@
 #include <mpi.h>
 #include "typedef.h"
 
+#ifdef USE_OPENMP
+    #include <omp.h>
+#endif
 
 #define fLIMIT 0.9999999 // If fraction > fLIMIT, we make an exact simulation.
 
@@ -104,9 +108,13 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
     // Chunk 2 is the rightmost, and the one we parallelize over.
     Chunk& chunk2 = Circuit::chunks.at(2);
     const int num_artificial2 = chunk2.num_artificial;
-
+#ifdef USE_OPENMP
+        const int t_omp = omp_get_max_threads();
+#else
+        const int t_omp = 1;
+#endif
     // Propagate the determinism from the output.
-    if (!chunk2.right_to_left_natural_all(1 << num_artificial2)) {
+    if (!chunk2.right_to_left_natural_all(t_omp)) {
         return 0.0;
     }
 
@@ -129,14 +137,14 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
 
     // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
     const float threshold2 = threshold * threshold;
-    parallel_for(0, num_par_histories, [&](size_t history2_ind) {
+    parallel_for(0, num_par_histories, [&](size_t history2_ind, size_t t_idx) {
 
         std::complex<float> local_sum(0,0);
 
         //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
         //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
-        size_t thread_ind = history2_ind;
-        TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
+        const size_t thread_ind = t_idx;
+        const TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
         auto start_history2 = get_time();
 
@@ -205,6 +213,11 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
         // Combine into total_amplitude safely
         //printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
         amplitudes.at(history2_ind) = local_sum;
+        const int wires_num = Circuit::all_internal_wires.size();
+        for(int i=0; i < 3; ++i){
+            Chunk& chunk = Circuit::chunks.at(i);
+            chunk.reset_values(thread_ind);
+        }
     });
 
     auto total_amplitude = parallel_reduce(0, num_par_histories, [&](size_t i) {

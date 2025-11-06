@@ -14,6 +14,10 @@
 #include "parsed_circuit.h"
 #include "typedef.h"
 
+#ifdef USE_OPENMP
+    #include <omp.h>
+#endif
+
 #define PI 3.141592653589793
 #define NUM_CHUNKS 3
 #define AUTOTUNING_STEPS 20 // The number of builds scale quadratically with this.
@@ -697,13 +701,18 @@ struct Circuit {
             return;
         }
 
+#ifdef USE_OPENMP
+        const int t_omp = omp_get_max_threads();
+#else
+        const int t_omp = 1;
+#endif
         // Loop through all iw's that belongs to chunks, resize the val and val_set vectors.
         for (Chunk& chunk : chunks) {
             //cout << "resizing chunk " << chunk.id << endl;
             for (std::shared_ptr<InternalWire>& iw : chunk.internal_wires) {
                 //printf("Resizing iw: %s\n", internal_wire_to_string(iw, 2).c_str());
-                iw->val_set.resize(1 << chunks.at(NUM_CHUNKS-1).num_artificial, false);
-                iw->val.resize(1 << chunks.at(NUM_CHUNKS-1).num_artificial, false);
+                iw->val_set.resize(t_omp, false);
+                iw->val.resize(t_omp, false);
             }
         }
 

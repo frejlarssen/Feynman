@@ -22,7 +22,7 @@ inline void parallel_for(size_t start, size_t end, F&& func) {
         #pragma omp single
         {
             #pragma omp taskloop grainsize(gs)
-            for (std::size_t i = start; i < end; ++i) func(i);
+            for (std::size_t i = start; i < end; ++i) func(i,omp_get_thread_num());
         }
     }
 #elif defined(USE_THREADS)
