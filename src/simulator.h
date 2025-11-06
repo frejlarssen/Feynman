@@ -22,14 +22,15 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
     complex <float> contribution = 1.0;
     for (const shared_ptr<Gate>& gateptr : chunk.gates) {
         Gate& gate = *gateptr;
+        const auto& qubits_vector = gate.qubits;  
 
-        int num_ctrl = gate.num_controls;
+        const int num_ctrl = gate.num_controls;
 
         // Check if the gate is activated
         bool activate = true;
         for (int c = 0; c < num_ctrl; c++) {
             // wire_right or wire_left doesn't matter for controls
-            if (!gate.qubits.at(c)->wire_right->get_val(thread)) {
+            if (!qubits_vector[c]->wire_right->get_val(thread)) {
                 activate = false;
                 break;
             }
@@ -37,9 +38,11 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
 
         if (!activate) {
             // Compare if input = output
+            const int num_targets = gate_type_infos.at(gate.type).num_targets;
             bool accept = true;
-            for (int t = num_ctrl; t < num_ctrl + gate_type_infos.at(gate.type).num_targets; t++) {
-                if (gate.qubits.at(t)->wire_left->get_val(thread) != gate.qubits.at(t)->wire_right->get_val(thread)) {
+            for (int t = num_ctrl; t < num_ctrl + num_targets; t++) {
+                const auto& qubit_t = qubits_vector[t];
+                if(qubit_t->wire_left->get_val(thread) != qubit_t->wire_right->get_val(thread)) {
                     accept = false;
                     break;
                 }
@@ -50,24 +53,25 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
             }
             continue; // Go on to the next gate.
         }
-
+        const auto wire_left_value = gate.qubits.at(num_ctrl)->wire_left->get_val(thread);
+        const auto wire_right_value = gate.qubits.at(num_ctrl)->wire_right->get_val(thread);
+        const float inv_over_sqrt2 = 1.0 / sqrt(2.0);
         // Activate gate
         switch (gate.type) {
         case HADAMARD:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread) &&
-                gate.qubits.at(num_ctrl)->wire_right->get_val(thread)) {
-                contribution *= -1.0 / sqrt(2.0);
+            if (wire_left_value && wire_right_value) {
+                contribution *= -inv_over_sqrt2;
             } else {
-                contribution *= 1.0 / sqrt(2.0);
+                contribution *= inv_over_sqrt2;
             }
             break;
         case PHASE:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread)) {
+            if (wire_left_value) {
                 contribution *= std::exp(complex<float>(0.0, gate.params.at(0)));
             }
             break;
         case PAULIZ:
-            if (gate.qubits.at(num_ctrl)->wire_left->get_val(thread)) {
+            if (wire_left_value) {
                 contribution *= -1;
             }
             break;
