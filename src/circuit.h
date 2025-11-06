@@ -398,6 +398,7 @@ struct Chunk {
         // TODO: Compare performance of looping all or only deterministically breaking.
         for (int i = deterministically_breaking.size() - 1; i >= 0; i--) {
             Gate& gate = *deterministically_breaking.at(i);
+            const int gate_num_controls = gate.num_controls;
 
             //cout << "      In vals pass for gate " << gate.id << endl;
 
@@ -419,8 +420,9 @@ struct Chunk {
             //cout << "all_set and deterministic" << endl;
             // Check if activated
             bool activate = true;
-            for (int c = 0; c < gate.num_controls; c++) {
-                if (!gate.qubits.at(c)->wire_right->get_val(thread)) {
+            const auto& qubits_vector = gate.qubits;  
+            for (int c = 0; c < gate_num_controls; c++) {
+                if (!qubits_vector[c]->wire_right->get_val(thread)) {
                     activate = false;
                     break;
                 }
@@ -428,14 +430,14 @@ struct Chunk {
 
             if (!activate) {
                 //cout << "        gate not activated" << endl;
-
-                for (int t = gate.num_controls; t < gate.num_controls + gate_type_infos.at(gate.type).num_targets; t++) {
-                    u_int8_t setval = gate.qubits.at(t)->wire_right->get_val(thread);
+                const int num_qubits = gate_num_controls + gate_type_infos.at(gate.type).num_targets;
+                for (int t = gate_num_controls; t < num_qubits ; t++) {
+                    const u_int8_t setval = qubits_vector[t]->wire_right->get_val(thread);
                     //cout << "        setval: " << (int) setval << endl;
                     //cout << "        thread: " << thread << endl;
                     //cout << "        t: " << t << endl;
                     //printf("The gate again: %s\n", gate_to_string(gate, 2).c_str());
-                    if (!gate.qubits.at(t)->wire_left->set_safe(thread, setval)) {
+                    if (!qubits_vector[t]->wire_left->set_safe(thread, setval)) {
                         //cout << "        not activated gate rejected" << endl ;
                         return false;
                     }
@@ -443,24 +445,23 @@ struct Chunk {
                 }
             }
             else {
-                uint8_t right_val;
                 switch (gate.type) {
                 case NOT:
                     //cout << "        NOT gate activated in vals pass" << endl;
-                    right_val = gate.qubits.at(gate.num_controls)->wire_right->get_val(thread);
+                    // const uint8_t right_val = gate.qubits.at(gate_num_controls)->wire_right->get_val(thread);
                     //cout << "        right_val: " << (int) right_val << endl;
-                    if (!gate.qubits.at(gate.num_controls)->wire_left->set_safe(thread,
-                        !gate.qubits.at(gate.num_controls)->wire_right->get_val(thread)
+                    if (!qubits_vector[gate_num_controls]->wire_left->set_safe(thread,
+                        !qubits_vector[gate_num_controls]->wire_right->get_val(thread)
                         )) {
                             //cout << "        NOT gate refused" << endl;
                             return false; }
                     break;
                 case SWAP:
-                    if (!gate.qubits.at(gate.num_controls)->wire_left->set_safe(thread,
-                         gate.qubits.at(gate.num_controls + 1)->wire_right->get_val(thread)
+                    if (!qubits_vector[gate_num_controls]->wire_left->set_safe(thread,
+                         qubits_vector[gate_num_controls + 1]->wire_right->get_val(thread)
                          )) { return false; }
-                    if (!gate.qubits.at(gate.num_controls + 1)->wire_left->set_safe(thread,
-                         gate.qubits.at(gate.num_controls)->wire_right->get_val(thread)
+                    if (!qubits_vector[gate_num_controls + 1]->wire_left->set_safe(thread,
+                         qubits_vector[gate_num_controls]->wire_right->get_val(thread)
                         )) { return false;}
                     break;
                 default:
@@ -758,7 +759,7 @@ struct Circuit {
                 int a2 = chunks.at(2).num_artificial;
 
                 // Calculate number of gate applications over all histories and nodes.
-                __int128 nr_app = (__int128(1) << a2) * (num_chunk2 + (__int128(1) << a1) * (num_chunk1 + (__int128(1) << a0) * num_chunk0));
+                TypeLongInt nr_app = (TypeLongInt(1) << a2) * (num_chunk2 + (TypeLongInt(1) << a1) * (num_chunk1 + (TypeLongInt(1) << a0) * num_chunk0));
 
                 if (nr_app < min_nr_app) {
                     opt_num_chunk1 = num_chunk1;
