@@ -25,7 +25,7 @@ inline void parallel_for(size_t start, size_t end, F&& func) {
             for (std::size_t i = start; i < end; ++i) func(i);
         }
     }
-#else
+#elif defined(USE_THREADS)
     unsigned int num_threads = std::thread::hardware_concurrency();
     if (num_threads == 0) num_threads = 4;
 
@@ -42,6 +42,8 @@ inline void parallel_for(size_t start, size_t end, F&& func) {
     }
     for (auto& th : threads)
         th.join();
+#else
+    for (std::size_t i = start; i < end; ++i) func(i);
 #endif
 }
 
@@ -61,7 +63,7 @@ parallel_reduce(size_t start, size_t end, F&& func)
     std::complex<float> result(re, im);
     return result;
 
-#else
+#elif defined(USE_THREADS)
     unsigned int num_threads = thread::hardware_concurrency();
     if (num_threads == 0) num_threads = 4;
 
@@ -86,5 +88,14 @@ parallel_reduce(size_t start, size_t end, F&& func)
     for (auto& val : partial)
         total += val;
     return total;
+#else
+    float re = 0.0f, im = 0.0f;
+    for (size_t i = start; i < end; ++i) {
+        auto v = func(i);
+        re += v.real();
+        im += v.imag();
+    }
+    std::complex<float> result(re, im);
+    return result;
 #endif
 }

@@ -4,6 +4,7 @@
 #include "../src/simulator.h"
 #include "../src/mpiScheduler.h"
 #include "../src/iofiles.h"
+#include "../src/utils.h"
 #include <iostream>
 
 #define CLOSE_TO_ZERO 1e-8
@@ -89,13 +90,14 @@ Options get_options(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
-
-
     MPI_Init(&argc, &argv);
     int world_rank = -1;
     int world_size = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);  // my rank
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);  // total ranks
+
+    //prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
+    int fd = open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
 
     auto start_svcc_all = get_time();
 
@@ -237,7 +239,9 @@ int main(int argc, char* argv[]) {
             }
         }
     };
-
+    //prctl(PR_TASK_PERF_EVENTS_ENABLE, 0, 0, 0, 0);
+    ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);   // zero all
+    ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);  // begin region
     // Run the simulation
     if (world_size == 1){
         if (world_rank == 0){
@@ -252,6 +256,8 @@ int main(int argc, char* argv[]) {
             run_worker_with(pf, MPI_COMM_WORLD, process_outputs);
         }
     }
+    ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+    //prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
 
     MPI_Barrier(MPI_COMM_WORLD);
     auto end_svcc_simulation = get_time();

@@ -7,9 +7,33 @@
 #include <cstdio>
 #include "typedef.h"
 #include <string>
+#include <cstring>
+
+#include <sys/prctl.h>
+#include <linux/prctl.h>
+#include <linux/perf_event.h>
+#include <sys/syscall.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 using namespace std;
 using namespace std::chrono;
+
+
+static int
+open_leader(pid_t pid, int cpu, uint64_t type, uint64_t config) {
+  struct perf_event_attr attr;
+  memset(&attr, 0, sizeof(attr));
+  attr.type = type;              // e.g., PERF_TYPE_HARDWARE
+  attr.config = config;          // e.g., PERF_COUNT_HW_CPU_CYCLES
+  attr.size = sizeof(attr);
+  attr.disabled = 1;             // start disabled
+  attr.inherit = 1;              // include child threads
+  attr.exclude_kernel = 1;       // user-space only (optional)
+
+  return syscall(__NR_perf_event_open, &attr, pid, cpu, -1, 0);
+}
+
 
 std::string replace_filename(const std::string& path_str, const std::string& new_filename){
     const auto pos = path_str.find_last_of("/\\");
