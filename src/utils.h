@@ -138,11 +138,11 @@ const complex<float> string_to_complex(const string& s) {
     return complex<float>(real_part, imag_part);
 }
 
-string int128_to_string(__int128 value) {
+string int128_to_string(TypeLongInt value) {
     if (value == 0) return "0";
     
     bool negative = value < 0;
-    unsigned __int128 temp = negative ? -value : value;
+    TypeLongInt temp = negative ? -value : value;
 
     string result;
     while (temp > 0) {
@@ -156,8 +156,8 @@ string int128_to_string(__int128 value) {
     return result;
 }
 
-__int128 string_to_int128(const string& s) {
-    __int128 result = 0;
+TypeLongInt string_to_int128(const string& s) {
+    TypeLongInt result = 0;
     size_t start = 0;
     bool negative = false;
 

@@ -10,6 +10,7 @@
     #include <omp.h>
 #endif
 
+#define EXECUTE_RUN 1
 #define PERF_INSTRUMENT 0
 #define CLOSE_TO_ZERO 1e-8
 
@@ -175,11 +176,11 @@ int main(int argc, char* argv[]) {
 #ifdef USE_SUBSET_OUTBITSTRINGS
     vector<std::size_t> output_bitstrings = load_output_bitstrings_from_master(opts.output_bitstring_subset, world_rank, MPI_COMM_WORLD);
     const TypeLongInt total_output_bitstrings = output_bitstrings.size();              // overflow if n >= 128
-    if(print_rank0_timings)
-    std::cout << "Total output bitstrings to simulate: " << static_cast<std::size_t>(total_output_bitstrings) <<std::endl;
 #else
     const TypeLongInt total_output_bitstrings = 1ULL << Circuit::n;              // overflow if n >= 128
 #endif
+    if(print_rank0_timings)
+    std::cout << "Total output bitstrings to simulate: " << static_cast<std::size_t>(total_output_bitstrings) <<std::endl;
 
     // Loop through all input-output pairs. Start with amplitude depending on input statevector.
     const std::size_t num_workers = (opts.batch_size > 0) ? std::max(1,world_size - 1) : world_size;
@@ -192,7 +193,7 @@ int main(int argc, char* argv[]) {
     const std::size_t batch_size = (opts.batch_size > 0) ? opts.batch_size : ( (total_output_bitstrings + num_workers - 1)/ num_workers) ;
 
     if (print_rank0_timings && opts.verbosity >= 1){
-        printf("Starting simulation over all input-output pairs:\n -- active workers = %d - OMP_THREADS per worker = %d - batch_size = %d --:\n", num_workers, t_omp, batch_size);
+        printf("Starting simulation over all input-output pairs:\n -- Total output bitstrings = %d -- active workers = %d - OMP_THREADS per worker = %d - batch_size = %d --:\n", total_output_bitstrings, num_workers, t_omp, batch_size);
     }
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -262,6 +263,8 @@ int main(int argc, char* argv[]) {
     ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);   // zero all
     ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);  // begin region
 #endif
+
+#if EXECUTE_RUN
     // Run the simulation
     if (opts.batch_size > 0){ // run with asyncronous server - worker implementation
         if (world_size == 1){
@@ -280,6 +283,7 @@ int main(int argc, char* argv[]) {
     }else{ // run with fixed batch size, no server - worker
         process_outputs(my_worker * batch_size, batch_size * (my_worker + 1) );
     }
+#endif
 #if PERF_INSTRUMENT
     ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
     //prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
