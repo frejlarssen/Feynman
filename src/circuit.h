@@ -702,17 +702,17 @@ struct Circuit {
         }
 
 #ifdef USE_OPENMP
-        const int t_omp = omp_get_max_threads();
+        const int size_val = omp_get_max_threads() * PADDING;
 #else
-        const int t_omp = 1;
+        const int size_val = 1;
 #endif
         // Loop through all iw's that belongs to chunks, resize the val and val_set vectors.
         for (Chunk& chunk : chunks) {
             //cout << "resizing chunk " << chunk.id << endl;
             for (std::shared_ptr<InternalWire>& iw : chunk.internal_wires) {
                 //printf("Resizing iw: %s\n", internal_wire_to_string(iw, 2).c_str());
-                iw->val_set.resize(t_omp, false);
-                iw->val.resize(t_omp, false);
+                iw->val_set.resize(size_val, false);
+                iw->val.resize(size_val, false);
             }
         }
 

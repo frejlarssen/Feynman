@@ -109,7 +109,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
     Chunk& chunk2 = Circuit::chunks.at(2);
     const int num_artificial2 = chunk2.num_artificial;
 #ifdef USE_OPENMP
-        const int t_omp = omp_get_max_threads();
+        const int t_omp = omp_get_max_threads() * PADDING;
 #else
         const int t_omp = 1;
 #endif
@@ -143,7 +143,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
 
         //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
         //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
-        const size_t thread_ind = t_idx;
+        const size_t thread_ind = t_idx * PADDING;
         const TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
         auto start_history2 = get_time();
