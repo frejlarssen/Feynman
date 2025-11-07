@@ -44,7 +44,7 @@ inline void parallel_for(size_t start, size_t end, F&& func) {
     for (auto& th : threads)
         th.join();
 #else
-    for (std::size_t i = start; i < end; ++i) func(i,i);
+    for (std::size_t i = start; i < end; ++i) func(i,0);
 #endif
 }
 
