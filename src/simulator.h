@@ -143,7 +143,7 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
 
         //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
         //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
-        const size_t thread_ind = t_idx * PADDING;
+        const size_t thread_ind = t_idx;
         const TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
         auto start_history2 = get_time();
@@ -213,10 +213,8 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
         // Combine into total_amplitude safely
         //printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
         amplitudes.at(history2_ind) = local_sum;
-        const int wires_num = Circuit::all_internal_wires.size();
         for(int i=0; i < 3; ++i){
-            Chunk& chunk = Circuit::chunks.at(i);
-            chunk.reset_values(thread_ind);
+            Circuit::chunks.at(i).reset_values(thread_ind);
         }
     });
 

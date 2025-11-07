@@ -4,6 +4,7 @@
 #include <complex>
 #include <algorithm>
 #include <functional>
+#include "typedef.h"
 
 #ifdef USE_OPENMP
     #include <omp.h>
@@ -22,7 +23,7 @@ inline void parallel_for(size_t start, size_t end, F&& func) {
         #pragma omp single
         {
             #pragma omp taskloop grainsize(gs)
-            for (std::size_t i = start; i < end; ++i) func(i,omp_get_thread_num());
+            for (std::size_t i = start; i < end; ++i) func(i,omp_get_thread_num() * PADDING);
         }
     }
 #elif defined(USE_THREADS)
@@ -43,7 +44,7 @@ inline void parallel_for(size_t start, size_t end, F&& func) {
     for (auto& th : threads)
         th.join();
 #else
-    for (std::size_t i = start; i < end; ++i) func(i);
+    for (std::size_t i = start; i < end; ++i) func(i,i);
 #endif
 }
 
