@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
 
     // Load output bitstrings to simulate (if the option is ON)
 #ifdef USE_SUBSET_OUTBITSTRINGS
-    vector<std::size_t> output_bitstrings = load_output_bitstrings_from_master(opts.output_bitstring_subset, world_rank, MPI_COMM_WORLD);
+    vector<TypeLongInt> output_bitstrings = load_output_bitstrings_from_master(opts.output_bitstring_subset, world_rank, MPI_COMM_WORLD);
     const TypeLongInt total_output_bitstrings = output_bitstrings.size();              // overflow if n >= 128
 #else
     const TypeLongInt total_output_bitstrings = 1ULL << Circuit::n;              // overflow if n >= 128
@@ -209,9 +209,9 @@ int main(int argc, char* argv[]) {
         for (std::size_t output_int = start; output_int < end; ++output_int) {
             if(output_int >= total_output_bitstrings)break;
     #ifdef USE_SUBSET_OUTBITSTRINGS
-            const std::size_t bitstringDecimal = output_bitstrings[output_int];
+            const TypeLongInt bitstringDecimal = output_bitstrings[output_int];
     #else
-            const std::size_t bitstringDecimal = output_int;
+            const TypeLongInt bitstringDecimal = output_int;
     #endif
             auto start_simulate_bitstring = get_time();
             ++count_processed_bitstrings;
@@ -246,13 +246,13 @@ int main(int argc, char* argv[]) {
 
             auto end_simulate_bitstring = get_time();
             const duration<double> clocktime_bitstring = end_simulate_bitstring - start_simulate_bitstring;
-            local_buf_timing += std::to_string(bitstringDecimal) + ":" +
+            local_buf_timing += int128_to_string(bitstringDecimal) + ":" +
                                 std::to_string(clocktime_bitstring.count()) + "\n";
 
             // Write to output file
             bool writeFlag = (opts.dense || (std::abs(output_amp) > opts.threshold));
             if (writeFlag) {
-                local_buf += std::to_string(bitstringDecimal) + ":" +
+                local_buf += int128_to_string(bitstringDecimal) + ":" +
                             std::to_string(output_amp.real()) + "+" +
                             std::to_string(output_amp.imag()) + "i\n";
             }

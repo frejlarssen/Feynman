@@ -8,6 +8,7 @@
 #include <fstream>
 #include <charconv>   // for from_chars (C++17)
 #include <type_traits>
+#include <limits>
 
 #include "typedef.h"
 #include "utils.h"
@@ -83,10 +84,10 @@ load_input_bitstrings_from_master(const std::string& path, const bool dense,
 }
 
 
-static inline std::vector<std::size_t>
+static inline std::vector<TypeLongInt>
 read_output_bitstrings(const std::string& path){
     
-    std::vector<std::size_t> output_bitstrings;
+    std::vector<TypeLongInt> output_bitstrings;
     std::ifstream in(path);
     if (!in) {
         throw std::runtime_error("Cannot open output bitstring file: " + path);
@@ -103,7 +104,7 @@ read_output_bitstrings(const std::string& path){
         sv = sv.substr(0, r + 1);
 
         // parse integer (base 10) using from_chars
-        std::size_t tmp = 0;
+        TypeLongInt tmp = 0;
         const char* first = sv.data();
         const char* last  = sv.data() + sv.size();
         auto [ptr, ec] = std::from_chars(first, last, tmp, 10);
@@ -112,17 +113,17 @@ read_output_bitstrings(const std::string& path){
             throw std::runtime_error("Invalid integer line in " + path + ": \"" + std::string(sv) + "\"");
         }
         if (tmp > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
-            throw std::runtime_error("Integer out of range for size_t in: \"" + std::string(sv) + "\"");
+            //throw std::runtime_error("Integer out of range for size_t in: \"" + std::string(sv) + "\"");
         }
-        output_bitstrings.push_back(static_cast<std::size_t>(tmp));
+        output_bitstrings.push_back(tmp);
     }
     return output_bitstrings;
 }
 
-inline std::vector<std::size_t>
-load_output_bitstrings_from_master(const std::string& path, const int world_rank, MPI_Comm comm){
+inline std::vector<TypeLongInt>
+load_output_bitstrings_from_masterV0(const std::string& path, const int world_rank, MPI_Comm comm){
 
-    std::vector<std::size_t> output_bitstrings;
+    std::vector<TypeLongInt> output_bitstrings;
     std::size_t n_output_bitstrings = 0;
     if (world_rank == 0) {
         output_bitstrings = read_output_bitstrings(path);
@@ -147,6 +148,65 @@ load_output_bitstrings_from_master(const std::string& path, const int world_rank
     }
     return output_bitstrings;
 }
+
+
+//template <typename TypeLongInt>
+inline std::vector<TypeLongInt>
+load_output_bitstrings_from_master(const std::string& path, const int world_rank, MPI_Comm comm)
+{
+    static_assert(std::is_trivially_copyable<TypeLongInt>::value,
+                  "TypeLongInt must be trivially copyable to send as raw bytes");
+
+    std::vector<TypeLongInt> output_bitstrings;
+    std::size_t n_output_bitstrings = 0;
+
+    if (world_rank == 0) {
+        // Must return std::vector<TypeLongInt>
+        output_bitstrings = read_output_bitstrings(path);
+        n_output_bitstrings = output_bitstrings.size();
+    }
+    // --- Broadcast size as size_t-compatible integer ---
+    MPI_Datatype mpi_size_t;
+    MPI_Type_match_size(MPI_TYPECLASS_INTEGER,
+                        static_cast<int>(sizeof(std::size_t)),
+                        &mpi_size_t);
+
+    MPI_Bcast(&n_output_bitstrings, 1, mpi_size_t, 0, comm);
+
+    // Allocate/resize on non-root ranks once we know the size
+    if (world_rank != 0) {
+        output_bitstrings.resize(n_output_bitstrings);
+    }
+
+    // --- Broadcast data as raw bytes (handles __int128 cleanly) ---
+    const std::size_t total_bytes =
+        n_output_bitstrings * sizeof(TypeLongInt);
+
+    // Nothing to do if empty
+    if (total_bytes == 0) {
+        return output_bitstrings;
+    }
+
+    auto* raw = reinterpret_cast<unsigned char*>(output_bitstrings.data());
+
+    // MPI_Bcast count is int, so chunk if needed
+    const std::size_t max_bytes_per_bcast =
+        static_cast<std::size_t>(std::numeric_limits<int>::max());
+
+    std::size_t offset = 0;
+    while (offset < total_bytes) {
+        const std::size_t remaining = total_bytes - offset;
+        const int chunk = static_cast<int>(
+            remaining > max_bytes_per_bcast ? max_bytes_per_bcast : remaining
+        );
+
+        MPI_Bcast(raw + offset, chunk, MPI_BYTE, 0, comm);
+        offset += static_cast<std::size_t>(chunk);
+    }
+
+    return output_bitstrings;
+}
+
 
 
 inline int write_output_to_disk(const std::string& filename,
