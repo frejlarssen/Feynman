@@ -1,6 +1,6 @@
 # Compiler settings
-CXX       = CC
-MPICXX    = CC
+CXX       = g++
+MPICXX    = mpic++
 CXXFLAGS  = -O2
 OMPFLAGS  = -fopenmp
 SANFLAGS  = -fsanitize=thread -g
@@ -37,4 +37,4 @@ sim_qft:
 	g++ simulator_qft.cc -o sim_qft.x
 
 clean:
-	rm -f simulator.x bitstr sv_omp.x bitstr_mpi.x sv_batch_mpi.x sv_scheduler_mpi.x sv_prefetcher_mpi.x sim_qft.x
+	rm -f simulator.x bitstr sv_omp.x bitstr_mpi.x sv_batch_mpi.x sv_scheduler_mpi.x sv_prefetcher_mpi.x sv_prefetcher_subset_mpi.x sim_qft.x

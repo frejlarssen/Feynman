@@ -15,6 +15,7 @@
 #include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <iostream>
 
 using namespace std;
 using namespace std::chrono;
@@ -172,4 +173,57 @@ TypeLongInt string_to_int128(const string& s) {
     }
 
     return negative ? -result : result;
+}
+
+string bitvector_to_hexstring(vector<bool> bits) {
+    const size_t n = bits.size();
+    
+    const size_t n_hexchars = (n + 3) / 4; // 4 bits per hex char
+    string hexstr(n_hexchars, '0');
+
+    for (size_t i = 0; i < n; i++) {
+        if (bits[i]) {
+            size_t hex_index = i / 4;
+            size_t bit_index = i % 4;
+            char& hex_char = hexstr[hex_index];
+            if (hex_char >= '0' && hex_char <= '9') {
+                hex_char = "0123456789ABCDEF"[hex_char - '0' + (1 << bit_index)];
+            } else {
+                hex_char = "0123456789ABCDEF"[hex_char - 'A' + 10 + (1 << bit_index)];
+            }
+        }
+    }
+
+    // Reverse for little-endian
+    reverse(hexstr.begin(), hexstr.end());
+    return "0x" + hexstr;
+}
+
+vector<bool> hexstring_to_bitvector(const string& hexstr) {
+    string s = hexstr;
+    if (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        s = s.substr(2); // Remove 0x
+    }
+
+    reverse(s.begin(), s.end()); // Reverse for LSB first
+    vector<bool> bits;
+    bits.reserve(s.size() * 4); // 4 bits per hex char
+
+    for (char c : s) {
+        uint8_t nibble;
+        //printf("c: %c\n", c);
+        if (c >= '0' && c <= '9') {
+            nibble = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            nibble = c - 'a' + 10;
+        } else if (c >= 'A' && c <= 'F') {
+            nibble = c - 'A' + 10;
+        } else {
+            throw std::runtime_error("Invalid hex character in string: " + hexstr);
+        }
+        for (int i = 0; i < 4; i++) { // LSB first
+            bits.push_back((nibble >> i) & 1);
+        }
+    }
+    return bits;
 }
