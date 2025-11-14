@@ -163,7 +163,7 @@ struct ParsedCircuit {
             file.close();
         }
         else {
-            cerr << "Unable to open file!" << endl;
+            cerr << "Unable to open circuit file!" << endl;
             exit(1);
         }
 
