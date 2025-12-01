@@ -41,5 +41,20 @@
 # debug information files
 *.dwo
 
-# circuit files (for now)
+.vscode/
+
+outputs/
+
+**untracked/
+
+# circuit files
 *.qasm
+
+# hexstring set
+*.hs
+
+# statevectors
+*.sv
+
+# hexstring statevectors
+*.hsv
