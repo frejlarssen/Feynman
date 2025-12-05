@@ -27,6 +27,7 @@ sv_scheduler_mpi:
 sv_prefetcher_mpi:
 	$(MPICXX) $(CXXFLAGS) -DUSE_OPENMP $(OMPFLAGS) apps/sv_prefetcher.cc -o sv_prefetcher_mpi.x
 
+# TODO: Rename to unknown_output or similar.
 sv_prefetcher_mpi_subsetbitstrings:
 	$(MPICXX) $(CXXFLAGS) -DUSE_OPENMP -DUSE_SUBSET_OUTBITSTRINGS $(OMPFLAGS) apps/sv_prefetcher.cc -o sv_prefetcher_subset_mpi.x
 

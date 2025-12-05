@@ -91,140 +91,144 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
     return contribution;
 }
 
-complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, complex<float> input_amp, float fraction, float threshold = 0.0, int verbosity = 1) {
+// TODO: Batching. MPI processes calls simulate for a batch of histories, if processes over input entries is not enough.
+unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fraction, float threshold = 0.0, int verbosity = 1) {
 
     // Debugging that should be printed only by one rank.
     bool print_rank0_timings = (verbosity >= 1);
 
-    // Set output and input bits given from caller.
-    for (const std::shared_ptr<InternalWire>& w : Circuit::output_sources) {
-        w->set_safe_all(1, output_bits.at(w->wire));
-    }
-
+    // Set input bits.
     for (const std::shared_ptr<InternalWire>& w : Circuit::input_sources) {
-        if (!w->set_safe_all(1, input_bits.at(w->wire))) { return false; }
+        w->set_safe_all(1, input_bits.test(w->wire));
     }
 
-    // Chunk 2 is the rightmost, and the one we parallelize over.
-    Chunk& chunk2 = Circuit::chunks.at(2);
-    const int num_artificial2 = chunk2.num_artificial;
+    // Chunk 0 is the leftmost, and the one we parallelize over.
+    Chunk& chunk0 = Circuit::chunks.at(0);
+    const int num_artificial0 = chunk0.num_artificial;
 #ifdef USE_OPENMP
         const int t_omp = omp_get_max_threads() * PADDING;
 #else
         const int t_omp = 1;
 #endif
-    // Propagate the determinism from the output.
-    if (!chunk2.right_to_left_natural_all(t_omp)) {
-        return 0.0;
+    // Propagate the determinism from the input.
+    chunk0.left_to_right_natural_all(t_omp);
+
+    unordered_statevector global_statevector;
+    
+
+    TypeLongInt num_histories_c0 = TypeLongInt(1) << num_artificial0;
+    
+    bool simulate_all = (fraction > fLIMIT);
+
+    size_t num_par_histories;
+    vector<TypeLongInt> par_histories;
+    if (simulate_all) {
+        num_par_histories = num_histories_c0;
+    }
+    else {
+        num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c0) * fraction);
+        par_histories.resize(num_par_histories);
+        // TODO: Check if non-unique histories is ok.
+        // TODO: Random seed or fixed for reproducibility?
+        //srand(time({}));
+        srand(0);
+        for (TypeLongInt i = 0; i < num_par_histories; i++) {
+            par_histories.at(i) = std::rand() % num_histories_c0;
+        }
     }
 
-    TypeLongInt num_histories_c2 = TypeLongInt(1) << num_artificial2;
-
-    size_t num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c2) * fraction);
-
-    vector<TypeLongInt> par_histories(num_par_histories);
-
-    vector<complex<float>> amplitudes(num_par_histories);
-
-    // TODO: Random seed or fixed for reproducibility?
-    //srand(time({}));
-    srand(0);
-
-    // TODO: Check if non-unique histories is ok.
-    for (TypeLongInt i = 0; i < num_par_histories; i++) {
-        par_histories.at(i) = std::rand() % num_histories_c2;
-    }
+    vector<unordered_statevector> statevectors(num_par_histories);
 
     // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
-    const float threshold2 = threshold * threshold;
-    parallel_for(0, num_par_histories, [&](size_t history2_ind, size_t t_idx) {
+    const float threshold_sqr = threshold * threshold;
+    parallel_for(0, num_par_histories, [&](size_t history0_ind, size_t t_idx) {
 
-        std::complex<float> local_sum(0,0);
+        unordered_statevector& local_sv = statevectors[history0_ind];
 
-        //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
-        //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
-        const size_t thread_ind = t_idx;
-        const TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
+        const TypeLongInt history0 = simulate_all ? history0_ind : par_histories.at(history0_ind);
 
-        auto start_history2 = get_time();
+        auto start_history0 = get_time();
 
         // TODO: Make a real run setting the values of all internal wires.
         // We only need to iterate a vector of all deterministic, wire-breaking gates!
 
-        if (!chunk2.right_to_left_vals(history2, thread_ind)) {
-            // Input, output and artificial not compatible with deterministic gates. The history is rejected.
-            amplitudes[history2_ind] = std::complex<float>{0.f, 0.f};
-            return;
-        }
-      
-        complex <float> contribution2 = input_amp * chunk_contribution(chunk2, thread_ind);
+        chunk0.left_to_right_vals(history0, t_idx);
+
+        complex <float> contribution0 = input_amp * chunk_contribution(chunk0, t_idx);
 
         //Check if amplitude so far is small enough to neglect.
-        if (std::norm(contribution2) < threshold2) {
-            amplitudes[history2_ind] = std::complex<float>{0.f, 0.f};
+        if (std::norm(contribution0) < threshold_sqr) {
             return;
         }
-        
-        // --0 means the gates in chunk2 with C2 history 0.
-        //std::printf("Contribution from history --%ld: %f + i%f\n", history2, contribution2.real(), contribution2.imag());
+
+        // 0-- means the gates in chunk0 with C0 history 0.
+        //std::printf("Contribution from history %ld--: %f + i%f\n", history0, contribution0.real(), contribution0.imag());
 
         Chunk& chunk1 = Circuit::chunks.at(1);
         const int num_artificial1 = chunk1.num_artificial;
-        //printf("  Number of artificial sources in chunk 2: %d\n", num_artificial1);
+        //printf("  Number of artificial sources in chunk 1: %d\n", num_artificial1);
       
         for (TypeLongInt history1 = 0; history1 < TypeLongInt(1) << num_artificial1; history1++) {
             //cout << "  In history1: " << history1 << endl;
             //histories.at(1) = history1;
 
-            chunk1.reset_values(thread_ind); //Introduces two warnings}
+            chunk1.reset_values(t_idx);
       
-            if (!chunk1.right_to_left_vals(history1, thread_ind)) {
-                //std::printf("    Vals pass rejected history -%ld%ld.\n", history1, history2);
-                continue;
-            }
+            chunk1.left_to_right_vals(history1, t_idx);
 
-            const std::complex<float> contribution1 = contribution2 * chunk_contribution(chunk1, thread_ind);
-            if (std::norm(contribution1) < threshold2) continue;
+            const amplitude contribution1 = contribution0 * chunk_contribution(chunk1, t_idx);
+            if (std::norm(contribution1) < threshold_sqr) continue;
 
-            //std::printf("  Contribution from history -%ld%ld: %f + i%f\n", history1, history2, contribution1.real(), contribution1.imag());
+            //std::printf("  Contribution from history %ld%ld-: %f + i%f\n", history0, history1, contribution1.real(), contribution1.imag());
       
-            Chunk& chunk0 = Circuit::chunks.at(0);
-            const int num_artificial0 = chunk0.num_artificial;
-            //printf("    Number of artificial sources in chunk 0: %d\n", num_artificial0);
+            Chunk& chunk2 = Circuit::chunks.at(2);
+            const int num_artificial2 = chunk2.num_artificial;
+            //printf("    Number of artificial sources in chunk 2: %d\n", num_artificial2);
       
-            for (TypeLongInt history0 = 0; history0 < TypeLongInt(1) << num_artificial0; history0++) {
-                //cout << "    In history0: " << history0 << endl;                        
+            for (TypeLongInt history2 = 0; history2 < TypeLongInt(1) << num_artificial2; history2++) {
+                //cout << "    In history2: " << history2 << endl;                        
 
-                chunk0.reset_values(thread_ind);      
+                chunk2.reset_values(t_idx);      
       
-                if (!chunk0.right_to_left_vals(history0, thread_ind)) continue;
+                chunk2.left_to_right_vals(history2, t_idx);
       
-                //printf("    contribution1: %f + i%f\n", contribution1.real(), contribution1.imag());
+                //printf("    contribution2: %f + i%f\n", contribution2.real(), contribution2.imag());
       
-                complex <float> contribution0 = contribution1 * chunk_contribution(chunk0, thread_ind);
+                complex <float> contribution2 = contribution1 * chunk_contribution(chunk2, t_idx);
       
-                //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution0.real(), contribution0.imag());
-                local_sum += contribution0;
+                //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution2.real(), contribution2.imag());
+                // Old: local_sum += contribution2;
+                // TODO: Find output state of history.
+                bitstr output_state;
+                for (const std::shared_ptr<InternalWire>& w : Circuit::output_sources)
+                    output_state.set(w->wire, w->get_val(t_idx));
+                
+                local_sv[output_state] += contribution2;
             }
         }
 
-        //auto end_history2 = get_time();
+        //auto end_history0 = get_time();
 
-        // Combine into total_amplitude safely
-        //printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind, local_sum.real(), local_sum.imag());
-        amplitudes.at(history2_ind) = local_sum;
         for(int i=0; i < 3; ++i){
-            Circuit::chunks.at(i).reset_values(thread_ind);
+            Circuit::chunks.at(i).reset_values(t_idx);
         }
     });
-
-    auto total_amplitude = parallel_reduce(0, num_par_histories, [&](size_t i) {
-        return amplitudes[i];
-    });    
-
-    complex<float> retval = total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
-
-    //cout << "  Simulator returning amplitude: " << retval.real() << " + i" << retval.imag() << endl;
     
-    return retval;
+    
+
+    // TODO: Do parallel for and reduce together for performance? Or tree based reduction?
+    for (const auto& local_sv : statevectors) {
+        for (const auto& [idx, amplitude] : local_sv) {
+            global_statevector[idx] += amplitude;
+        }
+    }
+
+    if (!simulate_all) {
+        float scaling_factor = (float)num_histories_c0 / (float)num_par_histories;
+        for (const auto& [idx, amplitude] : global_statevector) {
+            global_statevector[idx] += amplitude * scaling_factor;
+        }
+    }
+
+    return global_statevector;
 }

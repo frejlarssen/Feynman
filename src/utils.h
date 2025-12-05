@@ -175,55 +175,114 @@ TypeLongInt string_to_int128(const string& s) {
     return negative ? -result : result;
 }
 
-string bitvector_to_hexstring(vector<bool> bits) {
-    const size_t n = bits.size();
-    
-    const size_t n_hexchars = (n + 3) / 4; // 4 bits per hex char
-    string hexstr(n_hexchars, '0');
+string bitstr_to_hexstring(const bitstr& bits, int nr_qubits = -1) {
+    if (nr_qubits == -1) {
+        nr_qubits = BITSTRING_SIZE * 8;
+    }
 
+    std::ostringstream oss;
+    oss << "0x";
+    for (int i = (nr_qubits + 3) / 4 - 1; i >= 0; i--) {
+        uint8_t nibble = 0;
+        for (int j = 0; j < 4; j++) {
+            if (bits.test(i * 4 + j)) {
+                nibble |= (1 << j);
+            }
+        }
+        oss << std::hex << std::uppercase << (int)nibble;
+    }
+    return oss.str();
+}
+
+bitstr hexstring_to_bitstr(const string& hexstr) {
+    string hex = hexstr;
+    if (hex.size() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) {
+        hex = hex.substr(2);
+    }
+
+    bitstr bits;
+    size_t n = hex.size();
     for (size_t i = 0; i < n; i++) {
-        if (bits[i]) {
-            size_t hex_index = i / 4;
-            size_t bit_index = i % 4;
-            char& hex_char = hexstr[hex_index];
-            if (hex_char >= '0' && hex_char <= '9') {
-                hex_char = "0123456789ABCDEF"[hex_char - '0' + (1 << bit_index)];
-            } else {
-                hex_char = "0123456789ABCDEF"[hex_char - 'A' + 10 + (1 << bit_index)];
+        char c = hex[n - 1 - i]; // reverse for little-endian
+        uint8_t value;
+        if (c >= '0' && c <= '9') {
+            value = c - '0';
+        } else if (c >= 'A' && c <= 'F') {
+            value = c - 'A' + 10;
+        } else if (c >= 'a' && c <= 'f') {
+            value = c - 'a' + 10;
+        } else {
+            cerr << "Invalid hex character: " << c << endl;
+            exit(1);
+        }
+
+        for (int j = 0; j < 4; j++) {
+            if (value & (1 << j)) {
+                bits.set(i * 4 + j);
             }
         }
     }
 
-    // Reverse for little-endian
-    reverse(hexstr.begin(), hexstr.end());
-    return "0x" + hexstr;
+    return bits;
 }
 
-vector<bool> hexstring_to_bitvector(const string& hexstr) {
-    string s = hexstr;
-    if (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-        s = s.substr(2); // Remove 0x
-    }
-
-    reverse(s.begin(), s.end()); // Reverse for LSB first
-    vector<bool> bits;
-    bits.reserve(s.size() * 4); // 4 bits per hex char
-
-    for (char c : s) {
-        uint8_t nibble;
-        //printf("c: %c\n", c);
-        if (c >= '0' && c <= '9') {
-            nibble = c - '0';
-        } else if (c >= 'a' && c <= 'f') {
-            nibble = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'F') {
-            nibble = c - 'A' + 10;
-        } else {
-            throw std::runtime_error("Invalid hex character in string: " + hexstr);
+static inline void serialize_bitstr(const bitstr &b, std::vector<uint8_t> &out) {
+    // for each byte in b
+    for (size_t i = 0; i < b.size(); i += 8) {
+        uint8_t byte = 0;
+        for (size_t j = 0; j < 8; j++) {
+            if (b.test(i + j))
+                byte |= (1u << j);
         }
-        for (int i = 0; i < 4; i++) { // LSB first
-            bits.push_back((nibble >> i) & 1);
+        out.push_back(byte);
+    }
+}
+
+static inline bitstr deserialize_bitstr(const uint8_t *&ptr) {
+    bitstr b;
+    for (size_t i = 0; i < b.size(); i += 8) {
+        uint8_t byte = *ptr++;
+        for (size_t j = 0; j < 8; j++) {
+            if (byte & (1u << j))
+                b.set(i + j);
         }
     }
-    return bits;
+    return b;
+}
+
+std::vector<uint8_t> serialize_statevector(const unordered_statevector &sv) {
+    std::vector<uint8_t> buf;
+
+    uint64_t count = sv.size();
+    buf.insert(buf.end(), (uint8_t *)&count, (uint8_t *)&count + sizeof(count));
+
+    for (auto &p : sv) {
+        serialize_bitstr(p.first, buf);
+
+        double real = p.second.real();
+        double imag = p.second.imag();
+        buf.insert(buf.end(), (uint8_t *)&real, (uint8_t *)&real + sizeof(real));
+        buf.insert(buf.end(), (uint8_t *)&imag, (uint8_t *)&imag + sizeof(imag));
+    }
+    return buf;
+}
+
+unordered_statevector deserialize_statevector(const uint8_t *buf) {
+    const uint8_t *ptr = buf;
+
+    uint64_t count = *(uint64_t *)ptr;
+    ptr += sizeof(uint64_t);
+
+    unordered_statevector sv;
+    sv.reserve(count);
+
+    for (uint64_t i = 0; i < count; i++) {
+        bitstr key = deserialize_bitstr(ptr);
+
+        double real = *(double *)ptr; ptr += sizeof(double);
+        double imag = *(double *)ptr; ptr += sizeof(double);
+
+        sv[key] += amplitude(real, imag);  // sum here in case of duplicates
+    }
+    return sv;
 }

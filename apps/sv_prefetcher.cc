@@ -1,10 +1,12 @@
 // Executable for a Feynman simulation but with statevectors as input and output
+// TODO: Rename to sv_unknown_output.cc or something similar.
 
 #include "../src/typedef.h"
 #include "../src/simulator.h"
 #include "../src/mpiScheduler.h"
 #include "../src/iofiles.h"
 #include "../src/utils.h"
+#include "../src/final_reduction.h"
 #include <iostream>
 #ifdef USE_OPENMP
     #include <omp.h>
@@ -19,10 +21,9 @@ using namespace std;
 struct Options {
     string circuit_file;
     string input_statevector_file;
-    string output_bitstring_subset;
     string output_statevector_file;
+    int num_chunk0 = -1;
     int num_chunk1 = -1;
-    int num_chunk2 = -1;
     std::size_t batch_size = 32;
     float fraction = 1.0;
     float threshold = CLOSE_TO_ZERO;
@@ -33,7 +34,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -b output_bitstring_subset -o output_sv -p num_chunk1 -r num_chunk2 -f fraction_of_histories -v verbosity (-D [Dense]) -s batch_size\n";
+    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk0 -r num_chunk1 -f fraction_of_histories -v verbosity (-D [Dense]) -s batch_size\n";
 
     if (argc < 4) {
         cout << helpstr;
@@ -55,7 +56,7 @@ Options get_options(int argc, char* argv[]) {
     }
     cout << endl;
 
-    while ((k = getopt(argc, argv, "c:i:b:o:p:r:s:f:t:v:D")) != -1) {
+    while ((k = getopt(argc, argv, "c:i:o:p:r:s:f:t:v:D")) != -1) {
         switch (k) {
           case 'c':
             opts.circuit_file = optarg;
@@ -63,14 +64,11 @@ Options get_options(int argc, char* argv[]) {
           case 'i':
             opts.input_statevector_file = optarg;
             break;
-          case 'b':
-            opts.output_bitstring_subset = optarg;
-            break;
           case 'o':
             opts.output_statevector_file = optarg;
             break;
           case 'p':
-            opts.num_chunk2 = to_int(optarg);
+            opts.num_chunk0 = to_int(optarg);
             break;
           case 'r':
             opts.num_chunk1 = to_int(optarg);
@@ -129,12 +127,12 @@ int main(int argc, char* argv[]) {
 
     ParsedCircuit::parse_circuit(opts.circuit_file);
 
-    if (opts.num_chunk1 == -1 && opts.num_chunk2 == -1) {
+    if (opts.num_chunk0 == -1 && opts.num_chunk1 == -1) {
         // Autotune if checkpoints not given. (This takes longer time initially.)
         Circuit::build_autotuned_circuit();
     }
-    else if (opts.num_chunk1 > -1 && opts.num_chunk2 > -1) {
-        Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
+    else if (opts.num_chunk0 > -1 && opts.num_chunk1 > -1) {
+        Circuit::build_circuit(opts.num_chunk0, opts.num_chunk1);
     }
     else {
         cerr << "Both -p and -r must be set, or none of them for autotuning." << endl;
@@ -145,6 +143,8 @@ int main(int argc, char* argv[]) {
         printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
 
     if (print_rank0_timings >= 1) {
+        printf("Circuit has %d qubits.\n", Circuit::n);
+        
         const int num_gates = ParsedCircuit::nr_gates;
         printf("Circuit has %d gates. Distributed as:\n", num_gates, Circuit::n);
         printf("  Chunk 0: %d gates\n", Circuit::chunks.at(0).gates.size());
@@ -166,97 +166,81 @@ int main(int argc, char* argv[]) {
         
         printf("For each simulate call we simulate over: \n");
         printf("  %lu histories in total.\n", num_histories_total);
-        printf("  %lu histories in parallel.\n", (1 << Circuit::chunks.at(2).num_artificial));
+        printf("  %lu histories in parallel.\n", (1 << Circuit::chunks.at(0).num_artificial));
     }
 
-    // Load input bitstrings
-    vector<InputBitstrings> input_bitstrings = load_input_bitvectors_from_master(opts.input_statevector_file, opts.dense, world_rank, MPI_COMM_WORLD);
+    // Load input statevector
+    vector<StatevectorEntry> input_sv = load_input_sv_from_master(opts.input_statevector_file, opts.dense, world_rank, MPI_COMM_WORLD);
+    const TypeLongInt input_sv_size = input_sv.size();
 
-    // Load output bitstrings to simulate (if the option is ON)
-//#ifdef USE_SUBSET_OUTBITSTRINGS
-    vector<vector<bool>> output_bitstrings = load_output_bitvectors_from_master(opts.output_bitstring_subset, world_rank, MPI_COMM_WORLD);
-    const TypeLongInt total_output_bitstrings = output_bitstrings.size();
-//#else
-//    const TypeLongInt total_output_bitstrings = 1ULL << Circuit::n;              // overflow if n >= 128
-//#endif
     if(print_rank0_timings)
-    std::cout << "Total output bitstrings to simulate: " << static_cast<std::size_t>(total_output_bitstrings) <<std::endl;
+    std::cout << "Total input entries to simulate: " << static_cast<std::size_t>(input_sv_size) <<std::endl;
 
-    // Loop through all input-output pairs. Start with amplitude depending on input statevector.
+    // Loop through all inputs.
     const std::size_t num_workers = (opts.batch_size > 0) ? std::max(1,world_size - 1) : world_size;
     const std::size_t my_worker = world_rank;
-    std::string local_buf;
-    local_buf.reserve(1<<20);
-    std::string local_buf_timing;
-    local_buf_timing.reserve(1<<16);
+    unordered_statevector local_output_sv;
+    std::string local_sv_timing;
+    local_sv_timing.reserve(1<<16);
 
-    const std::size_t batch_size = (opts.batch_size > 0) ? opts.batch_size : ( (total_output_bitstrings + num_workers - 1)/ num_workers) ;
+    const std::size_t batch_size = (opts.batch_size > 0) ? opts.batch_size : ( (input_sv_size + num_workers - 1)/ num_workers) ;
 
     if (print_rank0_timings && opts.verbosity >= 1){
-        printf("Starting simulation over all input-output pairs:\n -- Total output bitstrings = %d -- active workers = %d - OMP_THREADS per worker = %d - batch_size = %d --:\n", total_output_bitstrings, num_workers, t_omp, batch_size);
+        printf("Starting simulation over all inputs:\n -- Total input entries = %d -- active workers = %d - OMP_THREADS per worker = %d - batch_size = %d --:\n", input_sv_size, num_workers, t_omp, batch_size);
     }
     MPI_Barrier(MPI_COMM_WORLD);
 
     duration<double> total_clocktime_simulate = zero_duration();
     int num_calls_simulate = 0;
 
-    // Loop though all output bitstrings
-    std::size_t count_processed_bitstrings = 0;
+    // Loop though all input entries
+    std::size_t count_processed_entries = 0;
     auto start_svcc_sim = get_time();
 
     // Worker body
-    auto process_outputs = [&](std::size_t start, std::size_t end){
-        for (std::size_t output_int = start; output_int < end; ++output_int) {
-            if(output_int >= total_output_bitstrings)break;
-//    #ifdef USE_SUBSET_OUTBITSTRINGS
-            const vector<bool> output_bits = output_bitstrings[output_int];
-//    #else
-//            const TypeLongInt bitstringDecimal = output_int;
-//            std::vector<bool> output_bits = bit_array_from_int(bitstringDecimal, Circuit::n);
-//    #endif
-            auto start_simulate_bitstring = get_time();
-            ++count_processed_bitstrings;
+    auto process_inputs = [&](std::size_t start, std::size_t end){
+        for (std::size_t input_idx = start; input_idx < end; ++input_idx){
+            if(input_idx >= input_sv_size)break;
 
-            std::complex<float> output_amp(0, 0);
+            auto start_simulate_entry = get_time();
+            ++count_processed_entries;
 
-            // Loop through the input bitstrings specified in input file
-            for (const auto& input : input_bitstrings) {
-                std::vector<bool> input_bits = input.index;
-                
-                std::complex<float> amp_in = input.amp;
+            StatevectorEntry& input = input_sv.at(input_idx);
+            bitstr input_bits = input.index;
+            amplitude amp_in = input.amp;
 
-                auto start_simulate = get_time();
-                output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction, opts.threshold, 3);
-                auto end_simulate = get_time();
-                num_calls_simulate++;
+            auto start_simulate = get_time();
+            unordered_statevector output_sv = simulate(input_bits, amp_in, opts.fraction, opts.threshold, 3);
+            for (const auto& [out_bits, out_amp] : output_sv) {
+                local_output_sv[out_bits] += out_amp;
+            }
+            auto end_simulate = get_time();
+            num_calls_simulate++;
 
-                const duration<double> clocktime_simulate = end_simulate - start_simulate;
+            const duration<double> clocktime_simulate = end_simulate - start_simulate;
 
-                if (opts.verbosity >= 2) {
-                    printf("Worker %d - Clocktime to simulate input |", my_worker);
-                    for (int i = Circuit::n - 1; i >= 0; --i) printf("%d", input_bits[i] ? 1 : 0);
-                    printf("> to output |");
-                    for (int i = Circuit::n - 1; i >= 0; --i) printf("%d", output_bits[i] ? 1 : 0);
-                    printf("> : %f seconds\n", clocktime_simulate.count());
-                }
-
-                total_clocktime_simulate += clocktime_simulate;
-                // Reset all values (for all threads if OpenMP is used)
-                Circuit::reset_values_all();
+            if (opts.verbosity >= 2) {
+                printf("Worker %d - Clocktime to simulate input |", my_worker);
+                printf("%s", bitstr_to_hexstring(input_bits, Circuit::n).c_str());
+                printf("> : %f seconds\n", clocktime_simulate.count());
             }
 
-            auto end_simulate_bitstring = get_time();
-            const duration<double> clocktime_bitstring = end_simulate_bitstring - start_simulate_bitstring;
-            local_buf_timing += bitvector_to_hexstring(output_bits) + ":" +
-                                std::to_string(clocktime_bitstring.count()) + "\n";
+            total_clocktime_simulate += clocktime_simulate;
+            // Reset all values (for all threads if OpenMP is used)
+            Circuit::reset_values_all();
+            
 
-            // Write to output file
-            bool writeFlag = (opts.dense || (std::abs(output_amp) > opts.threshold));
-            if (writeFlag) {
-                local_buf += bitvector_to_hexstring(output_bits) + ":" +
-                            std::to_string(output_amp.real()) + "+" +
-                            std::to_string(output_amp.imag()) + "i\n";
+            auto end_simulate_entry = get_time();
+            const duration<double> clocktime_entry = end_simulate_entry - start_simulate_entry;
+            try {
+                local_sv_timing += bitstr_to_hexstring(input_bits, Circuit::n) + ":" +
+                                std::to_string(clocktime_entry.count()) + "\n";
             }
+            catch (const std::bad_alloc& e) {
+                cerr << "Error in sv_prefetcher: Out of memory when recording timing for input entry " << input_idx << endl;
+                exit(1);
+            }
+            
         }
     };
     //prctl(PR_TASK_PERF_EVENTS_ENABLE, 0, 0, 0, 0);
@@ -270,19 +254,19 @@ int main(int argc, char* argv[]) {
     if (opts.batch_size > 0){ // run with asyncronous server - worker implementation
         if (world_size == 1){
             if (world_rank == 0){
-                process_outputs(0, total_output_bitstrings);
+                process_inputs(0, input_sv_size);
             }
         }else{
             // Multi-rank: server/worker structure
             if (world_rank == 0){
-                run_master_async(total_output_bitstrings, batch_size, MPI_COMM_WORLD);
+                run_master_async(input_sv_size, batch_size, MPI_COMM_WORLD);
             }else{
                 Prefetcher pf;
-                run_worker_with(pf, MPI_COMM_WORLD, process_outputs);
+                run_worker_with(pf, MPI_COMM_WORLD, process_inputs);
             }
         }
     }else{ // run with fixed batch size, no server - worker
-        process_outputs(my_worker * batch_size, batch_size * (my_worker + 1) );
+        process_inputs(my_worker * batch_size, batch_size * (my_worker + 1) );
     }
 #endif
 #if PERF_INSTRUMENT
@@ -290,14 +274,24 @@ int main(int argc, char* argv[]) {
     //prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
 #endif
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD); // Wait for all computation to finish
     auto end_svcc_simulation = get_time();
 
-    // parallel output to disk
-    int err = write_output_to_disk(opts.output_statevector_file, local_buf, world_rank, MPI_COMM_WORLD);
-    auto timing_file_path = replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
-    int err1 = write_output_to_disk(timing_file_path, local_buf_timing, world_rank, MPI_COMM_WORLD);
-
+    ordered_statevector global_output_sv;
+    global_sum_reduce(local_output_sv, &global_output_sv, MPI_COMM_WORLD);
+    
+    // Write output to file
+    try {
+        std::ofstream out(opts.output_statevector_file, std::ios::out);
+        for (auto &p : global_output_sv) {
+            out << bitstr_to_hexstring(p.first, Circuit::n) << ": "
+                << p.second.real() << "+"
+                << p.second.imag() << "i\n";
+        }
+    } catch (const std::ofstream::failure& e) {
+        cerr << "Error in sv_prefetcher: Unable to write to output statevector file " << opts.output_statevector_file << endl;
+        exit(1);
+    }
 
     int tot_num_calls_simulate = 0;
     MPI_Reduce(&num_calls_simulate, &tot_num_calls_simulate, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -309,10 +303,9 @@ int main(int argc, char* argv[]) {
     if(opts.verbosity >= 1){
         fflush(stdin);
         MPI_Barrier(MPI_COMM_WORLD);
-        printf("Worker %d - processed %d / %d bitstrings\n", my_worker, count_processed_bitstrings, total_output_bitstrings);
+        printf("Worker %d - processed %d / %d entries\n", my_worker, count_processed_entries, input_sv_size);
     }
 
-    //out_file.close();
     fflush(stdin);
     MPI_Barrier(MPI_COMM_WORLD);
 

@@ -61,7 +61,7 @@ parallel_reduce(size_t start, size_t end, F&& func)
         re += v.real();
         im += v.imag();
     }
-    std::complex<float> result(re, im);
+    amplitude result(re, im);
     return result;
 
 #elif defined(USE_THREADS)
@@ -85,7 +85,7 @@ parallel_reduce(size_t start, size_t end, F&& func)
     for (auto& th : threads)
         th.join();
 
-    std::complex<float> total(0.0f, 0.0f);
+    amplitude total(0.0f, 0.0f);
     for (auto& val : partial)
         total += val;
     return total;
@@ -96,7 +96,7 @@ parallel_reduce(size_t start, size_t end, F&& func)
         re += v.real();
         im += v.imag();
     }
-    std::complex<float> result(re, im);
+    amplitude result(re, im);
     return result;
 #endif
 }

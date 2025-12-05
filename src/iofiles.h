@@ -9,18 +9,13 @@
 #include <charconv>   // for from_chars (C++17)
 #include <type_traits>
 #include <limits>
+#include <bitset>
+#include <unordered_map>
 
 #include "typedef.h"
 #include "utils.h"
 
-
-
-struct InputBitstrings {
-    vector<bool> index;           // basis-state index
-    std::complex<float> amp;          // amplitude
-};
-
-static inline string input_bitstring_to_string(const InputBitstrings& ib) {
+static inline string input_bitstring_to_string(const StatevectorEntry& ib) {
     string str = "";
 
     for (int i = ib.index.size()-1; i >= 0; i--) {
@@ -37,7 +32,7 @@ static inline string input_bitstring_to_string(const InputBitstrings& ib) {
 }
 
 
-//static_assert(std::is_trivially_copyable_v<InputBitstrings>);
+//static_assert(std::is_trivially_copyable_v<StatevectorEntry>);
 
 static inline bool parse_int(const char* b, const char* e, TypeLongInt& out) {
     auto res = std::from_chars(b, e, out, 10);
@@ -45,21 +40,21 @@ static inline bool parse_int(const char* b, const char* e, TypeLongInt& out) {
 }
 
 // Load & parse once
-static inline std::vector<InputBitstrings>
-read_input_bitstrings(const vector<char> buffer, const bool dense){
+static inline std::vector<StatevectorEntry>
+read_input_entries(const vector<char> buffer, const bool dense){
 
     std::istringstream in(std::string(buffer.data(), buffer.size()-1));
     if (!in) throw std::runtime_error("Cannot convert bitstring buffer to stream ");
 
-    std::vector<InputBitstrings> entries;
-    entries.reserve(1 << 16);    
+    std::vector<StatevectorEntry> entries;
+    entries.reserve(1 << 16);
 
     std::string line;
     //TypeLongInt next_dense_idx = 0;
     while (std::getline(in, line)) {
         if (line.empty()) continue;
 
-        InputBitstrings e{};
+        StatevectorEntry e{};
         //if (dense) {
         //    e.index = next_dense_idx++;                  // 0,1,2,...
         //    e.amp   = string_to_complex(line);
@@ -70,7 +65,7 @@ read_input_bitstrings(const vector<char> buffer, const bool dense){
             const string idx_str = line.substr(0, c);
             const string amp_str = line.substr(c + 1);
 
-            vector<bool> idx = hexstring_to_bitvector(idx_str);
+            bitstr idx = hexstring_to_bitstr(idx_str);
 
             e.index = idx;
             e.amp   = string_to_complex(amp_str);
@@ -94,8 +89,8 @@ inline vector<char> read_file_to_buffer(const std::string& path){
     return buffer;
 }
 
-inline std::vector<InputBitstrings>
-load_input_bitvectors_from_master(const std::string& path, const bool dense,
+inline std::vector<StatevectorEntry>
+load_input_sv_from_master(const std::string& path, const bool dense,
                                     const int world_rank, MPI_Comm comm){
     vector<char> buffer;
     size_t buffer_size;
@@ -112,11 +107,10 @@ load_input_bitvectors_from_master(const std::string& path, const bool dense,
     // !! currently can send INT_MAX number of data --> implemente broadcast as loop since we could have up to 2^n-1 bitstrings !!
     MPI_Bcast(buffer.data(), buffer_size, MPI_BYTE, 0, comm);
 
-    std::vector<InputBitstrings> input_bitstrings;
-    input_bitstrings = read_input_bitstrings(buffer, dense);
-    size_t n_input_bitstrings = input_bitstrings.size();
+    std::vector<StatevectorEntry> input_entries;
+    input_entries = read_input_entries(buffer, dense);
 
-    return input_bitstrings;
+    return input_entries;
 }
 
 
@@ -243,76 +237,76 @@ load_output_bitstrings_from_master_as_intvector(const std::string& path, const i
     return output_bitstrings;
 }
 
-//template <typename TypeLongInt>
-inline std::vector<std::vector<bool>>
-load_output_bitvectors_from_master(const std::string& path, const int world_rank, MPI_Comm comm)
-{
-    vector<char> hexstrings_buffer;
-    std::size_t buffer_size;
-
-    if (world_rank == 0) {
-        // Must return std::vector<TypeLongInt>
-        hexstrings_buffer = read_file_to_buffer(path);
-        buffer_size = hexstrings_buffer.size();
-    }
-
-    // broadcast size
-    MPI_Bcast(&buffer_size, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
-
-    // Allocate/resize on non-root ranks once we know the size
-    if (world_rank != 0) {
-        hexstrings_buffer.resize(buffer_size);
-    }
-
-    // --- Broadcast data as raw bytes ---
-
-    // MPI_Bcast count is int, so chunk if needed
-    const std::size_t max_bytes_per_bcast =
-        static_cast<std::size_t>(std::numeric_limits<int>::max());
-
-    std::size_t offset = 0;
-    while (offset < buffer_size) {
-        const std::size_t remaining = buffer_size - offset;
-        const int chunk = static_cast<int>(
-            remaining > max_bytes_per_bcast ? max_bytes_per_bcast : remaining
-        );
-
-        MPI_Bcast(hexstrings_buffer.data() + offset, chunk, MPI_BYTE, 0, comm);
-        offset += static_cast<std::size_t>(chunk);
-    }
-    
-    std::vector<std::vector<bool>> bitstrings;
-
-    std::istringstream ss(hexstrings_buffer.data());
-    // First lines are
-    // num_bitstrings\n
-    // size_bitstring_in_hexchars\n
-    std::string line;
-    std::getline(ss, line);
-    const std::size_t N = std::stoull(line);
-
-    std::getline(ss, line);
-    const std::size_t size_hexchars = std::stoull(line);
-    
-    bitstrings.reserve(N);
-    
-    while (std::getline(ss, line)) {        
-        // Line is of type 0xABCDEF...
-        if (line.size() < 2 || line[0] != '0' || line[1] != 'x') {
-            throw std::runtime_error("Hexstring line does not start with 0x: " + line);
-        }
-        line = line.substr(2); // Remove 0x
-
-        if (line.size() != size_hexchars * 2) {
-            throw std::runtime_error("Hexstring line has incorrect length: " + line);
-        }
-
-        std::vector<bool> bits = hexstring_to_bitvector(line);
-        bitstrings.push_back(bits);
-    }
-
-    return bitstrings;
-}
+////template <typename TypeLongInt>
+//inline std::vector<std::vector<bool>>
+//load_output_bitvectors_from_master(const std::string& path, const int world_rank, MPI_Comm comm)
+//{
+//    vector<char> hexstrings_buffer;
+//    std::size_t buffer_size;
+//
+//    if (world_rank == 0) {
+//        // Must return std::vector<TypeLongInt>
+//        hexstrings_buffer = read_file_to_buffer(path);
+//        buffer_size = hexstrings_buffer.size();
+//    }
+//
+//    // broadcast size
+//    MPI_Bcast(&buffer_size, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
+//
+//    // Allocate/resize on non-root ranks once we know the size
+//    if (world_rank != 0) {
+//        hexstrings_buffer.resize(buffer_size);
+//    }
+//
+//    // --- Broadcast data as raw bytes ---
+//
+//    // MPI_Bcast count is int, so chunk if needed
+//    const std::size_t max_bytes_per_bcast =
+//        static_cast<std::size_t>(std::numeric_limits<int>::max());
+//
+//    std::size_t offset = 0;
+//    while (offset < buffer_size) {
+//        const std::size_t remaining = buffer_size - offset;
+//        const int chunk = static_cast<int>(
+//            remaining > max_bytes_per_bcast ? max_bytes_per_bcast : remaining
+//        );
+//
+//        MPI_Bcast(hexstrings_buffer.data() + offset, chunk, MPI_BYTE, 0, comm);
+//        offset += static_cast<std::size_t>(chunk);
+//    }
+//    
+//    std::vector<std::vector<bool>> bitstrings;
+//
+//    std::istringstream ss(hexstrings_buffer.data());
+//    // First lines are
+//    // num_bitstrings\n
+//    // size_bitstring_in_hexchars\n
+//    std::string line;
+//    std::getline(ss, line);
+//    const std::size_t N = std::stoull(line);
+//
+//    std::getline(ss, line);
+//    const std::size_t size_hexchars = std::stoull(line);
+//    
+//    bitstrings.reserve(N);
+//    
+//    while (std::getline(ss, line)) {        
+//        // Line is of type 0xABCDEF...
+//        if (line.size() < 2 || line[0] != '0' || line[1] != 'x') {
+//            throw std::runtime_error("Hexstring line does not start with 0x: " + line);
+//        }
+//        line = line.substr(2); // Remove 0x
+//
+//        if (line.size() != size_hexchars * 2) {
+//            throw std::runtime_error("Hexstring line has incorrect length: " + line);
+//        }
+//
+//        std::vector<bool> bits = hexstring_to_bitvector(line);
+//        bitstrings.push_back(bits);
+//    }
+//
+//    return bitstrings;
+//}
 
 inline int write_output_to_disk(const std::string& filename,
                          const std::string& local_buf,
