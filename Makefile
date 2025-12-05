@@ -27,15 +27,11 @@ sv_scheduler_mpi:
 sv_prefetcher_mpi:
 	$(MPICXX) $(CXXFLAGS) -DUSE_OPENMP $(OMPFLAGS) apps/sv_prefetcher.cc -o sv_prefetcher_mpi.x
 
-# TODO: Rename to unknown_output or similar.
-sv_prefetcher_mpi_subsetbitstrings:
-	$(MPICXX) $(CXXFLAGS) -DUSE_OPENMP -DUSE_SUBSET_OUTBITSTRINGS $(OMPFLAGS) apps/sv_prefetcher.cc -o sv_prefetcher_subset_mpi.x
-
-sv_prefetcher_mpi_subsetbitstrings_noomp:
-	$(MPICXX) $(CXXFLAGS) -DUSE_SUBSET_OUTBITSTRINGS apps/sv_prefetcher.cc -o sv_prefetcher_subset_mpi.x
+sv_embedded_mpi:
+	$(MPICXX) $(CXXFLAGS) -DUSE_OPENMP $(OMPFLAGS) apps/sv_embedded.cc -o sv_embedded_mpi.x
 
 sim_qft:
 	g++ simulator_qft.cc -o sim_qft.x
 
 clean:
-	rm -f simulator.x bitstr sv_omp.x bitstr_mpi.x sv_batch_mpi.x sv_scheduler_mpi.x sv_prefetcher_mpi.x sv_prefetcher_subset_mpi.x sim_qft.x
+	rm -f simulator.x bitstr sv_omp.x bitstr_mpi.x sv_batch_mpi.x sv_scheduler_mpi.x sv_prefetcher_mpi.x sv_prefetcher_subset_mpi.x sv_embedded_mpi.x sim_qft.x

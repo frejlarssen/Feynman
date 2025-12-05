@@ -1,5 +1,6 @@
 // Executable for a Feynman simulation but with statevectors as input and output
-// TODO: Rename to sv_unknown_output.cc or something similar.
+// The output is treated as any internal wire, in order to eliminate the need to
+// loop through all output states.
 
 #include "../src/typedef.h"
 #include "../src/simulator.h"
