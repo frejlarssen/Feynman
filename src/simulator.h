@@ -59,14 +59,17 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
         }
         const auto wire_left_value = gate.qubits.at(num_ctrl)->wire_left->get_val(thread);
         const auto wire_right_value = gate.qubits.at(num_ctrl)->wire_right->get_val(thread);
-        const float inv_over_sqrt2 = 1.0 / sqrt(2.0);
+        const float over_sqrt2 = 1.0 / sqrt(2.0);
+        const amplitude i_over_sqrt2 = complex<float>(0.0, 1.0) * over_sqrt2;
+        const amplitude sqrt_i = complex<float>(1.0, 1.0) * over_sqrt2;
+        const amplitude sqrt_neg_i = complex<float>(1.0, -1.0) * over_sqrt2;
         // Activate gate
         switch (gate.type) {
         case HADAMARD:
             if (wire_left_value && wire_right_value) {
-                contribution *= -inv_over_sqrt2;
+                contribution *= -over_sqrt2;
             } else {
-                contribution *= inv_over_sqrt2;
+                contribution *= over_sqrt2;
             }
             break;
         case PHASE:
@@ -77,6 +80,30 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
         case PAULIZ:
             if (wire_left_value) {
                 contribution *= -1;
+            }
+            break;
+        case SX:
+            if (wire_left_value == wire_right_value) {
+                contribution *= over_sqrt2;
+            } else {
+                contribution *= -i_over_sqrt2;
+            }
+            break;
+        case SY:
+            if (wire_left_value && !wire_right_value) {
+                contribution *= -over_sqrt2;
+            }
+            else {
+                contribution *= over_sqrt2;
+            }
+            break;
+        case SW:
+            if (wire_left_value == wire_right_value) {
+                contribution *= over_sqrt2;
+            } else if (wire_left_value) {
+                contribution *= - over_sqrt2 * sqrt_i;
+            } else {
+                contribution *= over_sqrt2 * sqrt_neg_i;
             }
             break;
         case NOT:

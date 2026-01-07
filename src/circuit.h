@@ -21,7 +21,7 @@
 
 #define PI 3.141592653589793
 #define NUM_CHUNKS 3
-#define AUTOTUNING_STEPS 20 // The number of builds scale quadratically with this.
+#define AUTOTUNING_STEPS 5 // The number of builds scale quadratically with this.
 
 using namespace std;
 

@@ -10,20 +10,30 @@ enum GateType {
     PHASE,
     SWAP,
     NOT,
-    PAULIZ
+    PAULIZ,
+    // As defined in the supplementrary material of the supremacy paper
+    SX,
+    SY,
+    SW
 };
 
 GateType gate_type_from_string(const string& s) { //TODO: Confirm it's according to QASM 3.0
     if (s == "h" || s == "H") {
         return GateType::HADAMARD;
-    } else if (s == "p") {
+    } else if (s == "p" || s == "P" || s == "phase") {
         return GateType::PHASE;
     } else if (s == "swap" || s == "SWAP") {
         return GateType::SWAP;
     } else if (s == "x" || s == "X" || s == "not") {
         return GateType::NOT;
-    } else if (s == "z") {
+    } else if (s == "z" || s == "Z") {
         return GateType::PAULIZ;
+    } else if (s == "sx" || s == "SX") {
+        return GateType::SX;
+    } else if (s == "sy" || s == "SY") {
+        return GateType::SY;
+    } else if (s == "sw" || s == "SW" || "hz_1_2") {
+        return GateType::SW;
     } else {
         cerr << "Unknown gate type: " << s << endl;
         exit(1);
@@ -37,6 +47,9 @@ std::string gate_type_to_string(GateType type) {
         case SWAP: return "SWAP";
         case NOT: return "NOT";
         case PAULIZ: return "PAULIZ";
+        case SX: return "SX";
+        case SY: return "SY";
+        case SW: return "SW";
         default: return "UNKNOWN";
     }
 }
@@ -54,10 +67,13 @@ struct GateTypeInfo {
 };
 
 //Must be defined in the same way as in the enum GateType (if we don't remove that one and use only this).
-const array<GateTypeInfo,5> gate_type_infos = {
+const array<GateTypeInfo,8> gate_type_infos = {
     GateTypeInfo(GateType::HADAMARD, 1, true, false, 0),
     GateTypeInfo(GateType::PHASE, 1, false, true, 1),
     GateTypeInfo(GateType::SWAP, 2, true, true, 0),
     GateTypeInfo(GateType::NOT, 1, true, true, 0),
-    GateTypeInfo(GateType::PAULIZ, 1, false, true, 0)
+    GateTypeInfo(GateType::PAULIZ, 1, false, true, 0),
+    GateTypeInfo(GateType::SX, 1, true, false, 0),
+    GateTypeInfo(GateType::SY, 1, true, false, 0),
+    GateTypeInfo(GateType::SW, 2, true, false, 0)
 };
