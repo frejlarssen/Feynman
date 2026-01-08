@@ -11,7 +11,7 @@ enum GateType {
     SWAP,
     NOT,
     PAULIZ,
-    // As defined in the supplementrary material of the supremacy paper
+    // As defined in the supplementrary material of the supremacy paper VII.E
     SX,
     SY,
     SW

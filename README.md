@@ -10,6 +10,6 @@ python3 quantum_walk_generator.py
 python3 qft_generator.py
 cd ../
 mkdir outputs
-mpirun -n 4 ./sv_embedded_mpi.x -c ./circuits/qft_n8_k2.qasm -i ./statevectors/amplitude_signal_size1QB_f6_f64.0_relamp0.2_t0.5_v2.hsv -o ./outputs/qft_size1QB_20outs_t0.5_full.hsv -v 2
+mpirun -n 4 ./sv_embedded_mpi.x -c ./circuits/small.qasm -i ./statevectors/ket0_size1.hsv -f 1.0 -o ./outputs/small_f1.0.hsv -v 2
 
 ```

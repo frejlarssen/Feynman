@@ -6,6 +6,7 @@
 #include <fstream>
 #include <complex>
 #include <cstdio>
+#include <cmath>
 #include <stdexcept>
 #include <thread>
 #include <atomic>
@@ -22,6 +23,8 @@
 
 #define fLIMIT 0.9999999 // If fraction > fLIMIT, we make an exact simulation.
 
+// Only accounts for phase factors, since magnitude changes are accounted for
+// by how many times a history appears in the sampling.
 complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
     complex <float> contribution = 1.0;
     for (const shared_ptr<Gate>& gateptr : chunk.gates) {
@@ -62,14 +65,13 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
         const float over_sqrt2 = 1.0 / sqrt(2.0);
         const amplitude i_over_sqrt2 = complex<float>(0.0, 1.0) * over_sqrt2;
         const amplitude sqrt_i = complex<float>(1.0, 1.0) * over_sqrt2;
+        const amplitude i = complex<float>(0.0, 1.0);
         const amplitude sqrt_neg_i = complex<float>(1.0, -1.0) * over_sqrt2;
         // Activate gate
         switch (gate.type) {
         case HADAMARD:
             if (wire_left_value && wire_right_value) {
-                contribution *= -over_sqrt2;
-            } else {
-                contribution *= over_sqrt2;
+                contribution *= -1;
             }
             break;
         case PHASE:
@@ -84,26 +86,26 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
             break;
         case SX:
             if (wire_left_value == wire_right_value) {
-                contribution *= over_sqrt2;
+                contribution *= 1;
             } else {
-                contribution *= -i_over_sqrt2;
+                contribution *= -i;
             }
             break;
         case SY:
             if (wire_left_value && !wire_right_value) {
-                contribution *= -over_sqrt2;
+                contribution *= -1;
             }
             else {
-                contribution *= over_sqrt2;
+                contribution *= 1;
             }
             break;
         case SW:
             if (wire_left_value == wire_right_value) {
-                contribution *= over_sqrt2;
+                contribution *= 1;
             } else if (wire_left_value) {
-                contribution *= - over_sqrt2 * sqrt_i;
+                contribution *= -sqrt_i;
             } else {
-                contribution *= over_sqrt2 * sqrt_neg_i;
+                contribution *= sqrt_neg_i;
             }
             break;
         case NOT:
@@ -144,42 +146,46 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
     
 
     TypeLongInt num_histories_c0 = TypeLongInt(1) << num_artificial0;
-    
-    bool simulate_all = (fraction > fLIMIT);
 
     size_t num_par_histories;
-    vector<TypeLongInt> par_histories;
-    if (simulate_all) {
-        num_par_histories = num_histories_c0;
-    }
-    else {
-        num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c0) * fraction);
-        par_histories.resize(num_par_histories);
-        // TODO: Check if non-unique histories is ok.
-        // TODO: Random seed or fixed for reproducibility?
-        //srand(time({}));
-        srand(0);
-        for (TypeLongInt i = 0; i < num_par_histories; i++) {
-            par_histories.at(i) = std::rand() % num_histories_c0;
-        }
-    }
+    
+    // TODO: Compare different strategies.
+    float fraction0 = pow(fraction, 1.0f / 3.0f);
+    float fraction1 = pow(fraction, 1.0f / 3.0f);
+    float fraction2 = pow(fraction, 1.0f / 3.0f);
+
+    num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c0) * fraction0);
 
     vector<unordered_statevector> statevectors(num_par_histories);
+    
+    Chunk& chunk1 = Circuit::chunks.at(1);
+    const int num_artificial1 = chunk1.num_artificial;
+    //printf("  Number of artificial sources in chunk 1: %d\n", num_artificial1);
+    
+    Chunk& chunk2 = Circuit::chunks.at(2);
+    const int num_artificial2 = chunk2.num_artificial;
+    //printf("    Number of artificial sources in chunk 2: %d\n", num_artificial2);
+    
+    const int num_artificial = num_artificial0 + num_artificial1 + num_artificial2;
+    
 
-    // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
+    TypeLongInt num_sim_histories_c1 = (TypeLongInt(1) << num_artificial1) * fraction1;
+    TypeLongInt num_sim_histories_c2 = (TypeLongInt(1) << num_artificial2) * fraction2;
+    
+    TypeLongInt num_sim_histories_total = TypeLongInt(num_par_histories) * num_sim_histories_c1 * num_sim_histories_c2;
+    
+
+    srand(0);
+    // MPI, OpenMP, or threads parallelizing over histories in chunk 0.
     const float threshold_sqr = threshold * threshold;
     parallel_for(0, num_par_histories, [&](size_t history0_ind, size_t t_idx) {
 
         unordered_statevector& local_sv = statevectors[history0_ind];
 
-        const TypeLongInt history0 = simulate_all ? history0_ind : par_histories.at(history0_ind);
-
         auto start_history0 = get_time();
 
-        // TODO: Make a real run setting the values of all internal wires.
-        // We only need to iterate a vector of all deterministic, wire-breaking gates!
-
-        chunk0.left_to_right_vals(history0, t_idx);
+        // Make a real run setting the values of all internal wires.
+        chunk0.left_to_right_vals(t_idx);
 
         complex <float> contribution0 = input_amp * chunk_contribution(chunk0, t_idx);
 
@@ -190,34 +196,26 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
 
         // 0-- means the gates in chunk0 with C0 history 0.
         //std::printf("Contribution from history %ld--: %f + i%f\n", history0, contribution0.real(), contribution0.imag());
-
-        Chunk& chunk1 = Circuit::chunks.at(1);
-        const int num_artificial1 = chunk1.num_artificial;
-        //printf("  Number of artificial sources in chunk 1: %d\n", num_artificial1);
       
-        for (TypeLongInt history1 = 0; history1 < TypeLongInt(1) << num_artificial1; history1++) {
+        for (TypeLongInt history1 = 0; history1 < num_sim_histories_c1; history1++) {
             //cout << "  In history1: " << history1 << endl;
             //histories.at(1) = history1;
 
             chunk1.reset_values(t_idx);
-      
-            chunk1.left_to_right_vals(history1, t_idx);
+
+            chunk1.left_to_right_vals(t_idx);
 
             const amplitude contribution1 = contribution0 * chunk_contribution(chunk1, t_idx);
             if (std::norm(contribution1) < threshold_sqr) continue;
 
             //std::printf("  Contribution from history %ld%ld-: %f + i%f\n", history0, history1, contribution1.real(), contribution1.imag());
-      
-            Chunk& chunk2 = Circuit::chunks.at(2);
-            const int num_artificial2 = chunk2.num_artificial;
-            //printf("    Number of artificial sources in chunk 2: %d\n", num_artificial2);
-      
-            for (TypeLongInt history2 = 0; history2 < TypeLongInt(1) << num_artificial2; history2++) {
+
+            for (TypeLongInt history2 = 0; history2 < num_sim_histories_c2; history2++) {
                 //cout << "    In history2: " << history2 << endl;                        
 
                 chunk2.reset_values(t_idx);      
       
-                chunk2.left_to_right_vals(history2, t_idx);
+                chunk2.left_to_right_vals(t_idx);
       
                 //printf("    contribution2: %f + i%f\n", contribution2.real(), contribution2.imag());
       
@@ -240,19 +238,14 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
             Circuit::chunks.at(i).reset_values(t_idx);
         }
     });
-    
-    
+
+    printf("  Simulated %lld histories over %d artificial sources.\n", num_sim_histories_total, num_artificial);
+
+    float scaling_factor = 1.0 / num_sim_histories_total;
 
     // TODO: Do parallel for and reduce together for performance? Or tree based reduction?
     for (const auto& local_sv : statevectors) {
         for (const auto& [idx, amplitude] : local_sv) {
-            global_statevector[idx] += amplitude;
-        }
-    }
-
-    if (!simulate_all) {
-        float scaling_factor = (float)num_histories_c0 / (float)num_par_histories;
-        for (const auto& [idx, amplitude] : global_statevector) {
             global_statevector[idx] += amplitude * scaling_factor;
         }
     }

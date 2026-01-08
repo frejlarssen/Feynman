@@ -246,7 +246,8 @@ struct Chunk {
     int id;
     int num_artificial = 0;
     vector<std::shared_ptr<Gate>> gates = vector<std::shared_ptr<Gate>>(0); // In order of application.
-    vector<std::shared_ptr<Gate>> deterministically_breaking = vector<std::shared_ptr<Gate>>(0);
+    vector<std::shared_ptr<Gate>> breaking = vector<std::shared_ptr<Gate>>(0);
+    vector<std::shared_ptr<Gate>> deterministically_breaking = vector<std::shared_ptr<Gate>>(0); // TODO: Necessary?
     vector<std::shared_ptr<InternalWire>> artificial_sources = vector<std::shared_ptr<InternalWire>>(0);
     vector<std::shared_ptr<InternalWire>> internal_wires = vector<std::shared_ptr<InternalWire>>(0); //The wires that should be reset for each history over this chunk.
     //The ones that have a certain number of histories (that is, rightmost is *not* included).
@@ -391,20 +392,14 @@ struct Chunk {
 
     // Sets values from L->R to mimic fake run
     // Returns true if successful, which it should since it should not conflict with artificial sources.
-    bool left_to_right_vals(TypeLongInt chunk_history, TypeLongInt thread) {
+    bool left_to_right_vals(TypeLongInt thread) {
 
         //cout << "      In vals pass for chunk " << id << " with " << gates.size() << " gates, thread: " << thread << endl;
-        for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
-            //printf("  Setting artificial source: %s\n", internal_wire_to_string(w, 2).c_str());
-            w->set_safe(thread, chunk_history >> (w->artificial) & 1);
-        }
-
-        //cout << "  Chunk" << id << " Artificial sources set." << endl;
 
         // Iterate gate list left to right.
-        // TODO: Compare performance of looping all or only deterministically breaking.
-        for (int i = 0; i < deterministically_breaking.size(); i++) {
-            Gate& gate = *deterministically_breaking.at(i);
+        // TODO: Loop all breaking. For nondeterministic, we set based on probability distribution.
+        for (int i = 0; i < breaking.size(); i++) {
+            Gate& gate = *breaking.at(i);
             const int gate_num_controls = gate.num_controls;
 
             // Check if activated
@@ -446,6 +441,14 @@ struct Chunk {
                     if (!qubits_vector[gate_num_controls + 1]->wire_right->set_safe(thread,
                          qubits_vector[gate_num_controls]->wire_left->get_val(thread)
                         )) { return false;}
+                    break;
+                case HADAMARD: case SX: case SY: case SW:
+                    // No matter the classical input, output is random with equal probability for these.
+                    if (!qubits_vector[gate_num_controls]->wire_right->set_safe(thread,
+                        std::rand() % 2
+                        )) {
+                            cout << "        HADAMARD gate refused" << endl;
+                            return false; }
                     break;
                 default:
                     cerr << "Gate not implemented in left_to_right_vals" << endl;
@@ -604,8 +607,11 @@ struct Circuit {
                     shared_ptr<Gate> gate = make_shared<Gate>(pg.id, pg.type, pg.num_controls, args, pg.params);
                     chunk.gates.emplace_back(gate);
                     //printf("Added gate: %s\n", gate_to_string(*gate).c_str());
-                    if (gate_type_infos.at(gate->type).deterministic && gate_type_infos.at(gate->type).breaks_internal_wire) {
-                        chunk.deterministically_breaking.emplace_back(gate);
+                    if (gate_type_infos.at(gate->type).breaks_internal_wire) {
+                        chunk.breaking.emplace_back(gate);
+                        if (gate_type_infos.at(gate->type).deterministic) {
+                            chunk.deterministically_breaking.emplace_back(gate);
+                        }
                     }
                 } else { // Update existing
                     chunk.gates.at(idx)->qubits.at(pg.qparam) = q;
@@ -640,6 +646,7 @@ struct Circuit {
 
         for (int i = 0; i < NUM_CHUNKS; i++) {
             std::sort(chunks.at(i).gates.begin(), chunks.at(i).gates.end(), cmp);
+            std::sort(chunks.at(i).breaking.begin(), chunks.at(i).breaking.end(), cmp);
             std::sort(chunks.at(i).deterministically_breaking.begin(), chunks.at(i).deterministically_breaking.end(), cmp);
         }
 
