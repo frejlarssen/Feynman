@@ -1,6 +1,6 @@
 import numpy as np
 
-size = 7 #Size of QC in qubytes
+size = 1 #Size of QC in qubytes
 
 
 def ket0():
@@ -94,9 +94,10 @@ def amplitude_encoded_2_freq(f1 = 1, f2 = 64, f2_amp = 0.2, margin=-1, threshold
                 real_part = np.cos(i*delta_theta1) + f2_amp * np.cos(i*delta_theta2)
                 file.write(f"0x{i:0{nr_nibbles}X}:{real_part}+0i\n")
 
+ket0()
 
 #amplitude_encoded_v2(6, 0.999999999999999)
 
 #amplitude_encoded_2_freq(f1=6, f2=2**(size*8) / 4, f2_amp=0.2, threshold=0.999999999999999999999999999) # For example: 1QB = 8 qubits => N=256 => f2=64
 
-amplitude_encoded_2_freq(f1=6, f2=2**(size*8) / 4, f2_amp=0.2, margin=50) # For example: 1QB = 8 qubits => N=256 => f2=64
+#amplitude_encoded_2_freq(f1=6, f2=2**(size*8) / 4, f2_amp=0.2, margin=50) # For example: 1QB = 8 qubits => N=256 => f2=64

@@ -1,4 +1,4 @@
-# Runs .qasm files with both ./simulator and qiskit and compares all input/output.
+# Runs .qasm files with both ./sv_embedded and qiskit and calculates fidelity.
 
 import subprocess
 import sys
@@ -8,48 +8,74 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 from qiskit import qasm3
 
-def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None, fraction=1.0):
-    cmd = ["./bitstr", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
+#def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None, fraction=1.0):
+#    cmd = ["./bitstr", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
+#    if p != None:
+#        cmd.append("-p")
+#        cmd.append(str(p))
+#    if r != None:
+#        cmd.append("-r")
+#        cmd.append(str(r))
+#    
+#    cmd.append("-f")
+#    cmd.append(str(fraction))
+#    print("Running command:", " ".join(cmd))
+#    result = subprocess.run(cmd, capture_output=True, text=True)
+#    for line in result.stdout.splitlines():
+#        #print(line)
+#        if "Total amplitude:" in line:
+#            amp_str = line.split("Total amplitude:")[1].strip()
+#            real, imag = amp_str.split("+ i")
+#            return (complex(float(real), float(imag)), result.stdout)
+#    print("Did not find amplitude in simulator output. Full output:")
+#    for line in result.stdout.splitlines():
+#        print("STDERR:", line)
+#    raise RuntimeError("Simulator output did not contain amplitude.")
+
+def run_simulator(qasm_file, input_sv, output_sv, num_processes=4, p=None, r=None, fraction=None, batch_size=None):
+    cmd = ["mpirun", "-n", str(num_processes), "./sv_embedded_mpi.x", "-c", qasm_file, "-i", input_sv, "-o", output_sv]
     if p != None:
         cmd.append("-p")
         cmd.append(str(p))
     if r != None:
         cmd.append("-r")
         cmd.append(str(r))
-    
-    cmd.append("-f")
-    cmd.append(str(fraction))
+    if fraction != None:
+        cmd.append("-f")
+        cmd.append(str(fraction))
+    if batch_size != None:
+        cmd.append("-s")
+        cmd.append(str(batch_size))
+
     print("Running command:", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True)
     for line in result.stdout.splitlines():
-        #print(line)
-        if "Total amplitude:" in line:
-            amp_str = line.split("Total amplitude:")[1].strip()
-            real, imag = amp_str.split("+ i")
-            return (complex(float(real), float(imag)), result.stdout)
-    print("Did not find amplitude in simulator output. Full output:")
-    for line in result.stdout.splitlines():
-        print("STDERR:", line)
-    raise RuntimeError("Simulator output did not contain amplitude.")
+        print(line)
+    return
 
-def build_simulator(qasm_file):
-    cmd = ["./simulator", "-c", qasm_file, "-B"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    nr_gates = -1
-    nr_artificial = -1
-    for line in result.stdout.splitlines():
-        if "Total gates:" in line:
-            gates_str = line.split("Total gates:")[1].strip()
-            nr_gates = int(gates_str)
-        if "Artificial sources:" in line:
-            art_str = line.split("Artificial sources:")[1].strip()
-            nr_artificial = int(art_str)
-    if (nr_gates == -1 or nr_artificial == -1):
-        print("Did not find total gates or artificial sources in simulator output. Full output:")
-        for line in result.stdout.splitlines():
-            print("STDERR:", line)
-        raise RuntimeError("Build output did not contain info.")
-    return (nr_gates, nr_artificial)
+
+
+
+
+
+#def build_simulator(qasm_file):
+#    cmd = ["./simulator", "-c", qasm_file, "-B"]
+#    result = subprocess.run(cmd, capture_output=True, text=True)
+#    nr_gates = -1
+#    nr_artificial = -1
+#    for line in result.stdout.splitlines():
+#        if "Total gates:" in line:
+#            gates_str = line.split("Total gates:")[1].strip()
+#            nr_gates = int(gates_str)
+#        if "Artificial sources:" in line:
+#            art_str = line.split("Artificial sources:")[1].strip()
+#            nr_artificial = int(art_str)
+#    if (nr_gates == -1 or nr_artificial == -1):
+#        print("Did not find total gates or artificial sources in simulator output. Full output:")
+#        for line in result.stdout.splitlines():
+#            print("STDERR:", line)
+#        raise RuntimeError("Build output did not contain info.")
+#    return (nr_gates, nr_artificial)
 
 def run_qiskit(qasm_file, input_bits, output_bits):
     try:
@@ -151,147 +177,56 @@ def build_qiskit_circuit_from_custom_qasm(qasm_file):
 def bitstrings(n):
     return [format(i, f'0{n}b') for i in range(2**n)]
 
-def test_all_params(filename, input_bits, output_bits, all_params = False, fraction = 1.0):
-    if all_params: #TODO: If possible, test systematically but not all of the possible parameters.
-        try:
-            (nr_gates, nr_art) = build_simulator(filename)
-            print("nr_gates returned: ", nr_gates, " and nr_art: ", nr_art)
-            amp_qiskit = run_qiskit(filename, input_bits, output_bits)
-            all_params_status = True
-            for p in range(nr_gates+1):
-                for r in range(nr_gates - p + 1):
-                    try:
-                        (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits, p, r, fraction=fraction)
-                        match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
-                        status = "PASS" if match else "FAIL"
-                        print(f"{filename} | in: {input_bits} out: {output_bits} | p: {p} r: {r} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
-                        if "FAIL" in status:
-                            all_params_status = False
-                            print("Failed for this parameters. Simulator output was:")
-                            print(stdout)
-                            return False
-                    except Exception as e:
-                        print(f"{filename} | in: {input_bits} out: {output_bits} | p: {p} r: {r} | ERROR: {e}")
-                        return False
-            return all_params_status
-        except Exception as e:
-            print(f"{filename} | Build ERROR: {e}")
-            return False
-    else:
-        try:
-            (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits)
-            amp_qiskit = run_qiskit(filename, input_bits, output_bits)
-            match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
-            status = "PASS" if match else "FAIL"
-            print(f"{filename} | in: {input_bits} out: {output_bits} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
-            #if "FAIL" in status:
-            #    print("Failed. Simulator output was:")
-            #    print(stdout)
-        except Exception as e:
-            print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
-            return False
-        return match
+def calculate_fidelity(sim_vector, qiskit_vector):
+    print("sim_vector:", sim_vector) #TODO: Check why sim_vector is not already normalized
+    print("qiskit_vector:", qiskit_vector)
+    sim_vector = sim_vector / np.linalg.norm(sim_vector)
+    qiskit_vector = qiskit_vector / np.linalg.norm(qiskit_vector)
+    dot_prod = np.dot(np.conj(sim_vector), qiskit_vector)
+    fidelity = np.abs(dot_prod) ** 2
+    return fidelity
 
-def test_exhaustive(filename, n_qubits, all_params = False):
-    print(f"Testing {filename} with {n_qubits} qubits")
-    inputs = bitstrings(n_qubits)
-    outputs = bitstrings(n_qubits)
-    all_passed = True
-    for input_bits in inputs:
-        for output_bits in outputs:
-            try:
-                match = test_all_params(filename, input_bits, output_bits, all_params)
-                all_passed = all_passed and match
-                if not match:
-                    return False
-            except Exception as e:
-                print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
-                all_passed = False
-    if all_passed:
-        print(f"All tests passed for {filename}")
-        return True
-    else:
-        print(f"Some tests failed for {filename}")
-        return False
+"""
+Reads a statevector from a .hsv file and returns it as a numpy array of complex numbers. The file is in the format:
+0x0: 0.0625+0i
+0x1: 0.1875+0i
+0xA: -0.0625+0i
+0xF: 0.0625+0i
 
+Note that only the non-zero amplitudes are stored in the file. We need to reconstruct the full statevector.
+"""
+def get_statevector_from_file(sv_file, nr_qubytes):
+    statevector = np.zeros(2**(nr_qubytes*8), dtype=complex)
+    with open(sv_file, 'r') as f:
+        for line in f:
+            if line.startswith("0x"):
+                key, value = line.split(": ")
+                index = int(key, 16)
+                # Note that complex() expects the format a+bj, so we replace 'i' with 'j'
+                value = value.replace('i', 'j')
+                statevector[index] = complex(value.strip())
+    return statevector
 
-def test_fidelity(filename, n_qubits, fraction=1.0):
-    print(f"Testing {filename} with {n_qubits} qubits")
-    #inputs = bitstrings(n_qubits)
-    inputs = ['111']
-    outputs = bitstrings(n_qubits)
-    all_passed = True
-    for input_bits in inputs:
-        sim_results = []
-        qiskit_results = []
-        for output_bits in outputs:
-            try:
-                (sim_res, sim_out) = run_simulator(filename, input_bits, output_bits, fraction=fraction)
-                print("sim_res: ", sim_res)
-                sim_results.append(sim_res)
-                qis_res = run_qiskit(filename, input_bits, output_bits)
-                print("qis_res:", qis_res)
-                qiskit_results.append(qis_res)
-            except Exception as e:
-                print(f"In test_fidelity: {filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
-                all_passed = False
+def test_fidelity(qasm_file, n_qubytes, fraction):
+    input_sv = f"./statevectors/ket0_size{n_qubytes}.hsv"
+    output_sv_sim = f"./outputs/sim_output_size{n_qubytes}.hsv"
+    run_simulator(qasm_file, input_sv, output_sv_sim, num_processes=4, fraction=fraction)
 
-        print("sim_results: ", sim_results)
-        sim_results = sim_results / np.linalg.norm(sim_results)
-        print("sim results normalized: ", sim_results)
+    sim_vector = get_statevector_from_file(output_sv_sim, n_qubytes)
 
-        
+    qc = build_qiskit_circuit_from_custom_qasm(qasm_file)
+    state = Statevector.from_int(0, 2**(n_qubytes*8))
+    state = state.evolve(qc)
+    qiskit_vector = state.data
 
-        print("qiskit_results: ", qiskit_results)
-        dot_prod = np.dot(sim_results, qiskit_results)
-        print("dot_prod: ", dot_prod)
-        fidelity = np.abs(dot_prod) ** 2
-        print(f"{filename} | in: {input_bits} | fidelity: {fidelity}")
-    if all_passed:
-        print(f"All tests passed for {filename}")
-        return True
-    else:
-        print(f"Some tests failed for {filename}")
-        return False
-
-def exhaustive(all_params = False):
-    # Hardcoded QASM files and number of qubits for each
-    qasm_files = [
-        ("./circuits/small.qasm", 2),
-        ("./circuits/aa_n2_it1_mark1.qasm", 2),
-        ("./circuits/qft_3.qasm", 3),
-        ("./circuits/qwalk_n2_it1.qasm", 2),
-        #("./circuits/qwalk_n2_it2.qasm", 2),
-        #("./circuits/qwalk_n3_it2.qasm", 3),
-        #("./circuits/qwalk_n4_it2.qasm", 4),
-    ]
-
-    all_files_passed = True
-    for qasm_file, n_qubits in qasm_files:
-        file_status = test_exhaustive(qasm_file, n_qubits, all_params)
-        all_files_passed = file_status and all_files_passed
-        if not file_status:
-            return False
-
-    if all_files_passed:
-        print("All files passed.")
-    else:
-        print("Some files failed.")
-
-
-def deep():
-    #get_prod("./circuits/qwalk_n4_it10.qasm", "0000", "0000")
-    #get_prod("./circuits/qwalk_n4_it15.qasm", "0000", "0000")
-    pass
+    fidelity = calculate_fidelity(sim_vector, qiskit_vector)
+    print(f"Fidelity between simulator and Qiskit for {qasm_file}: {fidelity}")
 
 if __name__ == "__main__":
     start = time.time()
-    #exhaustive(all_params=True)
-    #deep()
+    #run_simulator("./circuits/small.qasm", "./statevectors/ket0_size1.hsv", "./outputs/small_f1.0.hsv", num_processes=4, p=None, r=None, fraction=1.0, batch_size=None)
 
-    #test_fidelity("./circuits/aa_n2_it1_mark1.qasm", 2, 0.5)
-    test_fidelity("./circuits/aa_n3_it3_mark1.qasm", 3, 0.5)
-
+    test_fidelity("./circuits/small.qasm", n_qubytes=1, fraction=100000.0)
     end = time.time()
     print("Time elapsed in total: ", end - start, "s")
 

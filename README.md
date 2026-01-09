@@ -14,8 +14,7 @@ conda create --name feynman -c conda-forge openmpi llvm-openmp compilers qiskit
 conda activate feynman
 ```
 
-## Example usage:
-
+## Example usage
 ```bash
 make sv_embedded_mpi
 cd circuits/
@@ -24,7 +23,6 @@ python3 qft_generator.py
 cd ../
 mkdir outputs
 mpirun -n 4 ./sv_embedded_mpi.x -c ./circuits/small.qasm -i ./statevectors/ket0_size1.hsv -f 1.0 -o ./outputs/small_f1.0.hsv -v 2
-
 ```
 
 ## Run tests

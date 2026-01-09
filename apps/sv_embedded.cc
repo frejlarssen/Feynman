@@ -35,7 +35,7 @@ struct Options {
 Options get_options(int argc, char* argv[]) {
     Options opts;
 
-    const char* helpstr = "Usage: ./sv(_mpi/omp).x -c circuit_file -i input_sv -o output_sv -p num_chunk0 -r num_chunk1 -f fraction_of_histories -v verbosity (-D [Dense]) -s batch_size\n";
+    const char* helpstr = "Usage: ./sv_embedded_mpi.x -c circuit_file -i input_sv -o output_sv -p num_chunk0 -r num_chunk1 -f fraction_of_histories -v verbosity (-D [Dense]) -s batch_size\n";
 
     if (argc < 4) {
         cout << helpstr;
