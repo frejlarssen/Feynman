@@ -4,7 +4,7 @@
 
 using namespace std;
 
-enum GateType { HADAMARD, PHASE, SWAP, NOT, PAULIZ };
+enum GateType { HADAMARD, PHASE, SWAP, NOT, PAULIZ, RX, RY };
 
 GateType gate_type_from_string(
     const string &s) { // TODO: Confirm it's according to QASM 3.0
@@ -18,6 +18,10 @@ GateType gate_type_from_string(
     return GateType::NOT;
   } else if (s == "z") {
     return GateType::PAULIZ;
+  } else if (s == "rx" || s == "RX") {
+    return GateType::RX;
+  } else if (s == "ry" || s == "RY") {
+    return GateType::RY;
   } else {
     cerr << "Unknown gate type: " << s << '\n';
     exit(1);
@@ -36,6 +40,10 @@ std::string gate_type_to_string(GateType type) {
     return "NOT";
   case PAULIZ:
     return "PAULIZ";
+  case RX:
+    return "RX";
+  case RY:
+    return "RY";
   default:
     return "UNKNOWN";
   }
@@ -57,9 +65,11 @@ struct GateTypeInfo {
 
 // Must be defined in the same way as in the enum GateType (if we don't remove
 // that one and use only this).
-const array<GateTypeInfo, 5> gate_type_infos = {
+const array<GateTypeInfo, 7> gate_type_infos = {
     GateTypeInfo(GateType::HADAMARD, 1, true, false, 0),
     GateTypeInfo(GateType::PHASE, 1, false, true, 1),
     GateTypeInfo(GateType::SWAP, 2, true, true, 0),
     GateTypeInfo(GateType::NOT, 1, true, true, 0),
-    GateTypeInfo(GateType::PAULIZ, 1, false, true, 0)};
+    GateTypeInfo(GateType::PAULIZ, 1, false, true, 0),
+    GateTypeInfo(GateType::RX, 1, true, false, 1),
+    GateTypeInfo(GateType::RY, 1, true, false, 1)};

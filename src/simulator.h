@@ -3,6 +3,7 @@
 #include "parallel_for.h"
 #include "typedef.h"
 #include <chrono>
+#include <cmath>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
@@ -77,6 +78,30 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
         contribution *= -1;
       }
       break;
+    case RX: {
+      const float theta = gate.params.at(0);
+      const float cos_half = std::cos(theta * 0.5f);
+      const float sin_half = std::sin(theta * 0.5f);
+      if (wire_left_value == wire_right_value) {
+        contribution *= cos_half;
+      } else {
+        contribution *= complex<float>(0.0f, -sin_half); // -i sin(theta/2)
+      }
+      break;
+    }
+    case RY: {
+      const float theta = gate.params.at(0);
+      const float cos_half = std::cos(theta * 0.5f);
+      const float sin_half = std::sin(theta * 0.5f);
+      if (wire_left_value == wire_right_value) {
+        contribution *= cos_half;
+      } else if (!wire_left_value && wire_right_value) {
+        contribution *= -sin_half;
+      } else {
+        contribution *= sin_half;
+      }
+      break;
+    }
     case NOT:
     case SWAP:
       break;
