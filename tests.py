@@ -3,6 +3,7 @@
 import subprocess
 import sys
 import numpy as np
+import matplotlib.pyplot as plt
 import time
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
@@ -51,6 +52,8 @@ def run_simulator(qasm_file, input_sv, output_sv, num_processes=4, p=None, r=Non
     result = subprocess.run(cmd, capture_output=True, text=True)
     for line in result.stdout.splitlines():
         print(line)
+    for line in result.stderr.splitlines():
+        print("STDERR:", line)
     return
 
 
@@ -153,6 +156,27 @@ def build_qiskit_circuit_from_custom_qasm(qasm_file):
             theta = float(rest.split(")")[0].split("(")[1])
             q = int(rest.split(" ")[1].split("[")[1].split("]")[0])
             qc.p(theta, q)
+        # RX: rx(theta) q[0]
+        elif line.startswith("rx"):
+            gate, rest = line.split(" ", 1)
+            theta = float(gate.split(")")[0].split("(")[1])
+            
+            print("Theta parsed as:", theta)
+            q = int(rest.split("[")[1].split("]")[0])
+            print("Qubit parsed as:", q)
+            qc.rx(theta, q)
+        # RY: ry(theta) q[0]
+        elif line.startswith("ry"):
+            gate, rest = line.split(" ", 1)
+            theta = float(gate.split(")")[0].split("(")[1])
+            q = int(rest.split("[")[1].split("]")[0])
+            qc.ry(theta, q)
+        # RZ: rz(theta) q[0]
+        elif line.startswith("rz"):
+            gate, rest = line.split(" ", 1)
+            theta = float(gate.split(")")[0].split("(")[1])
+            q = int(rest.split("[")[1].split("]")[0])
+            qc.rz(theta, q)
         # X: x q[0]
         elif line.startswith("x"):
             _, arg = line.split(" ")
@@ -178,13 +202,20 @@ def bitstrings(n):
     return [format(i, f'0{n}b') for i in range(2**n)]
 
 def calculate_fidelity(sim_vector, qiskit_vector):
-    print("sim_vector:", sim_vector) #TODO: Check why sim_vector is not already normalized
-    print("qiskit_vector:", qiskit_vector)
+    #print("sim_vector:", sim_vector) #TODO: Check why sim_vector is not already normalized
+    #print("qiskit_vector:", qiskit_vector)
     sim_vector = sim_vector / np.linalg.norm(sim_vector)
+    #print("Normalized sim_vector:", sim_vector)
     qiskit_vector = qiskit_vector / np.linalg.norm(qiskit_vector)
     dot_prod = np.dot(np.conj(sim_vector), qiskit_vector)
     fidelity = np.abs(dot_prod) ** 2
     return fidelity
+
+def calculate_expectation_value(statevector, operator):
+    print("statevector: ", statevector)
+    print("statevector norm: ", np.linalg.norm(statevector))
+    exp_val = np.vdot(statevector, operator @ statevector)
+    return exp_val.real
 
 """
 Reads a statevector from a .hsv file and returns it as a numpy array of complex numbers. The file is in the format:
@@ -204,30 +235,188 @@ def get_statevector_from_file(sv_file, nr_qubytes):
                 index = int(key, 16)
                 # Note that complex() expects the format a+bj, so we replace 'i' with 'j'
                 value = value.replace('i', 'j')
+                value = value.replace('+-', '-')
+                #print("Parsed line:", line.strip(), "-> index:", index, "value:", value)
+                #print("Complex value as string:", value.strip())
                 statevector[index] = complex(value.strip())
     return statevector
 
 def test_fidelity(qasm_file, n_qubytes, fraction):
+    fidelities = []
+    runs = 1
+    if (fraction < 2000.0):
+        #Take average over multiple runs for better statistics
+        runs = 10
+    for i in range(runs):
+        fidelity = 0
+        input_sv = f"./statevectors/ket0_size{n_qubytes}.hsv"
+        output_sv_sim = f"./outputs/sim_output_size{n_qubytes}.hsv"
+        run_simulator(qasm_file, input_sv, output_sv_sim, num_processes=4, fraction=fraction)
+
+        sim_vector = get_statevector_from_file(output_sv_sim, n_qubytes)
+
+        qc = build_qiskit_circuit_from_custom_qasm(qasm_file)
+        state = Statevector.from_int(0, 2**(n_qubytes*8))
+        state = state.evolve(qc)
+        qiskit_vector = state.data
+    
+        fidelity = calculate_fidelity(sim_vector, qiskit_vector)
+        print(f"Fidelity between simulator and Qiskit for {qasm_file}: {fidelity}")
+        fidelities.append(fidelity)
+    fidelity = sum(fidelities) / len(fidelities)
+    return fidelity
+
+def test_expectation_value(qasm_file, n_qubytes, fraction, operator):
     input_sv = f"./statevectors/ket0_size{n_qubytes}.hsv"
     output_sv_sim = f"./outputs/sim_output_size{n_qubytes}.hsv"
     run_simulator(qasm_file, input_sv, output_sv_sim, num_processes=4, fraction=fraction)
 
     sim_vector = get_statevector_from_file(output_sv_sim, n_qubytes)
+    #print("sim_vector:", sim_vector)
 
     qc = build_qiskit_circuit_from_custom_qasm(qasm_file)
     state = Statevector.from_int(0, 2**(n_qubytes*8))
     state = state.evolve(qc)
     qiskit_vector = state.data
+    
+    #print("qiskit_vector:", qiskit_vector)
 
-    fidelity = calculate_fidelity(sim_vector, qiskit_vector)
-    print(f"Fidelity between simulator and Qiskit for {qasm_file}: {fidelity}")
+    exp_val_sim = calculate_expectation_value(sim_vector, operator)
+    exp_val_qiskit = calculate_expectation_value(qiskit_vector, operator)
+
+    print(f"Expectation value from simulator: {exp_val_sim}")
+    print(f"Expectation value from Qiskit: {exp_val_qiskit}")
+
+    return exp_val_sim, exp_val_qiskit
+    
+def fidelity_vs_f():
+    #fractions = [100.0, 200.0, 300.0, 400.0, 1000.0, 4000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
+    #fractions = [1.0, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0]
+    fractions = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 10.0]
+    fidelities = []
+    for f in fractions:
+        print(f"Testing fidelity with fraction {f}")
+        fidelity = test_fidelity("./circuits/qrng_n4.qasm", n_qubytes=1, fraction=f)
+        fidelities.append(fidelity)
+    for f, fid in zip(fractions, fidelities):
+        print(f"Fraction: {f}, Fidelity: {fid}")
+    # Plotting
+    try:
+        plt.plot(fractions, fidelities, marker='o')
+        plt.xlabel('Fraction')
+        plt.ylabel('Fidelity')
+        plt.title('Fidelity vs Fraction')
+        plt.grid(True)
+        plt.savefig('fidelity_vs_fraction.png')
+        plt.show()
+    except ImportError:
+        print("matplotlib not installed, skipping plot.")
+        
+
+def average_Z_first_qubits(total_qubits=8, active_qubits=4):
+    Z = np.array([[1, 0], [0, -1]], dtype=complex)
+    I = np.eye(2, dtype=complex)
+
+    dim = 2**total_qubits
+    operator = np.zeros((dim, dim), dtype=complex)
+
+    for i in range(active_qubits):
+        op = 1
+        for q in range(total_qubits):
+            if q == i:
+                op = np.kron(op, Z)
+            else:
+                op = np.kron(op, I)
+        operator += op
+
+    return operator / active_qubits
+
+def expectation_value_vs_f():
+    fractions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 100.0, 200.0]
+    #fractions = [100.0, 200.0, 300.0, 400.0, 1000.0, 4000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
+    #fractions = [100.0]
+    exp_vals_sim = []
+    exp_vals_qiskit = []
+    # Example operator: Average of Z on all qubits
+    n_qubits = 8
+    n_qubytes = 1
+    operator = average_Z_first_qubits(
+        total_qubits=8 * n_qubytes,
+        active_qubits=n_qubits
+    )
+    for f in fractions:
+        print(f"Testing expectation value with fraction {f}")
+        exp_val_sim, exp_val_qiskit = test_expectation_value("./circuits/qrng_n8.qasm", n_qubytes=1, fraction=f, operator=operator)
+        exp_vals_sim.append(exp_val_sim)
+        exp_vals_qiskit.append(exp_val_qiskit)
+    for f, ev_sim, ev_qiskit in zip(fractions, exp_vals_sim, exp_vals_qiskit):
+        print(f"Fraction: {f}, Exp Val Sim: {ev_sim}, Exp Val Qiskit: {ev_qiskit}")
+    # Plotting
+    try:
+        plt.plot(fractions, exp_vals_sim, marker='o', label='Simulator')
+        plt.plot(fractions, exp_vals_qiskit, marker='x', label='Qiskit')
+        plt.xlabel('Fraction')
+        plt.ylabel('Expectation Value')
+        plt.title('Expectation Value vs Fraction')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('expectation_value_vs_fraction.png')
+        plt.show()
+    except ImportError:
+        print("matplotlib not installed, skipping plot.")
 
 if __name__ == "__main__":
     start = time.time()
     #run_simulator("./circuits/small.qasm", "./statevectors/ket0_size1.hsv", "./outputs/small_f1.0.hsv", num_processes=4, p=None, r=None, fraction=1.0, batch_size=None)
 
-    test_fidelity("./circuits/small.qasm", n_qubytes=1, fraction=100000.0)
+    #test_fidelity("./circuits/small.qasm", n_qubytes=1, fraction=100000.0)
+    #test_fidelity("./circuits/qrng_n1.qasm", n_qubytes=1, fraction=100.0)
+    #test_fidelity("./circuits/qrng_n4.qasm", n_qubytes=1, fraction=3000.0)
+    #test_fidelity("./circuits/qrng_n8.qasm", n_qubytes=1, fraction=30000.0)
+    #fidelity_vs_f()
+    #expectation_value_vs_f()
+    #test_fidelity("./circuits/rx_n1.qasm", n_qubytes=1, fraction=1000.0)
+    # finally works
+    
+    n_qubytes = 1
+    n_qubits = 8
+    
+    operator = average_Z_first_qubits(
+        total_qubits=8 * n_qubytes,
+        active_qubits=n_qubits
+    )
+
+    fractions = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 2.0, 100.0, 200.0]
+    average_over_runs = 5
+    
+    means = []
+    stds = []
+
+    for fraction in fractions:
+        print(f"Testing expectation value with fraction {fraction} averaged over {average_over_runs} runs")
+
+        vals = []
+        for _ in range(average_over_runs):
+            exp_val_sim, _ = test_expectation_value("./circuits/qrng_n8.qasm", n_qubytes=1, fraction=fraction, operator=operator)
+            vals.append(exp_val_sim)
+
+        means.append(np.mean(vals))
+        stds.append(np.std(vals))
+
+    for f, mean, std in zip(fractions, means, stds):
+        print(f"Fraction: {f}, Exp Val Sim Mean: {mean}, Std: {std}")
+        
+    #Plotting
+    try:
+        plt.errorbar(fractions, means, yerr=stds, fmt='o', capsize=5)
+        plt.xscale('log')
+        plt.xlabel('Fraction')
+        plt.ylabel('Expectation Value (Z average)')
+        plt.title('Expectation Value vs Fraction with Error Bars')
+        plt.grid(True)
+        plt.savefig('expectation_value_vs_fraction_error_bars.png')
+        plt.show()
+    except ImportError:
+        print("matplotlib not installed, skipping plot.")
     end = time.time()
     print("Time elapsed in total: ", end - start, "s")
-
-    #deep()

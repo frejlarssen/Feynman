@@ -10,7 +10,7 @@ MPI and OpenMP is used for parallelization.
 
 Using a conda environment:
 ```bash
-conda create --name feynman -c conda-forge openmpi llvm-openmp compilers qiskit
+conda create --name feynman -c conda-forge openmpi llvm-openmp compilers qiskit matplotlib
 conda activate feynman
 ```
 
