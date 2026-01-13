@@ -11,6 +11,9 @@ enum GateType {
     SWAP,
     NOT,
     PAULIZ,
+    RX,
+    RY,
+    RZ, // Wrong in OpenQASM Standard library.
     // As defined in the supplementrary material of the supremacy paper VII.E
     SX,
     SY,
@@ -28,11 +31,17 @@ GateType gate_type_from_string(const string& s) { //TODO: Confirm it's according
         return GateType::NOT;
     } else if (s == "z" || s == "Z") {
         return GateType::PAULIZ;
+    } else if (s == "rx" || s == "RX") {
+        return GateType::RX;
+    } else if (s == "ry" || s == "RY") {
+        return GateType::RY;
+    } else if (s == "rz" || s == "RZ") {
+        return GateType::RZ;
     } else if (s == "sx" || s == "SX") {
         return GateType::SX;
     } else if (s == "sy" || s == "SY") {
         return GateType::SY;
-    } else if (s == "sw" || s == "SW" || "hz_1_2") {
+    } else if (s == "sw" || s == "SW" || s == "hz_1_2") {
         return GateType::SW;
     } else {
         cerr << "Unknown gate type: " << s << endl;
@@ -47,6 +56,9 @@ std::string gate_type_to_string(GateType type) {
         case SWAP: return "SWAP";
         case NOT: return "NOT";
         case PAULIZ: return "PAULIZ";
+        case RX: return "RX";
+        case RY: return "RY";
+        case RZ: return "RZ";
         case SX: return "SX";
         case SY: return "SY";
         case SW: return "SW";
@@ -67,12 +79,15 @@ struct GateTypeInfo {
 };
 
 //Must be defined in the same way as in the enum GateType (if we don't remove that one and use only this).
-const array<GateTypeInfo,8> gate_type_infos = {
+const array<GateTypeInfo,11> gate_type_infos = {
     GateTypeInfo(GateType::HADAMARD, 1, true, false, 0),
     GateTypeInfo(GateType::PHASE, 1, false, true, 1),
     GateTypeInfo(GateType::SWAP, 2, true, true, 0),
     GateTypeInfo(GateType::NOT, 1, true, true, 0),
     GateTypeInfo(GateType::PAULIZ, 1, false, true, 0),
+    GateTypeInfo(GateType::RX, 1, true, false, 1),
+    GateTypeInfo(GateType::RY, 1, true, false, 1),
+    GateTypeInfo(GateType::RZ, 1, false, true, 1),
     GateTypeInfo(GateType::SX, 1, true, false, 0),
     GateTypeInfo(GateType::SY, 1, true, false, 0),
     GateTypeInfo(GateType::SW, 2, true, false, 0)

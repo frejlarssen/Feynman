@@ -450,8 +450,24 @@ struct Chunk {
                             cout << "        HADAMARD gate refused" << endl;
                             return false; }
                     break;
+                case RX: case RY:
+                    {
+                        // Probability of switching is sin^2(theta/2)
+                        float theta = gate.params.at(0);
+                        float prob_switch = sinf(theta / 2.0f) * sinf(theta / 2.0f);
+                        float rand_val = static_cast <float> (std::rand()) / static_cast <float> (RAND_MAX);
+                        bool switch_val = (rand_val < prob_switch);
+                        uint8_t left_val = qubits_vector[gate_num_controls]->wire_left->get_val(thread);
+                        if (!qubits_vector[gate_num_controls]->wire_right->set_safe(thread,
+                            left_val ^ switch_val
+                            )) {
+                                cout << "        RX/RY gate refused" << endl;
+                                return false; }
+                    }
+                    break;
                 default:
                     cerr << "Gate not implemented in left_to_right_vals" << endl;
+                    exit(1);
                 }
             }
 

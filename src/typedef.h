@@ -10,7 +10,7 @@
 #define STR(x) STR_IMPL(x)
 
 // Define bitstring size in bytes (the string representation would be 8x this)
-#define BITSTRING_SIZE 1024
+#define BITSTRING_SIZE 8
 
 // tune to cpu cache line size such that uint8 * PADDING = cache line size
 // for x86

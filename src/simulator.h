@@ -84,6 +84,41 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
                 contribution *= -1;
             }
             break;
+        case RX:
+            {
+                float theta = gate.params.at(0);
+                float cos_theta_2 = cos(theta / 2.0f); // TODO: Enough to check mod pi. Is that faster?
+                float sin_theta_2 = sin(theta / 2.0f);
+                if (wire_left_value == wire_right_value) {
+                    if (cos_theta_2 < 0) {
+                        contribution *= -1;
+                    }
+                }
+                else {
+                    if (sin_theta_2 < 0) {
+                        contribution *= i;
+                    } else {
+                        contribution *= -i;
+                    }
+                }
+            }
+            break;
+        case RY:
+            {
+                float theta = gate.params.at(0);
+                float cos_theta_2 = cos(theta / 2.0f);
+                float sin_theta_2 = sin(theta / 2.0f);
+                if (wire_left_value == wire_right_value) {
+                    if (cos_theta_2 < 0) {
+                        contribution *= -1;
+                    }
+                }
+                else {
+                    if (sin_theta_2 < 0) {
+                        contribution *= -1;
+                    }
+                }
+            }
         case SX:
             if (wire_left_value == wire_right_value) {
                 contribution *= 1;
@@ -149,36 +184,43 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
 
     size_t num_par_histories;
     
-    // TODO: Compare different strategies.
-    float fraction0 = pow(fraction, 1.0f / 3.0f);
-    float fraction1 = pow(fraction, 1.0f / 3.0f);
-    float fraction2 = pow(fraction, 1.0f / 3.0f);
-
-    num_par_histories = static_cast<size_t>(static_cast<double>(num_histories_c0) * fraction0);
-
-    vector<unordered_statevector> statevectors(num_par_histories);
-    
     Chunk& chunk1 = Circuit::chunks.at(1);
     const int num_artificial1 = chunk1.num_artificial;
-    //printf("  Number of artificial sources in chunk 1: %d\n", num_artificial1);
     
     Chunk& chunk2 = Circuit::chunks.at(2);
     const int num_artificial2 = chunk2.num_artificial;
-    //printf("    Number of artificial sources in chunk 2: %d\n", num_artificial2);
     
     const int num_artificial = num_artificial0 + num_artificial1 + num_artificial2;
-    
+    long long num_sim_histories_total = TypeLongInt(1) << num_artificial;
+    num_sim_histories_total = llround(static_cast<double>(num_sim_histories_total) * fraction);
 
-    TypeLongInt num_sim_histories_c1 = (TypeLongInt(1) << num_artificial1) * fraction1;
-    TypeLongInt num_sim_histories_c2 = (TypeLongInt(1) << num_artificial2) * fraction2;
-    
-    TypeLongInt num_sim_histories_total = TypeLongInt(num_par_histories) * num_sim_histories_c1 * num_sim_histories_c2;
-    
+    printf("num_sim_histories_total: %lld\n", num_sim_histories_total);
 
-    srand(0);
+    // TODO: Compare different strategies.
+    float fraction0 = pow(fraction, 1.0f / 3.0f);
+    float fraction1 = pow(fraction, 1.0f / 3.0f);
+    // Number of histories in chunk 2 is determined by total number of histories.
+
+    num_par_histories = round(static_cast<double>(num_histories_c0) * fraction0);
+
+    vector<unordered_statevector> statevectors(num_par_histories);
+
+    TypeLongInt num_sim_histories_c1 = max(llround((TypeLongInt(1) << num_artificial1) * fraction1), TypeLongInt(1));
+    
+    printf("num_par_histories: %zu\n", num_par_histories);
+    printf("num_sim_histories_c1: %lld\n", num_sim_histories_c1);
+    TypeLongInt num_sim_histories_c2 = max(llround(float(num_sim_histories_total) / (num_par_histories * num_sim_histories_c1)), TypeLongInt(1));
+    
+    printf("num_sim_histories_c2: %lld\n", num_sim_histories_c2);
+
+    //srand(0);
+    srand(time(NULL) + input_bits.to_ulong()); // Different seed for each MPI rank.
+
     // MPI, OpenMP, or threads parallelizing over histories in chunk 0.
     const float threshold_sqr = threshold * threshold;
     parallel_for(0, num_par_histories, [&](size_t history0_ind, size_t t_idx) {
+        
+        printf("In history0 index %zu (thread %zu)\n", history0_ind, t_idx);
 
         unordered_statevector& local_sv = statevectors[history0_ind];
 
@@ -198,7 +240,7 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
         //std::printf("Contribution from history %ld--: %f + i%f\n", history0, contribution0.real(), contribution0.imag());
       
         for (TypeLongInt history1 = 0; history1 < num_sim_histories_c1; history1++) {
-            //cout << "  In history1: " << history1 << endl;
+            cout << "  In history1: " << history1 << endl;
             //histories.at(1) = history1;
 
             chunk1.reset_values(t_idx);
@@ -211,7 +253,7 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
             //std::printf("  Contribution from history %ld%ld-: %f + i%f\n", history0, history1, contribution1.real(), contribution1.imag());
 
             for (TypeLongInt history2 = 0; history2 < num_sim_histories_c2; history2++) {
-                //cout << "    In history2: " << history2 << endl;                        
+                cout << "    In history2: " << history2 << endl;                        
 
                 chunk2.reset_values(t_idx);      
       
@@ -220,8 +262,8 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
                 //printf("    contribution2: %f + i%f\n", contribution2.real(), contribution2.imag());
       
                 complex <float> contribution2 = contribution1 * chunk_contribution(chunk2, t_idx);
-      
-                //std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n", history0, history1, history2, contribution2.real(), contribution2.imag());
+                std::printf("    Contribution from full history: %f + i%f\n", contribution2.real(), contribution2.imag());
+
                 // Old: local_sum += contribution2;
                 // TODO: Find output state of history.
                 bitstr output_state;
@@ -245,10 +287,20 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
 
     // TODO: Do parallel for and reduce together for performance? Or tree based reduction?
     for (const auto& local_sv : statevectors) {
+        printf("  Merging local statevector with %zu entries into global statevector.\n", local_sv.size());
         for (const auto& [idx, amplitude] : local_sv) {
+            printf("    Adding amplitude %f + i%f to state %s\n", amplitude.real(), amplitude.imag(), idx.to_string().c_str());
             global_statevector[idx] += amplitude * scaling_factor;
         }
     }
-
+    
+    // global_statevector is now a map from bitstrings to probabilities, with phase.
+    // We need to divide by the square root of each probability to get the amplitude.
+    for (auto& [idx, prob] : global_statevector) {
+        float sqr_prob = sqrt(abs(prob));
+        amplitude amp = prob / sqr_prob;
+        printf("Final amplitude for state %s: %f + i%f\n", idx.to_string().c_str(), amp.real(), amp.imag());
+        global_statevector[idx] = amp;
+    }
     return global_statevector;
 }
