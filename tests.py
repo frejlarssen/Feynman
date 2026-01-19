@@ -34,7 +34,7 @@ from qiskit import qasm3
 #    raise RuntimeError("Simulator output did not contain amplitude.")
 
 def run_simulator(qasm_file, input_sv, output_sv, num_processes=4, p=None, r=None, fraction=None, batch_size=None):
-    cmd = ["mpirun", "-n", str(num_processes), "./sv_embedded_mpi.x", "-c", qasm_file, "-i", input_sv, "-o", output_sv]
+    cmd = ["mpirun", "-n", str(num_processes), "./sv_embedded_mpi.x", "-c", qasm_file, "-i", input_sv, "-o", output_sv, "-v", "3"]
     if p != None:
         cmd.append("-p")
         cmd.append(str(p))
@@ -53,7 +53,8 @@ def run_simulator(qasm_file, input_sv, output_sv, num_processes=4, p=None, r=Non
     for line in result.stdout.splitlines():
         print(line)
     for line in result.stderr.splitlines():
-        print("STDERR:", line)
+        if not "mca_btl_tcp_proc_create_interface_graph" in line:
+            print("STDERR:", line)
     return
 
 
@@ -212,10 +213,29 @@ def calculate_fidelity(sim_vector, qiskit_vector):
     return fidelity
 
 def calculate_expectation_value(statevector, operator):
-    print("statevector: ", statevector)
-    print("statevector norm: ", np.linalg.norm(statevector))
+    #print("statevector: ", statevector)
+    #print("statevector norm: ", np.linalg.norm(statevector))
     exp_val = np.vdot(statevector, operator @ statevector)
     return exp_val.real
+
+# From the output of a quantum walk.
+# qubit 0 is the coin qubit. The rest are position qubits.
+# qubit 1 is the least significant bit of position.
+def calculate_expected_position(statevector, n_qubits):
+    #In each basis state, extract the position bits and calculate the expected position.
+    n_position_qubits = n_qubits - 1
+    expected_position = 0.0
+    for i in range(2**n_qubits):
+        amplitude = statevector[i]
+        probability = np.abs(amplitude) ** 2
+        position = 0
+        for j in range(n_position_qubits):
+            if (i >> (j+1)) & 1:
+                position += 2**j
+        #if probability > 1e-10:
+            #print("state index:", i, "-> position:", position, "amplitude:", amplitude, "probability:", probability)
+        expected_position += position * probability
+    return expected_position
 
 """
 Reads a statevector from a .hsv file and returns it as a numpy array of complex numbers. The file is in the format:
@@ -288,6 +308,76 @@ def test_expectation_value(qasm_file, n_qubytes, fraction, operator):
     print(f"Expectation value from Qiskit: {exp_val_qiskit}")
 
     return exp_val_sim, exp_val_qiskit
+
+
+
+def test_expected_position(qasm_file, n_qubytes, fraction, qiskit=True):
+    start_position = 4
+    input_sv = f"./statevectors/pos{start_position}_coin_super.hsv"
+
+    if qiskit:
+        qc = build_qiskit_circuit_from_custom_qasm(qasm_file)
+        initial = np.zeros(2**(n_qubytes*8), dtype=complex)
+        initial[start_position*2] = 1/np.sqrt(2)  # Coin |0>
+        initial[start_position*2 + 1] = 1/np.sqrt(2) * 1j  # Coin |1>
+        state = Statevector(initial)
+        #print("Initial statevector:", state.data)
+        #print("Evolving with Qiskit...")
+        #print("Qiskit Circuit:\n", qc.draw())
+        state = state.evolve(qc)
+        qiskit_vector = state.data
+        print("qiskit_vector:", qiskit_vector)
+        expected_position_qiskit = calculate_expected_position(qiskit_vector, n_qubits=n_qubytes*8)
+        #print(f"Expected position from Qiskit: {expected_position_qiskit}")
+        return expected_position_qiskit
+    else:
+        output_sv_sim = f"./outputs/sim_output_size{n_qubytes}.hsv"
+        run_simulator(qasm_file, input_sv, output_sv_sim, num_processes=4, fraction=fraction)
+        sim_vector = get_statevector_from_file(output_sv_sim, n_qubytes)
+        print("sim_vector:", sim_vector)
+        expected_position_sim = calculate_expected_position(sim_vector, n_qubits=n_qubytes*8)
+        #print(f"Expected position from simulator: {expected_position_sim}")
+        return expected_position_sim
+    
+
+def test_imbalance(qasm_file, n_qubytes, fraction, qiskit=True):
+    start_position = 4
+    #input_sv = f"./statevectors/ket0_size1.hsv" #Note: Change below for qiskit also
+    #input_sv = f"./statevectors/ket1_size1.hsv" #Note: Change below for qiskit also
+    input_sv = f"./statevectors/ket_i.hsv" #Note: Change below for qiskit also
+
+    if qiskit:
+        qc = build_qiskit_circuit_from_custom_qasm(qasm_file)
+        initial = np.zeros(2**(n_qubytes*8), dtype=complex)
+        
+        #ket0
+        #initial[0] = 1
+        
+        #ket1
+        #initial[1] = 1
+        
+        #ket i
+        initial[0] = 1/np.sqrt(2)
+        initial[1] = 1/np.sqrt(2) * 1j
+
+        state = Statevector(initial)
+        #print("Initial statevector:", state.data)
+        #print("Evolving with Qiskit...")
+        #print("Qiskit Circuit:\n", qc.draw())
+        state = state.evolve(qc)
+        qiskit_vector = state.data
+        print("qiskit_vector:", qiskit_vector)
+        expected_position_qiskit = calculate_expected_position(qiskit_vector, n_qubits=n_qubytes*8)
+        #print(f"Expected position from Qiskit: {expected_position_qiskit}")
+        return expected_position_qiskit
+    else:
+        output_sv_sim = f"./outputs/sim_output_size{n_qubytes}.hsv"
+        run_simulator(qasm_file, input_sv, output_sv_sim, num_processes=4, fraction=fraction)
+        sim_vector = get_statevector_from_file(output_sv_sim, n_qubytes)
+        print("sim_vector:", sim_vector)
+        expected_position_sim = calculate_expected_position(sim_vector, n_qubits=n_qubytes*8)
+        #print(f"Expected position from simulator: {expected_position_sim}")
+        return expected_position_sim
     
 def fidelity_vs_f():
     #fractions = [100.0, 200.0, 300.0, 400.0, 1000.0, 4000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
@@ -337,7 +427,7 @@ def expectation_value_vs_f():
     #fractions = [100.0]
     exp_vals_sim = []
     exp_vals_qiskit = []
-    # Example operator: Average of Z on all qubits
+    # Operator: Average of Z on all qubits
     n_qubits = 8
     n_qubytes = 1
     operator = average_Z_first_qubits(
@@ -365,19 +455,77 @@ def expectation_value_vs_f():
     except ImportError:
         print("matplotlib not installed, skipping plot.")
 
-if __name__ == "__main__":
-    start = time.time()
-    #run_simulator("./circuits/small.qasm", "./statevectors/ket0_size1.hsv", "./outputs/small_f1.0.hsv", num_processes=4, p=None, r=None, fraction=1.0, batch_size=None)
-
-    #test_fidelity("./circuits/small.qasm", n_qubytes=1, fraction=100000.0)
-    #test_fidelity("./circuits/qrng_n1.qasm", n_qubytes=1, fraction=100.0)
-    #test_fidelity("./circuits/qrng_n4.qasm", n_qubytes=1, fraction=3000.0)
-    #test_fidelity("./circuits/qrng_n8.qasm", n_qubytes=1, fraction=30000.0)
-    #fidelity_vs_f()
-    #expectation_value_vs_f()
-    #test_fidelity("./circuits/rx_n1.qasm", n_qubytes=1, fraction=1000.0)
-    # finally works
+def expected_position_vs_f():
+    #fractions = [1.0, 5.0, 7.0, 10.0, 100.0]
+    fractions = [1000.0]
     
+    circuit_file = "./circuits/qwalk_n4_it1_biased.qasm"
+    
+    average_over_runs = 1
+    
+    expected_positions_qiskit = []
+    means_sim = []
+    stds_sim = []
+    vals_lst_sim = []
+    
+    for f in fractions:
+        print(f"Testing expected position with fraction {f}")
+        exp_pos_qiskit = test_expected_position(circuit_file, n_qubytes=1, fraction=f, qiskit=True)
+        vals_sim = []
+        for _ in range(average_over_runs):
+            exp_pos_sim = test_expected_position(circuit_file, n_qubytes=1, fraction=f, qiskit=False)
+            vals_sim.append(exp_pos_sim)
+        expected_positions_qiskit.append(exp_pos_qiskit)
+        means_sim.append(np.mean(vals_sim))
+        stds_sim.append(np.std(vals_sim))
+        vals_lst_sim.append(vals_sim)
+    for f, pos_sim, std_sim, pos_qiskit in zip(fractions, means_sim, stds_sim, expected_positions_qiskit):
+        print(f"Fraction: {f}, Expected Position Sim (mean): {pos_sim}, Expected Position Sim (std): {std_sim}, Expected Position Qiskit: {pos_qiskit}")
+    # Plotting
+    try:
+        #Plot vals_lst_sim as dots
+        for f, vals_sim in zip(fractions, vals_lst_sim):
+            plt.scatter([f]*len(vals_sim), vals_sim, color='gray', alpha=0.5)
+        #Plot mean and std
+        
+        plt.plot(fractions, means_sim, marker='o', label='Simulator Mean')
+        plt.fill_between(fractions, np.array(means_sim) - np.array(stds_sim), np.array(means_sim) + np.array(stds_sim), alpha=0.2)
+        plt.xlabel('Fraction')
+        plt.ylabel('Expected Position')
+        plt.title('Expected Position vs Fraction')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('expected_position_vs_fraction.png')
+        plt.show()
+    except ImportError:
+        print("matplotlib not installed, skipping plot.")
+        
+        
+def imbalance():
+    #fractions = [1.0, 5.0, 7.0, 10.0, 100.0]
+    fractions = [10000000.0]
+    
+    circuit_file = "./circuits/rx_ry.qasm"
+    
+    average_over_runs = 1
+    
+    means_sim = []
+    stds_sim = []
+    vals_lst_sim = []
+    
+    for f in fractions:
+        print(f"Testing expected position with fraction {f}")
+        exp_pos_qiskit = test_imbalance(circuit_file, n_qubytes=1, fraction=f, qiskit=True)
+        vals_sim = []
+        for _ in range(average_over_runs):
+            exp_pos_sim = test_imbalance(circuit_file, n_qubytes=1, fraction=f, qiskit=False)
+            vals_sim.append(exp_pos_sim)
+        means_sim.append(np.mean(vals_sim))
+        stds_sim.append(np.std(vals_sim))
+        vals_lst_sim.append(vals_sim)
+
+
+def testing_average():
     n_qubytes = 1
     n_qubits = 8
     
@@ -418,5 +566,25 @@ if __name__ == "__main__":
         plt.show()
     except ImportError:
         print("matplotlib not installed, skipping plot.")
+
+if __name__ == "__main__":
+    start = time.time()
+    #run_simulator("./circuits/small.qasm", "./statevectors/ket0_size1.hsv", "./outputs/small_f1.0.hsv", num_processes=4, p=None, r=None, fraction=1.0, batch_size=None)
+
+    #test_fidelity("./circuits/small.qasm", n_qubytes=1, fraction=100000.0)
+    #test_fidelity("./circuits/qrng_n1.qasm", n_qubytes=1, fraction=100.0)
+    #test_fidelity("./circuits/qrng_n4.qasm", n_qubytes=1, fraction=3000.0)
+    #test_fidelity("./circuits/qrng_n8.qasm", n_qubytes=1, fraction=30000.0)
+    #fidelity_vs_f()
+    #expectation_value_vs_f()
+    #test_fidelity("./circuits/rx_n1.qasm", n_qubytes=1, fraction=1000.0)
+    # finally works
+
+    #testing_average()
+    
+    #expected_position_vs_f()
+    
+    imbalance()
+    
     end = time.time()
     print("Time elapsed in total: ", end - start, "s")

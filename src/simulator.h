@@ -25,7 +25,7 @@
 
 // Only accounts for phase factors, since magnitude changes are accounted for
 // by how many times a history appears in the sampling.
-complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
+complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread, int verbosity = 0) {
     complex <float> contribution = 1.0;
     for (const shared_ptr<Gate>& gateptr : chunk.gates) {
         Gate& gate = *gateptr;
@@ -114,11 +114,12 @@ complex<float> chunk_contribution(const Chunk& chunk, TypeLongInt thread) {
                     }
                 }
                 else {
-                    if (sin_theta_2 < 0) {
+                    if ((!wire_left_value && (sin_theta_2 < 0)) || (wire_left_value && (sin_theta_2 > 0))) {
                         contribution *= -1;
                     }
                 }
             }
+            break;
         case SX:
             if (wire_left_value == wire_right_value) {
                 contribution *= 1;
@@ -165,6 +166,14 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
     for (const std::shared_ptr<InternalWire>& w : Circuit::input_sources) {
         w->set_safe_all(1, input_bits.test(w->wire));
     }
+    
+    // Convert bitstr to index
+    long long input_index = input_bits.to_ulong();
+
+    // Print input_amplitude for debugging.
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    //std::cout << "Rank: " << world_rank << " ind: " << input_index << " Input amplitude: " << input_amp << std::endl;
 
     // Chunk 0 is the leftmost, and the one we parallelize over.
     Chunk& chunk0 = Circuit::chunks.at(0);
@@ -191,10 +200,9 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
     const int num_artificial2 = chunk2.num_artificial;
     
     const int num_artificial = num_artificial0 + num_artificial1 + num_artificial2;
-    long long num_sim_histories_total = TypeLongInt(1) << num_artificial;
-    num_sim_histories_total = llround(static_cast<double>(num_sim_histories_total) * fraction);
+    const long long num_samples_total = llround(static_cast<double>(TypeLongInt(1) << num_artificial) * fraction); // S
 
-    printf("num_sim_histories_total: %lld\n", num_sim_histories_total);
+    //printf("Rank %d ind %lld num_samples_total: %lld\n", world_rank, input_index, num_samples_total);
 
     // TODO: Compare different strategies.
     float fraction0 = pow(fraction, 1.0f / 3.0f);
@@ -206,28 +214,28 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
     vector<unordered_statevector> statevectors(num_par_histories);
 
     TypeLongInt num_sim_histories_c1 = max(llround((TypeLongInt(1) << num_artificial1) * fraction1), TypeLongInt(1));
-    
-    printf("num_par_histories: %zu\n", num_par_histories);
-    printf("num_sim_histories_c1: %lld\n", num_sim_histories_c1);
-    TypeLongInt num_sim_histories_c2 = max(llround(float(num_sim_histories_total) / (num_par_histories * num_sim_histories_c1)), TypeLongInt(1));
-    
-    printf("num_sim_histories_c2: %lld\n", num_sim_histories_c2);
+
+    //printf("Rank %d ind %lld num_par_histories: %zu\n", world_rank, input_index, num_par_histories);
+    //printf("Rank %d ind %lld num_sim_histories_c1: %lld\n", world_rank, input_index, num_sim_histories_c1);
+    TypeLongInt num_sim_histories_c2 = max(llround(float(num_samples_total) / (num_par_histories * num_sim_histories_c1)), TypeLongInt(1));
+
+    //printf("Rank %d ind %lld num_sim_histories_c2: %lld\n", world_rank, input_index, num_sim_histories_c2);
 
     //srand(0);
     srand(time(NULL) + input_bits.to_ulong()); // Different seed for each MPI rank.
 
     // MPI, OpenMP, or threads parallelizing over histories in chunk 0.
     const float threshold_sqr = threshold * threshold;
-    parallel_for(0, num_par_histories, [&](size_t history0_ind, size_t t_idx) {
-        
-        printf("In history0 index %zu (thread %zu)\n", history0_ind, t_idx);
+    parallel_for(0, num_par_histories, [&](size_t history0, size_t t_idx) {
 
-        unordered_statevector& local_sv = statevectors[history0_ind];
+        //printf("Rank %d ind %lld In history0 index %zu (thread %zu)\n", world_rank, input_index, history0, t_idx);
+
+        unordered_statevector& local_sv = statevectors[history0];
 
         auto start_history0 = get_time();
 
         // Make a real run setting the values of all internal wires.
-        chunk0.left_to_right_vals(t_idx);
+        float prob0 = chunk0.left_to_right_vals(t_idx);
 
         complex <float> contribution0 = input_amp * chunk_contribution(chunk0, t_idx);
 
@@ -238,39 +246,52 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
 
         // 0-- means the gates in chunk0 with C0 history 0.
         //std::printf("Contribution from history %ld--: %f + i%f\n", history0, contribution0.real(), contribution0.imag());
-      
         for (TypeLongInt history1 = 0; history1 < num_sim_histories_c1; history1++) {
-            cout << "  In history1: " << history1 << endl;
+            //cout << "  Rank " << world_rank << " ind " << input_index << " In history1: " << history1 << endl;
             //histories.at(1) = history1;
 
             chunk1.reset_values(t_idx);
 
-            chunk1.left_to_right_vals(t_idx);
+            float prob1 = prob0 * chunk1.left_to_right_vals(t_idx);
+            
+            //printf("    Rank-%d-ind-%d prob1 (for this history): %f\n", world_rank, input_index, prob1);
 
             const amplitude contribution1 = contribution0 * chunk_contribution(chunk1, t_idx);
             if (std::norm(contribution1) < threshold_sqr) continue;
 
-            //std::printf("  Contribution from history %ld%ld-: %f + i%f\n", history0, history1, contribution1.real(), contribution1.imag());
-
             for (TypeLongInt history2 = 0; history2 < num_sim_histories_c2; history2++) {
-                cout << "    In history2: " << history2 << endl;                        
+                //cout << "    Rank " << world_rank << " ind " << input_index << " In history2: " << history2 << endl;
 
-                chunk2.reset_values(t_idx);      
-      
-                chunk2.left_to_right_vals(t_idx);
-      
-                //printf("    contribution2: %f + i%f\n", contribution2.real(), contribution2.imag());
-      
-                complex <float> contribution2 = contribution1 * chunk_contribution(chunk2, t_idx);
-                std::printf("    Contribution from full history: %f + i%f\n", contribution2.real(), contribution2.imag());
+                chunk2.reset_values(t_idx);
 
+                float prob2 = prob1 * chunk2.left_to_right_vals(t_idx); 
+                
+                
                 // Old: local_sum += contribution2;
                 // TODO: Find output state of history.
                 bitstr output_state;
                 for (const std::shared_ptr<InternalWire>& w : Circuit::output_sources)
                     output_state.set(w->wire, w->get_val(t_idx));
+      
+                //printf("    contribution2: %f + i%f\n", contribution2.real(), contribution2.imag());
                 
-                local_sv[output_state] += contribution2;
+                //int chunk_verbosity = 0;
+                //if (Circuit::all_internal_wires[1]->get_val(t_idx) && output_state.to_ullong() == 0) {
+                //    std::printf("    Rank %d inind %lld iw1-1 outind %lld: calculating chunk_contribution2...\n", world_rank, input_index, output_state.to_ullong());
+                //    chunk_verbosity = 3;
+                //}
+                
+                complex <float> chunk_contribution2 = chunk_contribution(chunk2, t_idx, 0);
+      
+                complex <float> contribution2 = contribution1 * chunk_contribution2;
+                
+                //printf("    Rank-%d-ind-%d-outind-%lld prob2 (for this history): %f\n", world_rank, input_index, output_state.to_ullong(), prob2);
+                    
+                float sqr_prob = sqrt(prob2);
+                //printf("    Rank-%d-ind-%d-outind-%lld sqrt_prob (for this history): %f\n", world_rank, input_index, output_state.to_ullong(), sqr_prob);
+                
+                local_sv[output_state] += contribution2 / sqr_prob;
+                // Dividing with sqrt(prob2) converts the probability induced by sampling it to amplitude
             }
         }
 
@@ -281,26 +302,28 @@ unordered_statevector simulate(bitstr input_bits, amplitude input_amp, float fra
         }
     });
 
-    printf("  Simulated %lld histories over %d artificial sources.\n", num_sim_histories_total, num_artificial);
-
-    float scaling_factor = 1.0 / num_sim_histories_total;
+    printf("  Rank %d ind %lld Simulated %lld samples over %d artificial sources.\n", world_rank, input_index, num_samples_total, num_artificial);
 
     // TODO: Do parallel for and reduce together for performance? Or tree based reduction?
     for (const auto& local_sv : statevectors) {
-        printf("  Merging local statevector with %zu entries into global statevector.\n", local_sv.size());
+        //printf("  Rank %d ind %lld Merging local statevector with %zu entries into global statevector.\n", world_rank, input_index, local_sv.size());
         for (const auto& [idx, amplitude] : local_sv) {
-            printf("    Adding amplitude %f + i%f to state %s\n", amplitude.real(), amplitude.imag(), idx.to_string().c_str());
-            global_statevector[idx] += amplitude * scaling_factor;
+            //printf("    Rank %d ind %lld Adding amplitude %f + i%f to state %s\n", world_rank, input_index, amplitude.real(), amplitude.imag(), idx.to_string().c_str());
+            global_statevector[idx] += amplitude / float(num_samples_total);
         }
     }
     
-    // global_statevector is now a map from bitstrings to probabilities, with phase.
-    // We need to divide by the square root of each probability to get the amplitude.
-    for (auto& [idx, prob] : global_statevector) {
-        float sqr_prob = sqrt(abs(prob));
-        amplitude amp = prob / sqr_prob;
-        printf("Final amplitude for state %s: %f + i%f\n", idx.to_string().c_str(), amp.real(), amp.imag());
-        global_statevector[idx] = amp;
+    // Print global_statevector for debugging.
+    printf("Rank %d ind %lld Output statevector after scaling:\n", world_rank, input_index);
+    for (const auto& [idx, amplitude] : global_statevector) {
+        printf("  Index: %s Amplitude: %f + i%f\n", idx.to_string().c_str(), amplitude.real(), amplitude.imag());
     }
+    // Print sum of magnitudes for debugging.
+    float sum_magnitudes = 0.0f;
+    for (const auto& [idx, amplitude] : global_statevector) {
+        sum_magnitudes += std::abs(amplitude);
+    }
+    printf("Rank %d ind %lld Sum of magnitudes in output statevector: %f\n", world_rank, input_index, sum_magnitudes);
+
     return global_statevector;
 }

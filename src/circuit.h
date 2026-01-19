@@ -391,11 +391,11 @@ struct Chunk {
     }
 
     // Sets values from L->R to mimic fake run
-    // Returns true if successful, which it should since it should not conflict with artificial sources.
-    bool left_to_right_vals(TypeLongInt thread) {
+    // Returns the probability that this part of the history would happen.
+    float left_to_right_vals(TypeLongInt thread) {
 
         //cout << "      In vals pass for chunk " << id << " with " << gates.size() << " gates, thread: " << thread << endl;
-
+        float prob = 1.0;
         // Iterate gate list left to right.
         // TODO: Loop all breaking. For nondeterministic, we set based on probability distribution.
         for (int i = 0; i < breaking.size(); i++) {
@@ -419,7 +419,7 @@ struct Chunk {
                     const u_int8_t setval = qubits_vector[t]->wire_left->get_val(thread);
                     if (!qubits_vector[t]->wire_right->set_safe(thread, setval)) {
                         //cout << "        not activated gate rejected" << endl ;
-                        return false;
+                        return prob;
                     }
                     //cout << "        not activated gate accepted" << endl;
                 }
@@ -432,37 +432,46 @@ struct Chunk {
                         !qubits_vector[gate_num_controls]->wire_left->get_val(thread)
                         )) {
                             //cout << "        NOT gate refused" << endl;
-                            return false; }
+                            return prob; }
                     break;
                 case SWAP:
                     if (!qubits_vector[gate_num_controls]->wire_right->set_safe(thread,
                          qubits_vector[gate_num_controls + 1]->wire_left->get_val(thread)
-                         )) { return false; }
+                         )) { return prob; }
                     if (!qubits_vector[gate_num_controls + 1]->wire_right->set_safe(thread,
                          qubits_vector[gate_num_controls]->wire_left->get_val(thread)
-                        )) { return false;}
+                        )) { return prob;}
                     break;
                 case HADAMARD: case SX: case SY: case SW:
                     // No matter the classical input, output is random with equal probability for these.
+                    prob *= 0.5;
                     if (!qubits_vector[gate_num_controls]->wire_right->set_safe(thread,
                         std::rand() % 2
                         )) {
                             cout << "        HADAMARD gate refused" << endl;
-                            return false; }
+                            return prob; }
                     break;
                 case RX: case RY:
                     {
                         // Probability of switching is sin^2(theta/2)
                         float theta = gate.params.at(0);
                         float prob_switch = sinf(theta / 2.0f) * sinf(theta / 2.0f);
+                        //printf("        RX/RY gate with theta: %.4f, prob_switch: %.4f\n", theta, prob_switch);
+                        // Debug: prob_switch = 0.25. Correct.
                         float rand_val = static_cast <float> (std::rand()) / static_cast <float> (RAND_MAX);
                         bool switch_val = (rand_val < prob_switch);
+                        if (switch_val) {
+                            prob *= prob_switch;
+                        }
+                        else {
+                            prob *= (1.0-prob_switch);
+                        }
                         uint8_t left_val = qubits_vector[gate_num_controls]->wire_left->get_val(thread);
                         if (!qubits_vector[gate_num_controls]->wire_right->set_safe(thread,
                             left_val ^ switch_val
                             )) {
                                 cout << "        RX/RY gate refused" << endl;
-                                return false; }
+                                return prob; }
                     }
                     break;
                 default:
@@ -474,7 +483,7 @@ struct Chunk {
             //cout << "      Vals pass for gate " << gate.id << " done." << endl;
             //}
         }
-        return true;
+        return prob;
     }
 
 //    // Sets values from R->L to mimic fake run
@@ -698,7 +707,7 @@ struct Circuit {
         for (Chunk& chunk : chunks) {
             //cout << "resizing chunk " << chunk.id << endl;
             for (std::shared_ptr<InternalWire>& iw : chunk.internal_wires) {
-                //printf("Resizing iw: %s\n", internal_wire_to_string(iw, 2).c_str());
+                //printf("Resizing iw: %s\n", internal_wire_to_string(iw, -1, 2).c_str());
                 iw->val_set.resize(size_val, false);
                 iw->val.resize(size_val, false);
             }

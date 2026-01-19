@@ -98,7 +98,9 @@ Options get_options(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
+    //printf("Starting SV Embedded MPI simulation.\n");
     MPI_Init(&argc, &argv);
+    //printf("MPI initialized.\n");
     int world_rank = -1;
     int world_size = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);  // my rank
@@ -125,12 +127,16 @@ int main(int argc, char* argv[]) {
     if (world_rank != 0) {
         print_rank0_timings = false;
     }
-
+    
+    //printf("SV Embedded simulation started with %d MPI ranks, each with %d OMP threads.\n", world_size, t_omp);
+    
     ParsedCircuit::parse_circuit(opts.circuit_file);
 
     if (opts.num_chunk0 == -1 && opts.num_chunk1 == -1) {
         // Autotune if checkpoints not given. (This takes longer time initially.)
+        //printf("Autotuning circuit partitioning...\n");
         Circuit::build_autotuned_circuit();
+        //printf("Autotuning done.\n");
     }
     else if (opts.num_chunk0 > -1 && opts.num_chunk1 > -1) {
         Circuit::build_circuit(opts.num_chunk0, opts.num_chunk1);
@@ -210,6 +216,11 @@ int main(int argc, char* argv[]) {
             bitstr input_bits = input.index;
             amplitude amp_in = input.amp;
 
+            //amp_in *= abs(amp_in); // Convert from amplitude to phased-probability
+            
+            printf("Worker %d - Simulating input |%s> with phased-probability amplitude %f + i%f\n", my_worker,
+                   bitstr_to_hexstring(input_bits, Circuit::n).c_str(), amp_in.real(), amp_in.imag());
+
             auto start_simulate = get_time();
             unordered_statevector output_sv = simulate(input_bits, amp_in, opts.fraction, opts.threshold, 3);
             for (const auto& [out_bits, out_amp] : output_sv) {
@@ -280,6 +291,21 @@ int main(int argc, char* argv[]) {
 
     ordered_statevector global_output_sv;
     global_sum_reduce(local_output_sv, &global_output_sv, MPI_COMM_WORLD);
+    
+    if (world_rank == 0) {
+        //printf("Final reduction done. Number of entries in output statevector: %lu\n", global_output_sv.size());
+        
+        printf("Output phased probability vector before amplitude normalization:\n");
+        // Print ordered_statevector for debugging (The magnitude of these is not sure to sum to 1 because of interference.)
+        print_ordered_statevector(global_output_sv);
+
+        // Normalize to make sure the probabilities sum to 1.
+        float total_prob = 0.0;
+        for (const auto& [idx, amp] : global_output_sv) {
+            total_prob += norm(amp);
+        }
+        printf("Total probability: %f\n", total_prob);
+    }
     
     // Write output to file
     try {

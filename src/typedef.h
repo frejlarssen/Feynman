@@ -6,6 +6,9 @@
 #include <complex>
 #include <bitset>
 
+// For debugging
+#include <iostream>
+
 #define STR_IMPL(x) #x
 #define STR(x) STR_IMPL(x)
 
@@ -50,3 +53,17 @@ struct BitstrLess {
 };
 
 using ordered_statevector = std::map<bitstr, amplitude, BitstrLess>;
+
+// Print ordered_statevector for debugging
+inline void print_ordered_statevector(const ordered_statevector& sv) {
+    for (const auto& [idx, amp] : sv) {
+        std::cout << "  Index: " << idx.to_string() << " Amplitude: " << amp << std::endl;
+    }
+    
+    // Also print total magnitude for checking normalization
+    float total_magnitude = 0.0;
+    for (const auto& [idx, amp] : sv) {
+        total_magnitude += std::norm(amp);
+    }
+    std::cout << "  Total magnitude: " << total_magnitude << std::endl;
+}
