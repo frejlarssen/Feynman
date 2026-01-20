@@ -335,9 +335,9 @@ def test_expected_position(qasm_file, n_qubytes, fraction, qiskit=True):
         run_simulator(qasm_file, input_sv, output_sv_sim, num_processes=4, fraction=fraction)
         sim_vector = get_statevector_from_file(output_sv_sim, n_qubytes)
         print("sim_vector:", sim_vector)
-        expected_position_sim = calculate_expected_position(sim_vector, n_qubits=n_qubytes*8)
+        expected_position_sim = calculate_expected_position(sim_vector / np.linalg.norm(sim_vector), n_qubits=n_qubytes*8)
         #print(f"Expected position from simulator: {expected_position_sim}")
-        return expected_position_sim
+        return expected_position_sim, np.linalg.norm(sim_vector)
     
 
 def test_imbalance(qasm_file, n_qubytes, fraction, qiskit=True):
@@ -456,47 +456,105 @@ def expectation_value_vs_f():
         print("matplotlib not installed, skipping plot.")
 
 def expected_position_vs_f():
-    #fractions = [1.0, 5.0, 7.0, 10.0, 100.0]
-    fractions = [1000.0]
+    fractions = [1.0, 5.0, 7.0, 10.0, 50.0] #For how fast convergence
+    #fractions = [1000000.0] #For correct convergence
     
-    circuit_file = "./circuits/qwalk_n4_it1_biased.qasm"
+    n  = 4
+    it = 1
     
-    average_over_runs = 1
+    circuit_file = f"./circuits/qwalk_n{n}_it{1}_biased.qasm"
     
-    expected_positions_qiskit = []
-    means_sim = []
-    stds_sim = []
-    vals_lst_sim = []
+    average_over_runs = 5
+
+    # Expected position
+    means_exp = []
+    stds_exp = []
+    vals_lst_exp = []
+
+    # Norm
+    means_norm = []
+    stds_norm = []
+    vals_lst_norm = []
+    
+    exp_pos_qiskit = test_expected_position(circuit_file, n_qubytes=1, fraction=None, qiskit=True)
     
     for f in fractions:
         print(f"Testing expected position with fraction {f}")
-        exp_pos_qiskit = test_expected_position(circuit_file, n_qubytes=1, fraction=f, qiskit=True)
-        vals_sim = []
+        vals_exp = []
+        vals_norm = []
         for _ in range(average_over_runs):
-            exp_pos_sim = test_expected_position(circuit_file, n_qubytes=1, fraction=f, qiskit=False)
-            vals_sim.append(exp_pos_sim)
-        expected_positions_qiskit.append(exp_pos_qiskit)
-        means_sim.append(np.mean(vals_sim))
-        stds_sim.append(np.std(vals_sim))
-        vals_lst_sim.append(vals_sim)
-    for f, pos_sim, std_sim, pos_qiskit in zip(fractions, means_sim, stds_sim, expected_positions_qiskit):
-        print(f"Fraction: {f}, Expected Position Sim (mean): {pos_sim}, Expected Position Sim (std): {std_sim}, Expected Position Qiskit: {pos_qiskit}")
-    # Plotting
-    try:
-        #Plot vals_lst_sim as dots
-        for f, vals_sim in zip(fractions, vals_lst_sim):
-            plt.scatter([f]*len(vals_sim), vals_sim, color='gray', alpha=0.5)
-        #Plot mean and std
+            exp, norm = test_expected_position(circuit_file, n_qubytes=1, fraction=f, qiskit=False)
+            vals_exp.append(exp)
+            vals_norm.append(norm)
+        means_exp.append(np.mean(vals_exp))
+        stds_exp.append(np.std(vals_exp))
+        vals_lst_exp.append(vals_exp)
         
-        plt.plot(fractions, means_sim, marker='o', label='Simulator Mean')
-        plt.fill_between(fractions, np.array(means_sim) - np.array(stds_sim), np.array(means_sim) + np.array(stds_sim), alpha=0.2)
-        plt.xlabel('Fraction')
-        plt.ylabel('Expected Position')
+        means_norm.append(np.mean(vals_norm))
+        stds_norm.append(np.std(vals_norm))
+        vals_lst_norm.append(vals_norm)
+
+    print(f"Expected Position Qiskit: {exp_pos_qiskit}")
+    for f, mean_exp, std_exp in zip(fractions, means_exp, stds_exp):
+        print(f"Fraction: {f}, Expected Position Sim (mean): {mean_exp}, Expected Position Sim (std): {std_exp}")
+    
+    print("Norm:")
+    for f, mean_norm, std_norm in zip(fractions, means_norm, stds_norm):
+        print(f"Fraction: {f}, Norm (mean): {mean_norm}, Norm (std): {std_norm}")
+        
+    
+    # Plotting
+    try:        
+        fig, ax1 = plt.subplots()
+        
+        ax1.axhline(
+            y=exp_pos_qiskit,
+            color='tab:green',
+            linestyle=':',
+            linewidth=2,
+            label='Qiskit Expected Position'
+        )
+
+        # Scatter individual runs (left axis)
+        for f, vals_sim in zip(fractions, vals_lst_exp):
+            ax1.scatter([f]*len(vals_sim), vals_sim, color='gray', alpha=0.5)
+
+        # Mean on left axis
+        ax1.plot(fractions, means_exp, marker='o', label='Simulator Mean')
+        ax1.fill_between(
+            fractions,
+            np.array(means_exp) - np.array(stds_exp),
+            np.array(means_exp) + np.array(stds_exp),
+            alpha=0.2
+        )
+        ax1.set_xlabel('Fraction')
+        ax1.set_ylabel('Expected Position')
+        ax1.grid(True)
+    
+        # Second y-axis for standard deviation
+        ax2 = ax1.twinx()
+        ax2.plot(fractions, stds_exp, marker='s', linestyle='--', color='tab:red', label='Simulator Std')
+        ax2.set_ylabel('Standard Deviation')
+    
+        # Combine legends from both axes
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_2, labels_2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='best')
+    
         plt.title('Expected Position vs Fraction')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig('expected_position_vs_fraction.png')
+        plt.savefig(f'exp_pos_vs_f_avg{average_over_runs}.png')
         plt.show()
+        
+        #Norm plot
+        fig_norm, ax1_norm = plt.subplots()
+        # Scatter individual runs (left axis)
+        for f, norms_sim in zip(fractions, vals_lst_norm):
+            ax1_norm.scatter([f]*len(norms_sim), norms_sim, color='gray', alpha=0.5)
+        
+        plt.title('Norm vs Fraction')
+        plt.savefig(f'norm_vs_f_avg{average_over_runs}.png')
+        plt.show()
+    
     except ImportError:
         print("matplotlib not installed, skipping plot.")
         
@@ -582,9 +640,9 @@ if __name__ == "__main__":
 
     #testing_average()
     
-    #expected_position_vs_f()
+    expected_position_vs_f()
     
-    imbalance()
+    #imbalance()
     
     end = time.time()
     print("Time elapsed in total: ", end - start, "s")
