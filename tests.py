@@ -34,7 +34,7 @@ from qiskit import qasm3
 #    raise RuntimeError("Simulator output did not contain amplitude.")
 
 def run_simulator(qasm_file, input_sv, output_sv, num_processes=4, p=None, r=None, fraction=None, batch_size=None):
-    cmd = ["mpirun", "-n", str(num_processes), "./sv_embedded_mpi.x", "-c", qasm_file, "-i", input_sv, "-o", output_sv, "-v", "3"]
+    cmd = ["mpirun", "-n", str(num_processes), "./sv_embedded_mpi.x", "-c", qasm_file, "-i", input_sv, "-o", output_sv, "-v", "0"]
     if p != None:
         cmd.append("-p")
         cmd.append(str(p))
@@ -456,13 +456,13 @@ def expectation_value_vs_f():
         print("matplotlib not installed, skipping plot.")
 
 def expected_position_vs_f():
-    fractions = [1.0, 5.0, 7.0, 10.0, 50.0] #For how fast convergence
-    #fractions = [1000000.0] #For correct convergence
+    #fractions = [1.0, 5.0, 7.0, 10.0, 50.0] #For how fast convergence
+    fractions = [1, 10.0, 100.0] #For correct convergence
     
     n  = 4
-    it = 1
+    it = 4
     
-    circuit_file = f"./circuits/qwalk_n{n}_it{1}_biased.qasm"
+    circuit_file = f"./circuits/qwalk_n{n}_it{it}.qasm"
     
     average_over_runs = 5
 
@@ -542,7 +542,7 @@ def expected_position_vs_f():
         ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='best')
     
         plt.title('Expected Position vs Fraction')
-        plt.savefig(f'exp_pos_vs_f_avg{average_over_runs}.png')
+        plt.savefig(f'exp_pos_vs_f_n{n}_it{it}_avg{average_over_runs}.png')
         plt.show()
         
         #Norm plot
@@ -552,7 +552,7 @@ def expected_position_vs_f():
             ax1_norm.scatter([f]*len(norms_sim), norms_sim, color='gray', alpha=0.5)
         
         plt.title('Norm vs Fraction')
-        plt.savefig(f'norm_vs_f_avg{average_over_runs}.png')
+        plt.savefig(f'norm_vs_f_n{n}_it{it}_avg{average_over_runs}.png')
         plt.show()
     
     except ImportError:
