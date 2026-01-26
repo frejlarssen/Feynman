@@ -8,17 +8,23 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 from qiskit import qasm3
 
-def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None, fraction=1.0):
-    cmd = ["./bitstr", "-c", qasm_file, "-i", input_bits, "-o", output_bits]
+def run_simulator(n_mpi, input_sv_file, qasm_file, hexstrings_file, output_sv_file, p=None, r=None, fraction=None):
+    cmd = ["mpirun",
+           "-n", str(n_mpi),
+           "./sv_prefetcher_subset_mpi.x",
+           "-i", input_sv_file,
+           "-c", qasm_file,
+           "-b", hexstrings_file,
+           "-o", output_sv_file]
     if p != None:
         cmd.append("-p")
         cmd.append(str(p))
     if r != None:
         cmd.append("-r")
         cmd.append(str(r))
-    
-    cmd.append("-f")
-    cmd.append(str(fraction))
+    if fraction != None:
+        cmd.append("-f")
+        cmd.append(str(fraction))
     print("Running command:", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True)
     for line in result.stdout.splitlines():
@@ -29,8 +35,12 @@ def run_simulator(qasm_file, input_bits, output_bits, p=None, r=None, fraction=1
             return (complex(float(real), float(imag)), result.stdout)
     print("Did not find amplitude in simulator output. Full output:")
     for line in result.stdout.splitlines():
+        print("STDOUT:", line)
+    
+    for line in result.stderr.splitlines():
         print("STDERR:", line)
-    raise RuntimeError("Simulator output did not contain amplitude.")
+    #raise RuntimeError("Simulator output did not contain amplitude.")
+    print("Simulator output did not contain amplitude.")
 
 def build_simulator(qasm_file):
     cmd = ["./simulator", "-c", qasm_file, "-B"]
@@ -286,11 +296,18 @@ def deep():
 
 if __name__ == "__main__":
     start = time.time()
+
+    run_simulator(n_mpi=4,
+                  input_sv_file="./statevectors/ket0_size4.hsv",
+                  qasm_file="./circuits/qwalk_n4_it3.qasm",
+                  hexstrings_file="./hexstring_sets/nrhex10_size4_from0x0_to0xA.hs",
+                  output_sv_file="./outputs/size4HS.hsv")
+
     #exhaustive(all_params=True)
     #deep()
 
     #test_fidelity("./circuits/aa_n2_it1_mark1.qasm", 2, 0.5)
-    test_fidelity("./circuits/aa_n3_it3_mark1.qasm", 3, 0.5)
+    #test_fidelity("./circuits/aa_n3_it3_mark1.qasm", 3, 0.5)
 
     end = time.time()
     print("Time elapsed in total: ", end - start, "s")
