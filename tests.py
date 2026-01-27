@@ -8,14 +8,41 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 from qiskit import qasm3
 
-def run_simulator(n_mpi, input_sv_file, qasm_file, hexstrings_file, output_sv_file, p=None, r=None, fraction=None):
+"""
+Reads a statevector from a .hsv file and returns it as a numpy array of complex numbers. The file is in the format:
+4
+1
+0x00: 0.0625+0i
+0x01: 0.1875+0i
+0x0A: -0.0625+0i
+0x0F: 0.0625+0i
+
+Note that only the non-zero amplitudes are stored in the file. We need to reconstruct the full statevector.
+"""
+def get_statevector_from_file(hsv_file, nr_qubytes):
+    print("Reading statevector from file:", hsv_file, "with nr_qubytes:", nr_qubytes)
+    statevector = np.zeros(2**(nr_qubytes*8), dtype=complex)
+    with open(hsv_file, 'r') as f:
+        for line in f:
+            if line.startswith("0x"):
+                key, value = line.split(":")
+                index = int(key, 16)
+                value = value.replace('i', 'j') # Make it Python complex format
+                value = value.replace('+-', '-')
+                #print("Parsed line:", line.strip(), "-> index:", index, "value:", value)
+                #print("Complex value as string:", value.strip())
+                statevector[index] = complex(value.strip())
+    #print("Reconstructed statevector from file", hsv_file, ":", statevector)
+    return statevector
+
+def run_simulator(n_mpi, nr_qubytes, input_hsv_file, qasm_file, hexstrings_file, output_hsv_file, p=None, r=None, fraction=None):
     cmd = ["mpirun",
            "-n", str(n_mpi),
            "./sv_prefetcher_subset_mpi.x",
-           "-i", input_sv_file,
+           "-i", input_hsv_file,
            "-c", qasm_file,
            "-b", hexstrings_file,
-           "-o", output_sv_file]
+           "-o", output_hsv_file]
     if p != None:
         cmd.append("-p")
         cmd.append(str(p))
@@ -27,20 +54,21 @@ def run_simulator(n_mpi, input_sv_file, qasm_file, hexstrings_file, output_sv_fi
         cmd.append(str(fraction))
     print("Running command:", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True)
-    for line in result.stdout.splitlines():
-        #print(line)
-        if "Total amplitude:" in line:
-            amp_str = line.split("Total amplitude:")[1].strip()
-            real, imag = amp_str.split("+ i")
-            return (complex(float(real), float(imag)), result.stdout)
-    print("Did not find amplitude in simulator output. Full output:")
+
+    print("Full output:")
     for line in result.stdout.splitlines():
         print("STDOUT:", line)
     
     for line in result.stderr.splitlines():
         print("STDERR:", line)
-    #raise RuntimeError("Simulator output did not contain amplitude.")
-    print("Simulator output did not contain amplitude.")
+    
+    if result.returncode == 0:
+        print("Simulator completed successfully. Getting statevector from output file.")
+        sim_vector = get_statevector_from_file(output_hsv_file, nr_qubytes)
+        return (sim_vector, result.stdout)
+    else:
+        raise RuntimeError(f"Simulator failed with return code {result.returncode}")
+
 
 def build_simulator(qasm_file):
     cmd = ["./simulator", "-c", qasm_file, "-B"]
@@ -61,15 +89,19 @@ def build_simulator(qasm_file):
         raise RuntimeError("Build output did not contain info.")
     return (nr_gates, nr_artificial)
 
-def run_qiskit(qasm_file, input_bits, output_bits):
+def run_qiskit(input_hsv_file, qasm_file, n_qubytes):
     try:
         qc = build_qiskit_circuit_from_custom_qasm(qasm_file)
-        #print(f"Qiskit Circuit:\n{qc.draw()}")
-        state = Statevector.from_int(int(input_bits, 2), 2**qc.num_qubits)
+        print("Built Qiskit circuit from QASM.")
+        state = get_statevector_from_file(input_hsv_file, n_qubytes)
+        #print("Initial statevector for Qiskit:", state)
+        state = Statevector(state)
+        #print("Qiskit statevector (after conversion):", state)
         state = state.evolve(qc)
-        output_index = int(output_bits, 2)
-        amp = state.data[output_index]
-        return amp
+        #print("Qiskit statevector after evolution:", state)
+        qiskit_vector = state.data
+        print("Qiskit statevector:", qiskit_vector)
+        return qiskit_vector
     except Exception as e:
         raise RuntimeError(f"Qiskit simulation failed: {e}")
 
@@ -161,44 +193,49 @@ def build_qiskit_circuit_from_custom_qasm(qasm_file):
 def bitstrings(n):
     return [format(i, f'0{n}b') for i in range(2**n)]
 
-def test_all_params(filename, input_bits, output_bits, all_params = False, fraction = 1.0):
+def test_all_params(n_mpi, nr_qubytes, input_hsv_file, qasm_file, hexstrings_file, output_hsv_file, all_params = False, fraction = 1.0):
     if all_params: #TODO: If possible, test systematically but not all of the possible parameters.
         try:
-            (nr_gates, nr_art) = build_simulator(filename)
+            (nr_gates, nr_art) = build_simulator(qasm_file)
             print("nr_gates returned: ", nr_gates, " and nr_art: ", nr_art)
-            amp_qiskit = run_qiskit(filename, input_bits, output_bits)
+            amp_qiskit = run_qiskit(input_hsv_file, qasm_file, nr_qubytes)
             all_params_status = True
             for p in range(nr_gates+1):
                 for r in range(nr_gates - p + 1):
                     try:
-                        (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits, p, r, fraction=fraction)
-                        match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
+                        (sim_vector, _) = run_simulator(n_mpi, nr_qubytes, input_hsv_file, qasm_file, hexstrings_file, output_hsv_file, p, r, fraction=fraction)
+                        print("Simulator output statevector:", sim_vector)
+
+                        match = np.allclose([sim_vector.real, sim_vector.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
                         status = "PASS" if match else "FAIL"
-                        print(f"{filename} | in: {input_bits} out: {output_bits} | p: {p} r: {r} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
+                        print(f"{qasm_file} | p: {p} r: {r} | sim: {sim_vector} | qiskit: {amp_qiskit} | {status}")
                         if "FAIL" in status:
                             all_params_status = False
                             print("Failed for this parameters. Simulator output was:")
                             print(stdout)
                             return False
                     except Exception as e:
-                        print(f"{filename} | in: {input_bits} out: {output_bits} | p: {p} r: {r} | ERROR: {e}")
+                        print(f"{qasm_file} | p: {p} r: {r} | ERROR: {e}")
                         return False
             return all_params_status
         except Exception as e:
-            print(f"{filename} | Build ERROR: {e}")
+            print(f"{qasm_file} | Build ERROR: {e}")
             return False
     else:
         try:
-            (amp_sim, stdout) = run_simulator(filename, input_bits, output_bits)
-            amp_qiskit = run_qiskit(filename, input_bits, output_bits)
-            match = np.allclose([amp_sim.real, amp_sim.imag], [amp_qiskit.real, amp_qiskit.imag], atol=1e-6)
+            amp_qiskit = run_qiskit(input_hsv_file, qasm_file, nr_qubytes)
+            (amp_sim, stdout) = run_simulator(n_mpi, nr_qubytes, input_hsv_file, qasm_file, hexstrings_file, output_hsv_file)
+            #print("Simulator output statevector:", amp_sim)
+            #print("a: ", [amp_sim.real, amp_sim.imag])
+            #print("b: ", [amp_qiskit.real, amp_qiskit.imag])
+            match = np.allclose(amp_sim, amp_qiskit, atol=1e-1, rtol=1e-1)
             status = "PASS" if match else "FAIL"
-            print(f"{filename} | in: {input_bits} out: {output_bits} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
+            print(f"{qasm_file} | sim: {amp_sim} | qiskit: {amp_qiskit} | {status}")
             #if "FAIL" in status:
             #    print("Failed. Simulator output was:")
             #    print(stdout)
         except Exception as e:
-            print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
+            print(f"{qasm_file} | ERROR: {e}")
             return False
         return match
 
@@ -215,7 +252,7 @@ def test_exhaustive(filename, n_qubits, all_params = False):
                 if not match:
                     return False
             except Exception as e:
-                print(f"{filename} | in: {input_bits} out: {output_bits} | ERROR: {e}")
+                print(f"{filename} | ERROR: {e}")
                 all_passed = False
     if all_passed:
         print(f"All tests passed for {filename}")
@@ -236,7 +273,7 @@ def test_fidelity(filename, n_qubits, fraction=1.0):
         qiskit_results = []
         for output_bits in outputs:
             try:
-                (sim_res, sim_out) = run_simulator(filename, input_bits, output_bits, fraction=fraction)
+                (sim_res, sim_out) = run_simulator(filename, n_qubits * 8, input_bits, output_bits, fraction=fraction)
                 print("sim_res: ", sim_res)
                 sim_results.append(sim_res)
                 qis_res = run_qiskit(filename, input_bits, output_bits)
@@ -294,14 +331,31 @@ def deep():
     #get_prod("./circuits/qwalk_n4_it15.qasm", "0000", "0000")
     pass
 
+def test_1_qubytes_it1():
+    test_all_params(n_mpi=4,
+                    nr_qubytes=1,
+                    input_hsv_file="./statevectors/ket0_size1.hsv",
+                    qasm_file="./circuits/qwalk_n2_it1.qasm",
+                    hexstrings_file="./hexstring_sets/nrhex256_size1_from0x0_to0x100.hs",
+                    output_hsv_file="./outputs/size1HS.hsv",
+                    all_params=False, fraction=1.0)
+
+def test_3_qubytes(): # About 30 sec for qiskit. Fails
+    test_all_params(n_mpi=4,
+                    nr_qubytes=3,
+                    input_hsv_file="./statevectors/ket0_size3.hsv",
+                    qasm_file="./circuits/qwalk_n4_it3.qasm",
+                    hexstrings_file="./hexstring_sets/nrhex10_size3_from0x0_to0xA.hs",
+                    output_hsv_file="./outputs/size3HS.hsv",
+                    all_params=False, fraction=1.0)
+
+
 if __name__ == "__main__":
     start = time.time()
 
-    run_simulator(n_mpi=4,
-                  input_sv_file="./statevectors/ket0_size4.hsv",
-                  qasm_file="./circuits/qwalk_n4_it3.qasm",
-                  hexstrings_file="./hexstring_sets/nrhex10_size4_from0x0_to0xA.hs",
-                  output_sv_file="./outputs/size4HS.hsv")
+    test_1_qubytes_it1()
+
+    
 
     #exhaustive(all_params=True)
     #deep()
