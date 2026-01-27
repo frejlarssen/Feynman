@@ -12,8 +12,9 @@ hexstrings
 ...
 ```
 
-
-
+## Circuit format
+Subset of QASM, with some extensions such as multi-controlled gates (eg. `ccccx`).
+The circuit size is rounded up automatically to closest multiple of 8.
 
 ## Example usage
 

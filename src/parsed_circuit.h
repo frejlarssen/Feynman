@@ -90,6 +90,7 @@ struct ParsedCircuit {
             }
 
             n = stoi(stripped_line.substr(bracket_pos + 1, end_bracket_pos - bracket_pos - 1));
+            n = ((n + 7) / 8) * 8; // Round up to next byte for compatibility with I/O format.
             wires.resize(n);
 
             int gate_index = 0;

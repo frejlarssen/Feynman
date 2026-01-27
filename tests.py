@@ -331,7 +331,7 @@ def deep():
     #get_prod("./circuits/qwalk_n4_it15.qasm", "0000", "0000")
     pass
 
-def test_1_qubytes_it1():
+def test_1_qubytes_it1(): #Pass
     test_all_params(n_mpi=4,
                     nr_qubytes=1,
                     input_hsv_file="./statevectors/ket0_size1.hsv",
@@ -340,7 +340,16 @@ def test_1_qubytes_it1():
                     output_hsv_file="./outputs/size1HS.hsv",
                     all_params=False, fraction=1.0)
 
-def test_3_qubytes(): # About 30 sec for qiskit. Fails
+def test_n4_it10(): #Pass
+    test_all_params(n_mpi=4,
+                    nr_qubytes=1,
+                    input_hsv_file="./statevectors/ket0_size1.hsv",
+                    qasm_file="./circuits/qwalk_n4_it10.qasm",
+                    hexstrings_file="./hexstring_sets/nrhex256_size1_from0x0_to0x100.hs",
+                    output_hsv_file="./outputs/size1HS.hsv",
+                    all_params=False, fraction=1.0)
+
+def test_3_qubytes(): # About 30 sec for qiskit. Fails because different sizes.
     test_all_params(n_mpi=4,
                     nr_qubytes=3,
                     input_hsv_file="./statevectors/ket0_size3.hsv",
@@ -353,7 +362,7 @@ def test_3_qubytes(): # About 30 sec for qiskit. Fails
 if __name__ == "__main__":
     start = time.time()
 
-    test_1_qubytes_it1()
+    test_n4_it10()
 
     
 

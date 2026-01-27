@@ -141,8 +141,6 @@ complex <float> simulate(vector<bool> output_bits, vector<bool> input_bits, comp
 
         std::complex<float> local_sum(0,0);
 
-        //TODO: Maybe, make one index for each actual thread (from hardware_concurrency) instead of history2?
-        //TODO: The vector with "thread" indexing is not necessary for MPI-parallelization.
         const size_t thread_ind = t_idx;
         const TypeLongInt history2 = (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
