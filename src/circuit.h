@@ -27,8 +27,7 @@ using namespace std;
 // This info is needed over all histories, which is why SET is not here.
 enum InternalWireStatus {
     NOT_REACHED,
-    INPUT,
-    OUTPUT,
+    NATURAL,
     ARTIFICIAL,
     REACHED
 };
@@ -37,8 +36,7 @@ std::string internal_wire_status_to_string(InternalWireStatus status) {
     //cout << "in internal_wire_status_to_string" << endl;
     switch (status) {
         case NOT_REACHED: return "NOT_REACHED";
-        case INPUT: return "INPUT";
-        case OUTPUT: return "OUTPUT";
+        case NATURAL: return "NATURAL";
         case ARTIFICIAL: return "ARTIFICIAL";
         case REACHED: return "REACHED";
         default: return "UNKNOWN";
@@ -85,7 +83,7 @@ struct InternalWire {
           val(nr_hists, false) {}
 
     bool set_safe(TypeLongInt thread, bool new_val) {
-        if (status == INPUT || status == OUTPUT) { thread = 0; }
+        if (status == NATURAL) { thread = 0; }
         if (val_set.at(thread) && (val.at(thread) != new_val)) {
             return false;
         }
@@ -107,7 +105,7 @@ struct InternalWire {
     // TODO: If possible, don't do this check every time we need a value.
     // TODO: Indexing by "thread" is not necessary for MPI-parallelization.
     uint8_t get_val(TypeLongInt thread) {
-        if (status == INPUT || status == OUTPUT) {
+        if (status == NATURAL) {
             return val.at(0);
         }
         return val.at(thread);
@@ -125,7 +123,7 @@ string internal_wire_to_string(const InternalWire& iw, int thread=-1, int verbos
            ", nr_histories: " + to_string(iw.val_set.size());
     //cout << "verbosity in internal_wire_to_string: " << verbosity << endl;
     if (thread != -1) {
-        if (iw.status == INPUT || iw.status == OUTPUT) {
+        if (iw.status == NATURAL) {
             thread = 0;
         }
         str += ", thread: " + to_string(thread);
@@ -582,7 +580,7 @@ struct Circuit {
         int nr_gates = ParsedCircuit::nr_gates;
         int iw_id = 0;
         for (int wire = 0; wire < ParsedCircuit::n; wire++) {
-            std::shared_ptr<InternalWire> wire_right = std::make_shared<InternalWire>(iw_id++, wire, /*NUM_CHUNKS+1,*/ OUTPUT);
+            std::shared_ptr<InternalWire> wire_right = std::make_shared<InternalWire>(iw_id++, wire, /*NUM_CHUNKS+1,*/ NATURAL);
             all_internal_wires.emplace_back(wire_right);
             output_sources.emplace_back(wire_right);
             std::shared_ptr<GateQubit> next = nullptr;
@@ -653,9 +651,9 @@ struct Circuit {
             //cout << "All gates for wire " << wire << " added" << endl;
 
             if (leftmost_chunk_id != -1) {
-                // Set the leftmost InternalWire to INPUT
-                next->wire_left->status = INPUT;
-                //cout << "status INPUT set" << endl;
+                // Set the leftmost InternalWire to NATURAL
+                next->wire_left->status = NATURAL;
+                //cout << "status NATURAL(input) set" << endl;
                 /*next->wire_left->chunk = NUM_CHUNKS;*/
                 input_sources.push_back(next->wire_left);
                 //cout << "input added to input_sources" << endl;
@@ -663,6 +661,9 @@ struct Circuit {
                 //cout << "size: " << Circuit::chunks.at(leftmost_chunk_id).internal_wires.size() << endl;
                 chunks.at(leftmost_chunk_id).internal_wires.pop_back();
                 //cout << "input removed from chunk" << endl;
+            } else {
+                // Entire wire is never broken => wire_right is output and input source
+                input_sources.push_back(wire_right);
             }
         }
 
@@ -797,6 +798,16 @@ struct Circuit {
                 str += "    " + gate_to_string(*g, thread, verbosity) + "\n";
             }
         }
+        str += ", input sources=[\n";
+        for (const std::shared_ptr<InternalWire>& iw : input_sources) {
+            str += "    " + internal_wire_to_string(iw, thread, verbosity) + "\n";
+        }
+        str += "]\n";
+        str += ", output sources=[\n";
+        for (const std::shared_ptr<InternalWire>& iw : output_sources) {
+            str += "    " + internal_wire_to_string(iw, thread, verbosity) + "\n";
+        }
+        str += "]\n";
         str += ")";
         return str;
     }
