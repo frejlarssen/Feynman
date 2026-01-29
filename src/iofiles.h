@@ -1,5 +1,7 @@
 #pragma once
 
+#include "typedef.h"
+#include "utils.h"
 #include <charconv> // for from_chars (C++17)
 #include <complex>
 #include <cstdint>
@@ -9,9 +11,6 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-
-#include "typedef.h"
-#include "utils.h"
 
 struct InputBitstrings {
   vector<bool> index;      // basis-state index
