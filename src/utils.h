@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include <algorithm>
 #include <iostream>
 #include <linux/perf_event.h>
 #include <linux/prctl.h>
