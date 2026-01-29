@@ -14,7 +14,7 @@ constexpr int PADDING = 256;
 
 // Select type
 
-//using TypeLongInt = __int128;
+// using TypeLongInt = __int128;
 
-//Fall back for ARM
+// Fall back for ARM
 using TypeLongInt = long long;
