@@ -35,6 +35,18 @@ def get_statevector_from_file(hsv_file, nr_qubytes):
     #print("Reconstructed statevector from file", hsv_file, ":", statevector)
     return statevector
 
+def delete_file(file):
+    cmd = ["rm",
+           file]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    print(f"Output from rm {file}:")
+    for line in result.stdout.splitlines():
+        print("STDOUT:", line)
+
+    for line in result.stderr.splitlines():
+        print("STDERR:", line)
+
 def run_simulator(n_mpi, nr_qubytes, input_hsv_file, qasm_file, hexstrings_file, output_hsv_file, p=None, r=None, fraction=None):
     cmd = ["mpirun",
            "-n", str(n_mpi),
@@ -194,6 +206,8 @@ def bitstrings(n):
     return [format(i, f'0{n}b') for i in range(2**n)]
 
 def test_all_params(n_mpi, nr_qubytes, input_hsv_file, qasm_file, hexstrings_file, output_hsv_file, all_params = False, fraction = 1.0):
+    delete_file(output_hsv_file) #Delete so that correct file doesn't already exist
+
     if all_params: #TODO: If possible, test systematically but not all of the possible parameters.
         try:
             (nr_gates, nr_art) = build_simulator(qasm_file)
