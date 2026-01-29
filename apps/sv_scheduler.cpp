@@ -267,9 +267,9 @@ int main(int argc, char* argv[]) {
     duration<double> total_clocktime_svcc_writing = end_svcc_full - end_svcc_simulation;
 
     if (print_rank0_timings){
-        printf("Total clocktime sim for sv.cc: %f seconds\n", total_clocktime_svcc_sim.count());
-        printf("Total clocktime writing to disk for sv.cc: %f seconds\n", total_clocktime_svcc_writing.count());
-        printf("Total clocktime (including I/O) for sv.cc: %f seconds\n", total_clocktime_svcc_full.count());
+        printf("Total clocktime sim for sv.cpp: %f seconds\n", total_clocktime_svcc_sim.count());
+        printf("Total clocktime writing to disk for sv.cpp: %f seconds\n", total_clocktime_svcc_writing.count());
+        printf("Total clocktime (including I/O) for sv.cpp: %f seconds\n", total_clocktime_svcc_full.count());
     }
 
     MPI_Finalize();
