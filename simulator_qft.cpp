@@ -57,7 +57,7 @@ const vector<bool> bit_array_from_string(const string &s) {
     } else if (s[i] == '0') {
       bits[i] = false;
     } else {
-      cerr << "Invalid bitstring!" << endl;
+      cerr << "Invalid bitstring!" << '\n';
       exit(1);
     }
   }
@@ -194,7 +194,7 @@ int main(int argc, char *argv[]) {
         }
         break;
       default:
-        cerr << "Unknown gate type!" << endl;
+        cerr << "Unknown gate type!" << '\n';
         exit(1);
       }
       // printf("Contribution after %s application: %f + i%f\n",

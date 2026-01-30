@@ -81,7 +81,7 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
     case SWAP:
       break;
     default:
-      cerr << "Gate not implemented!" << endl;
+      cerr << "Gate not implemented!" << '\n';
       exit(1);
     }
   }
@@ -179,7 +179,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
 
     for (TypeLongInt history1 = 0; history1 < TypeLongInt(1) << num_artificial1;
          history1++) {
-      // cout << "  In history1: " << history1 << endl;
+      // cout << "  In history1: " << history1 << '\n';
       // histories.at(1) = history1;
 
       chunk1.reset_values(thread_ind); // Introduces two warnings}
@@ -205,7 +205,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
 
       for (TypeLongInt history0 = 0;
            history0 < TypeLongInt(1) << num_artificial0; history0++) {
-        // cout << "    In history0: " << history0 << endl;
+        // cout << "    In history0: " << history0 << '\n';
 
         chunk0.reset_values(thread_ind);
 
@@ -243,7 +243,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
       total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
 
   // cout << "  Simulator returning amplitude: " << retval.real() << " + i" <<
-  // retval.imag() << endl;
+  // retval.imag() << '\n';
 
   return retval;
 }

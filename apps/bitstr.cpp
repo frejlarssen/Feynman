@@ -35,13 +35,13 @@ Options get_options(int argc, char *argv[]) {
     return std::atof(word.c_str());
   };
 
-  // cout << "Parsing options" << endl;
-  // cout << "argc: " << argc << endl;
+  // cout << "Parsing options" << '\n';
+  // cout << "argc: " << argc << '\n';
   // cout << "argv: ";
   for (int i = 0; i < argc; i++) {
     cout << argv[i] << " ";
   }
-  cout << endl;
+  cout << '\n';
 
   while ((k = getopt(argc, argv, "c:i:o:p:r:f:B")) != -1) {
     switch (k) {
@@ -62,10 +62,10 @@ Options get_options(int argc, char *argv[]) {
       opts.num_chunk1 = to_int(optarg);
       break;
     case 'f':
-      cout << "f optarg: " << optarg << endl;
+      cout << "f optarg: " << optarg << '\n';
       opts.fraction = to_float(optarg);
       printf("opts.fraction: %f\n", opts.fraction);
-      cout << "opts.fraction: " << opts.fraction << endl;
+      cout << "opts.fraction: " << opts.fraction << '\n';
       break;
     case 'B':
       opts.only_build = true;
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
     Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
   } else {
     cerr << "Both -p and -r must be set, or none of them for autotuning."
-         << endl;
+         << '\n';
     exit(1);
   }
 

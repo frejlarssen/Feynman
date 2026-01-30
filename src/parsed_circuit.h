@@ -70,14 +70,14 @@ struct ParsedCircuit {
 
       if (getline(file, line) &&
           line != "OPENQASM 3.0;") { // TODO: Check logic here...
-        cerr << "Only OPENQASM 3.0 supported" << endl;
+        cerr << "Only OPENQASM 3.0 supported" << '\n';
         exit(1);
       }
 
       if (getline(file, line) &&
           line != "include \"stdgates.inc\";") { // TODO: Fix support for
                                                  // standard library.
-        cerr << "Only stdgates.inc supported" << endl;
+        cerr << "Only stdgates.inc supported" << '\n';
         exit(1);
       }
 
@@ -93,7 +93,7 @@ struct ParsedCircuit {
       end_bracket_pos = stripped_line.find(']');
       if (bracket_pos == string::npos || end_bracket_pos == string::npos ||
           end_bracket_pos <= bracket_pos) {
-        cerr << "Invalid qubit register declaration" << endl;
+        cerr << "Invalid qubit register declaration" << '\n';
         exit(1);
       }
       if (line.substr(0, 5) == "qubit") {
@@ -102,7 +102,7 @@ struct ParsedCircuit {
       } else if (line.substr(0, 4) == "qreg") {
         qreg_name = stripped_line.substr(0, bracket_pos);
       } else {
-        cerr << "Expected qubit or qreg keyword" << endl;
+        cerr << "Expected qubit or qreg keyword" << '\n';
         exit(1);
       }
 
@@ -162,7 +162,7 @@ struct ParsedCircuit {
         vector<int> arg_indices;
         while (getline(qubit_stream, qubit_str, ',')) {
           if (qubit_str.substr(0, qreg_name.size() + 1) != qreg_name + "[") {
-            cerr << "Invalid qubit name" << endl;
+            cerr << "Invalid qubit name" << '\n';
             exit(1);
           }
           int qubit_index = stoi(
@@ -174,7 +174,7 @@ struct ParsedCircuit {
         for (int qparam = 0; qparam < arg_indices.size(); qparam++) {
           int arg_index = arg_indices[qparam];
           if (arg_index < 0 || arg_index >= n) {
-            cerr << "Qubit index out of range" << endl;
+            cerr << "Qubit index out of range" << '\n';
             exit(1);
           }
           wires[arg_index].emplace_back(
@@ -187,7 +187,7 @@ struct ParsedCircuit {
 
       file.close();
     } else {
-      cerr << "Unable to open circuit file!" << endl;
+      cerr << "Unable to open circuit file!" << '\n';
       exit(1);
     }
 

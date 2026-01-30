@@ -23,7 +23,7 @@ using namespace std;
 enum InternalWireStatus { NOT_REACHED, NATURAL, ARTIFICIAL, REACHED };
 
 inline std::string internal_wire_status_to_string(InternalWireStatus status) {
-  // cout << "in internal_wire_status_to_string" << endl;
+  // cout << "in internal_wire_status_to_string" << '\n';
   switch (status) {
   case NOT_REACHED:
     return "NOT_REACHED";
@@ -109,7 +109,7 @@ struct InternalWire {
 // TODO: Maybe, make thread safe by only printing it's own value
 string internal_wire_to_string(const InternalWire &iw, int thread = -1,
                                int verbosity = 0) {
-  // cout << "in internal_wire_to_string" << endl;
+  // cout << "in internal_wire_to_string" << '\n';
 
   string str =
       "(id: " + to_string(iw.id) + ", wire: " + to_string(iw.wire) +
@@ -117,7 +117,7 @@ string internal_wire_to_string(const InternalWire &iw, int thread = -1,
       //", prev: " + (gq.prev == nullptr ? "nullptr" : to_string((*gq.prev).id))
       ", artificial: " + to_string(iw.artificial) +
       ", nr_histories: " + to_string(iw.val_set.size());
-  // cout << "verbosity in internal_wire_to_string: " << verbosity << endl;
+  // cout << "verbosity in internal_wire_to_string: " << verbosity << '\n';
   if (thread != -1) {
     if (iw.status == NATURAL) {
       thread = 0;
@@ -223,7 +223,7 @@ struct Gate {
 };
 
 string gate_to_string(const Gate &g, int thread = -1, int verbosity = 0) {
-  // cout << "verbosity in gate_to_string: " << verbosity << endl;
+  // cout << "verbosity in gate_to_string: " << verbosity << '\n';
   string str = "Gate(verbosity=" + to_string(verbosity) +
                ", id=" + to_string(g.id) +
                ", type=" + gate_type_to_string(g.type) +
@@ -287,7 +287,7 @@ struct Chunk {
     int artificial_index = 0;
 
     // cout << "In fake run for chunk " << id << " with " << gates.size() << "
-    // gates." << endl;
+    // gates." << '\n';
 
     // Iterate gate list right to left.
     for (int i = static_cast<int>(gates.size()) - 1; i >= 0; i--) {
@@ -329,13 +329,13 @@ struct Chunk {
   bool right_to_left_natural_all(TypeLongInt num_threads) {
 
     // cout << "      In natural_pass_all for chunk " << id << " with " <<
-    // gates.size() << " gates." << endl;
+    // gates.size() << " gates." << '\n';
 
     // Iterate gate list right to left.
     for (int i = static_cast<int>(gates.size()) - 1; i >= 0; i--) {
       Gate &gate = *gates.at(i);
 
-      // cout << "      In natural_pass_all for gate " << gate.id << endl;
+      // cout << "      In natural_pass_all for gate " << gate.id << '\n';
 
       // Check if all to right are set (we arbitrarily use history 0)
       bool all_set = true;
@@ -346,11 +346,11 @@ struct Chunk {
         }
       }
 
-      // cout << "all_set: " << all_set << endl;
+      // cout << "all_set: " << all_set << '\n';
 
       if (all_set && gate_type_infos.at(gate.type).deterministic) {
         // Set all to the left.
-        // cout << "all_set and deterministic" << endl;
+        // cout << "all_set and deterministic" << '\n';
 
         // Check if activated
         bool activate = true;
@@ -362,14 +362,14 @@ struct Chunk {
         }
 
         if (!activate) {
-          // cout << "        gate not activated" << endl;
+          // cout << "        gate not activated" << '\n';
           for (int t = gate.num_controls;
                t <
                gate.num_controls + gate_type_infos.at(gate.type).num_targets;
                t++) {
             if (!gate.qubits.at(t)->wire_left->set_safe_all(
                     num_threads, gate.qubits.at(t)->wire_right->val.at(0))) {
-              // cout << "        not activated gate rejected" << endl;
+              // cout << "        not activated gate rejected" << '\n';
               return false;
             }
           }
@@ -377,17 +377,17 @@ struct Chunk {
           uint8_t right_val;
           switch (gate.type) {
           case NOT:
-            // cout << "        NOT gate activated in natural_all pass" << endl;
+            // cout << "        NOT gate activated in natural_all pass" << '\n';
 
             right_val =
                 gate.qubits.at(gate.num_controls)->wire_right->get_val(0);
 
-            // cout << "        right_val: " << (int) right_val << endl;
+            // cout << "        right_val: " << (int) right_val << '\n';
             if (!gate.qubits.at(gate.num_controls)
                      ->wire_left->set_safe_all(
                          num_threads, !gate.qubits.at(gate.num_controls)
                                            ->wire_right->get_val(0))) {
-              // cout << "        NOT gate refused" << endl;
+              // cout << "        NOT gate refused" << '\n';
               return false;
             }
             break;
@@ -406,7 +406,7 @@ struct Chunk {
             }
             break;
           default:
-            cerr << "Gate not implemented in right_to_left_natural_all" << endl;
+            cerr << "Gate not implemented in right_to_left_natural_all" << '\n';
           }
         }
       }
@@ -420,14 +420,14 @@ struct Chunk {
   bool right_to_left_vals(TypeLongInt chunk_history, TypeLongInt thread) {
 
     // cout << "      In vals pass for chunk " << id << " with " << gates.size()
-    // << " gates, thread: " << thread << endl;
+    // << " gates, thread: " << thread << '\n';
     for (const std::shared_ptr<InternalWire> &w : artificial_sources) {
       // printf("  Setting artificial source: %s\n", internal_wire_to_string(w,
       // 2).c_str());
       w->set_safe(thread, chunk_history >> (w->artificial) & 1);
     }
 
-    // cout << "  Chunk" << id << " Artificial sources set." << endl;
+    // cout << "  Chunk" << id << " Artificial sources set." << '\n';
 
     // Iterate gate list right to left.
     // TODO: Compare performance of looping all or only deterministically
@@ -437,7 +437,7 @@ struct Chunk {
       Gate &gate = *deterministically_breaking.at(i);
       const int gate_num_controls = gate.num_controls;
 
-      // cout << "      In vals pass for gate " << gate.id << endl;
+      // cout << "      In vals pass for gate " << gate.id << '\n';
 
       // printf("      The gate: %s\n", gate_to_string(gate, 2).c_str());
 
@@ -450,11 +450,11 @@ struct Chunk {
       //     }
       // }
 
-      // cout << "all_set: " << all_set << endl;
+      // cout << "all_set: " << all_set << '\n';
 
       // if (/*all_set && */gate_type_infos.at(gate.type).deterministic) {
       //  Set all to the left.
-      // cout << "all_set and deterministic" << endl;
+      // cout << "all_set and deterministic" << '\n';
       //  Check if activated
       bool activate = true;
       const auto &qubits_vector = gate.qubits;
@@ -466,33 +466,33 @@ struct Chunk {
       }
 
       if (!activate) {
-        // cout << "        gate not activated" << endl;
+        // cout << "        gate not activated" << '\n';
         const int num_qubits =
             gate_num_controls + gate_type_infos.at(gate.type).num_targets;
         for (int t = gate_num_controls; t < num_qubits; t++) {
           const u_int8_t setval = qubits_vector[t]->wire_right->get_val(thread);
-          // cout << "        setval: " << (int) setval << endl;
-          // cout << "        thread: " << thread << endl;
-          // cout << "        t: " << t << endl;
+          // cout << "        setval: " << (int) setval << '\n';
+          // cout << "        thread: " << thread << '\n';
+          // cout << "        t: " << t << '\n';
           // printf("The gate again: %s\n", gate_to_string(gate, 2).c_str());
           if (!qubits_vector[t]->wire_left->set_safe(thread, setval)) {
-            // cout << "        not activated gate rejected" << endl ;
+            // cout << "        not activated gate rejected" << '\n' ;
             return false;
           }
-          // cout << "        not activated gate accepted" << endl;
+          // cout << "        not activated gate accepted" << '\n';
         }
       } else {
         switch (gate.type) {
         case NOT:
-          // cout << "        NOT gate activated in vals pass" << endl;
+          // cout << "        NOT gate activated in vals pass" << '\n';
           //  const uint8_t right_val =
           //  gate.qubits.at(gate_num_controls)->wire_right->get_val(thread);
-          // cout << "        right_val: " << (int) right_val << endl;
+          // cout << "        right_val: " << (int) right_val << '\n';
           if (!qubits_vector[gate_num_controls]->wire_left->set_safe(
                   thread,
                   !qubits_vector[gate_num_controls]->wire_right->get_val(
                       thread))) {
-            // cout << "        NOT gate refused" << endl;
+            // cout << "        NOT gate refused" << '\n';
             return false;
           }
           break;
@@ -510,11 +510,11 @@ struct Chunk {
           }
           break;
         default:
-          cerr << "Gate not implemented in right_to_left_vals" << endl;
+          cerr << "Gate not implemented in right_to_left_vals" << '\n';
         }
       }
 
-      // cout << "      Vals pass for gate " << gate.id << " done." << endl;
+      // cout << "      Vals pass for gate " << gate.id << " done." << '\n';
       // }
     }
     return true;
@@ -525,23 +525,23 @@ struct Chunk {
   //    Look into optimizing. bool right_to_left_artificial(TypeLongInt
   //    chunk_history, TypeLongInt thread/*, std::ostringstream& buf_history*/)
   //    {
-  //        cout << "  In right_to_left_artificial" << endl;
+  //        cout << "  In right_to_left_artificial" << '\n';
   //        for (const std::shared_ptr<InternalWire>& w : artificial_sources) {
   //            printf("  Setting artificial source: %s\n",
   //            internal_wire_to_string(w, 2).c_str()); w->set_safe(thread,
   //            chunk_history >> (w->artificial) & 1);
   //        }
   //
-  //        cout << "  Chunk" << id << " Artificial sources set." << endl;
+  //        cout << "  Chunk" << id << " Artificial sources set." << '\n';
   //
   //        // Iterate gate list right to left.
   //        for (int i = deterministically_breaking.size() - 1; i >= 0; i--) {
   //            Gate& gate = *deterministically_breaking.at(i);
   //
   //            cout << "In artificial pass for gate with id " << gate.id <<
-  //            endl;
+  //            '\n';
   //
-  //            //cout << "  the gate: " << gate_to_string(gate, 2) << endl;
+  //            //cout << "  the gate: " << gate_to_string(gate, 2) << '\n';
   //
   //            // Check if activated
   //            bool activate = true;
@@ -565,11 +565,11 @@ struct Chunk {
   //                uint8_t val_right = -1;
   //                switch (gate.type) {
   //                case NOT:
-  //                    //cout << "  NOT gate activated." << endl;
-  //                    //cout << "  gate: " << gate_to_string(gate, 2) << endl;
+  //                    //cout << "  NOT gate activated." << '\n';
+  //                    //cout << "  gate: " << gate_to_string(gate, 2) << '\n';
   //                    val_right =
   //                    gate.qubits.at(gate.num_controls)->wire_right->get_val(thread);
-  //                    //cout << "  val right: " << (int)val_right << endl;
+  //                    //cout << "  val right: " << (int)val_right << '\n';
   //
   //                    if
   //                    (!gate.qubits.at(gate.num_controls)->wire_left->set_safe_all(num_artificial,
@@ -589,7 +589,7 @@ struct Chunk {
   //                    break;
   //                default:
   //                    cerr << "  Gate not implemented in right to left real
-  //                    pass" << endl;
+  //                    pass" << '\n';
   //                }
   //            }
   //        }
@@ -631,7 +631,7 @@ struct Circuit {
   // Sort based on idx.
   static void build_circuit(int num_chunk1, int num_chunk2,
                             bool for_autotuning = false) {
-    // cout << "Building circuit from parsed circuit" << endl;
+    // cout << "Building circuit from parsed circuit" << '\n';
     // printf("Parsed circuit in build:\n");
     // printf("  %s\n", ParsedCircuit::parsed_circuit_to_string().c_str());
     Circuit::n = ParsedCircuit::n;
@@ -679,7 +679,7 @@ struct Circuit {
           // cout << "adding iw\n";
           chunk.internal_wires.emplace_back(wire_left);
           // cout << "size after emplace_back: " << chunk.internal_wires.size()
-          // << endl;
+          // << '\n';
         } else {
           wire_left = wire_right;
         }
@@ -718,27 +718,27 @@ struct Circuit {
         next = q;
       }
 
-      // cout << "All gates for wire " << wire << " added" << endl;
+      // cout << "All gates for wire " << wire << " added" << '\n';
 
       if (leftmost_chunk_id != -1) {
         // Set the leftmost InternalWire to NATURAL
         next->wire_left->status = NATURAL;
-        // cout << "status NATURAL(input) set" << endl;
+        // cout << "status NATURAL(input) set" << '\n';
         /*next->wire_left->chunk = NUM_CHUNKS;*/
         input_sources.push_back(next->wire_left);
-        // cout << "input added to input_sources" << endl;
-        // cout << "leftmost_chunk_id: " << leftmost_chunk_id << endl;
+        // cout << "input added to input_sources" << '\n';
+        // cout << "leftmost_chunk_id: " << leftmost_chunk_id << '\n';
         // cout << "size: " <<
-        // Circuit::chunks.at(leftmost_chunk_id).internal_wires.size() << endl;
+        // Circuit::chunks.at(leftmost_chunk_id).internal_wires.size() << '\n';
         chunks.at(leftmost_chunk_id).internal_wires.pop_back();
-        // cout << "input removed from chunk" << endl;
+        // cout << "input removed from chunk" << '\n';
       } else {
         // Entire wire is never broken => wire_right is output and input source
         input_sources.push_back(wire_right);
       }
     }
 
-    // cout << "All gates added" << endl;
+    // cout << "All gates added" << '\n';
 
     auto cmp = [](shared_ptr<Gate> a, shared_ptr<Gate> b) {
       return a->id < b->id;
@@ -751,7 +751,7 @@ struct Circuit {
                 chunks.at(i).deterministically_breaking.end(), cmp);
     }
 
-    // cout << "Gates sorted" << endl;
+    // cout << "Gates sorted" << '\n';
 
     // printf("Gates before fake run:\n");
     // for (int i = 0; i < NUM_CHUNKS; i++) {
@@ -769,7 +769,7 @@ struct Circuit {
       chunks.at(i).num_artificial = chunks.at(i).right_to_left_fake();
     }
 
-    // cout << "Fake run done" << endl;
+    // cout << "Fake run done" << '\n';
 
     if (for_autotuning) { // TODO: Debug why it's out of memory in autotuning
                           // when not having this.
@@ -784,7 +784,7 @@ struct Circuit {
     // Loop through all iw's that belongs to chunks, resize the val and val_set
     // vectors.
     for (Chunk &chunk : chunks) {
-      // cout << "resizing chunk " << chunk.id << endl;
+      // cout << "resizing chunk " << chunk.id << '\n';
       for (std::shared_ptr<InternalWire> &iw : chunk.internal_wires) {
         // printf("Resizing iw: %s\n", internal_wire_to_string(iw, 2).c_str());
         iw->val_set.resize(size_val, false);
@@ -802,7 +802,7 @@ struct Circuit {
       w->val.resize(1);
     }
 
-    // cout << "Resized all internal wires" << endl;
+    // cout << "Resized all internal wires" << '\n';
 
     return;
   }

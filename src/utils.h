@@ -94,7 +94,7 @@ const vector<bool> bit_array_from_string(const string &s) {
     } else if (s.at(i) == '0') {
       bits.at(s.size() - 1 - i) = false;
     } else {
-      cerr << "Invalid bitstring!" << endl;
+      cerr << "Invalid bitstring!" << '\n';
       exit(1);
     }
   }
@@ -125,7 +125,7 @@ const complex<float> string_to_complex(const string &s) {
   size_t plus_pos = s.find('+', 1); // start at 1 to avoid leading +
   size_t i_pos = s.find('i', 1);
   if (plus_pos == string::npos || i_pos == string::npos) {
-    cerr << "Invalid complex string: " << s << endl;
+    cerr << "Invalid complex string: " << s << '\n';
     exit(1);
   }
   float real_part = std::stof(s.substr(0, plus_pos));

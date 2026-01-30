@@ -51,7 +51,7 @@ Options get_options(int argc, char *argv[]) {
   for (int i = 0; i < argc; i++) {
     cout << argv[i] << " ";
   }
-  cout << endl;
+  cout << '\n';
 
   while ((k = getopt(argc, argv, "c:i:o:p:r:f:t:v:D")) != -1) {
     switch (k) {
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
     Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
   } else {
     cerr << "Both -p and -r must be set, or none of them for autotuning."
-         << endl;
+         << '\n';
     exit(1);
   }
 

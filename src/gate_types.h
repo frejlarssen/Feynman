@@ -19,7 +19,7 @@ GateType gate_type_from_string(
   } else if (s == "z") {
     return GateType::PAULIZ;
   } else {
-    cerr << "Unknown gate type: " << s << endl;
+    cerr << "Unknown gate type: " << s << '\n';
     exit(1);
   }
 }

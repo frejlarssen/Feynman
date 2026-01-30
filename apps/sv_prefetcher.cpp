@@ -56,7 +56,7 @@ Options get_options(int argc, char *argv[]) {
   for (int i = 0; i < argc; i++) {
     cout << argv[i] << " ";
   }
-  cout << endl;
+  cout << '\n';
 
   while ((k = getopt(argc, argv, "c:i:b:o:p:r:s:f:t:v:D")) != -1) {
     switch (k) {
@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
     Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
   } else {
     cerr << "Both -p and -r must be set, or none of them for autotuning."
-         << endl;
+         << '\n';
     exit(1);
   }
 
@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
   // #endif
   if (print_rank0_timings)
     std::cout << "Total output bitstrings to simulate: "
-              << static_cast<std::size_t>(total_output_bitstrings) << std::endl;
+              << static_cast<std::size_t>(total_output_bitstrings) << '\n';
 
   // Loop through all input-output pairs. Start with amplitude depending on
   // input statevector.

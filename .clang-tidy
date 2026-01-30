@@ -2,4 +2,6 @@ Checks: >
   -*,
   bugprone-*,
   -bugprone-easily-swappable-parameters,
-  -bugprone-casting-through-void
+  -bugprone-casting-through-void,
+  clang-analyzer-*,
+  performance-*
