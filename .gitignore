@@ -43,6 +43,10 @@
 
 .vscode/
 
+.cache/
+
+compile_commands.json
+
 outputs/
 
 **untracked/

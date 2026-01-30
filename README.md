@@ -33,3 +33,6 @@ mpirun -n 4 ./sv_prefetcher_subset_mpi.x -c circuits/qft_12.qasm -i statevectors
 python tests.py
 
 ```
+## For development
+
+Add `bear -- ` before `make` to create file used for clangd.
