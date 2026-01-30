@@ -2,9 +2,6 @@
 #include "typedef.h"
 #include <algorithm>
 #include <complex>
-#include <functional>
-#include <thread>
-#include <vector>
 
 #ifdef USE_OPENMP
 #include <omp.h>

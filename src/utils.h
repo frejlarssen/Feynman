@@ -9,7 +9,6 @@
 #include <iostream>
 #include <linux/perf_event.h>
 #include <linux/prctl.h>
-#include <sstream>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/prctl.h>

@@ -2,17 +2,11 @@
 #include "circuit.h"
 #include "parallel_for.h"
 #include "typedef.h"
-#include <atomic>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <mpi.h>
-#include <mutex>
-#include <stdexcept>
-#include <string>
-#include <thread>
 #include <unistd.h>
 #include <vector>
 

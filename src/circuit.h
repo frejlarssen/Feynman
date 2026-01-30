@@ -1,17 +1,11 @@
 #include "parsed_circuit.h"
 #include "typedef.h"
-#include "utils.h"
 #include <algorithm>
 #include <climits>
-#include <fstream>
-#include <functional>
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <optional>
-#include <sstream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #ifdef USE_OPENMP
