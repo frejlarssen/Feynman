@@ -1,5 +1,9 @@
 #pragma once
+#include <algorithm>
+#include <cstddef>
 #include <mpi.h>
+
+using namespace std;
 
 /**
  * Scheduler for MPI processes

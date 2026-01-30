@@ -18,7 +18,7 @@ struct InputBitstrings {
 static inline string input_bitstring_to_string(const InputBitstrings &ib) {
   string str = "";
 
-  for (int i = ib.index.size() - 1; i >= 0; i--) {
+  for (int i = static_cast<int>(ib.index.size()) - 1; i >= 0; i--) {
     bool b = ib.index[i];
     str += (b ? '1' : '0');
   }
@@ -84,7 +84,7 @@ inline vector<char> read_file_to_buffer(const std::string &path) {
   size_t filesize = file.tellg();
   file.seekg(0);
   vector<char> buffer(filesize + 1);
-  if (!file.read(buffer.data(), filesize))
+  if (!file.read(buffer.data(), static_cast<streamsize>(filesize)))
     throw std::runtime_error("Error reading file: " + path);
   buffer[filesize] = '\0';
   return buffer;
@@ -106,9 +106,8 @@ load_input_bitvectors_from_master(const std::string &path, const bool dense,
   // resize & broadcast
   if (world_rank != 0)
     buffer.resize(buffer_size);
-  // !! currently can send INT_MAX number of data --> implemente broadcast as
-  // loop since we could have up to 2^n-1 bitstrings !!
-  MPI_Bcast(buffer.data(), buffer_size, MPI_BYTE, 0, comm);
+  // TODO: currently can send INT_MAX number of data
+  MPI_Bcast(buffer.data(), static_cast<int>(buffer_size), MPI_BYTE, 0, comm);
 
   std::vector<InputBitstrings> input_bitstrings;
   input_bitstrings = read_input_bitstrings(buffer, dense);

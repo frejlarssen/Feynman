@@ -22,7 +22,7 @@ using namespace std;
 // This info is needed over all histories, which is why SET is not here.
 enum InternalWireStatus { NOT_REACHED, NATURAL, ARTIFICIAL, REACHED };
 
-std::string internal_wire_status_to_string(InternalWireStatus status) {
+inline std::string internal_wire_status_to_string(InternalWireStatus status) {
   // cout << "in internal_wire_status_to_string" << endl;
   switch (status) {
   case NOT_REACHED:
@@ -131,7 +131,7 @@ string internal_wire_to_string(const InternalWire &iw, int thread = -1,
     }
   } else if (iw.val_set.size() <= 20 && verbosity > 0) {
     str += ", threads: [";
-    for (size_t i = 0; i < iw.val_set.size(); i++) {
+    for (int i = 0; i < static_cast<int>(iw.val_set.size()); i++) {
       str += "t" + to_string(i);
       if (iw.val_set.at(i)) {
         str += " set:";
@@ -290,7 +290,7 @@ struct Chunk {
     // gates." << endl;
 
     // Iterate gate list right to left.
-    for (int i = gates.size() - 1; i >= 0; i--) {
+    for (int i = static_cast<int>(gates.size()) - 1; i >= 0; i--) {
       Gate &gate = *gates.at(i);
 
       // printf("  In fake run for gate %s\n", gate_to_string(gate, 2).c_str());
@@ -332,14 +332,14 @@ struct Chunk {
     // gates.size() << " gates." << endl;
 
     // Iterate gate list right to left.
-    for (int i = gates.size() - 1; i >= 0; i--) {
+    for (int i = static_cast<int>(gates.size()) - 1; i >= 0; i--) {
       Gate &gate = *gates.at(i);
 
       // cout << "      In natural_pass_all for gate " << gate.id << endl;
 
       // Check if all to right are set (we arbitrarily use history 0)
       bool all_set = true;
-      for (int q = 0; q < gate.qubits.size(); q++) {
+      for (int q = 0; q < static_cast<int>(gate.qubits.size()); q++) {
         if (!gate.qubits.at(q)->wire_right->val_set.at(0)) {
           all_set = false;
           break;
@@ -432,7 +432,8 @@ struct Chunk {
     // Iterate gate list right to left.
     // TODO: Compare performance of looping all or only deterministically
     // breaking.
-    for (int i = deterministically_breaking.size() - 1; i >= 0; i--) {
+    for (int i = static_cast<int>(deterministically_breaking.size()) - 1;
+         i >= 0; i--) {
       Gate &gate = *deterministically_breaking.at(i);
       const int gate_num_controls = gate.num_controls;
 
@@ -615,8 +616,8 @@ struct Circuit {
 
   static void reset_values_all() {
     for (const std::shared_ptr<InternalWire> &w : all_internal_wires) {
-      TypeLongInt num_threads =
-          w->val_set.size(); // TODO: Is it unnecessary that this one differs?
+      int num_threads = static_cast<int>(
+          w->val_set.size()); // TODO: Is it unnecessary that this one differs?
       for (TypeLongInt t = 0; t < num_threads; t++) {
         w->val_set.at(t) = false;
         w->val.at(t) = false;
@@ -651,8 +652,9 @@ struct Circuit {
       // We iterate backwards in case we want to number the internal wires,
       // and to keep it consistent with internal-wire-based version.
       int leftmost_chunk_id = -1;
-      for (int pgi = ParsedCircuit::wires.at(wire).size() - 1; pgi >= 0;
-           pgi--) {
+
+      for (int pgi = static_cast<int>(ParsedCircuit::wires.at(wire).size()) - 1;
+           pgi >= 0; pgi--) {
         ParsedGate &pg = ParsedCircuit::wires.at(wire).at(pgi);
         // printf("Processing parsed gate: %s at wire %d\n",
         // parsed_gate_to_string(pg).c_str(), wire);

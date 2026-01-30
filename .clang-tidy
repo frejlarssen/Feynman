@@ -1,1 +1,5 @@
-Checks: '-*'
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-casting-through-void
