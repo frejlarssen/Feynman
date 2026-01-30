@@ -101,27 +101,13 @@ Options get_options(int argc, char *argv[]) {
   return opts;
 }
 
-int main(int argc, char *argv[]) {
-  MPI_Init(&argc, &argv);
-  int world_rank = -1;
-  int world_size = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank); // my rank
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size); // total ranks
-
+void run(Options &opts, const int world_rank, const int world_size) {
+  auto start_svcc_all = get_time();
 #ifdef USE_OPENMP
   const int t_omp = omp_get_max_threads();
 #else
   const int t_omp = 0;
 #endif
-
-  // prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
-#if PERF_INSTRUMENT
-  int fd =
-      open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
-#endif
-  auto start_svcc_all = get_time();
-
-  Options opts = get_options(argc, argv);
 
   // Debugging that should be printed only by one rank.
   bool print_rank0_timings = (opts.verbosity >= 1);
@@ -180,7 +166,8 @@ int main(int argc, char *argv[]) {
   // #ifdef USE_SUBSET_OUTBITSTRINGS
   vector<vector<bool>> output_bitstrings = load_output_bitvectors_from_master(
       opts.output_bitstring_subset, world_rank, MPI_COMM_WORLD);
-  const TypeLongInt total_output_bitstrings = static_cast<TypeLongInt>(output_bitstrings.size());
+  const TypeLongInt total_output_bitstrings =
+      static_cast<TypeLongInt>(output_bitstrings.size());
   // #else
   //     const TypeLongInt total_output_bitstrings = 1ULL << Circuit::n; //
   //     overflow if n >= 128
@@ -205,10 +192,11 @@ int main(int argc, char *argv[]) {
           : ((total_output_bitstrings + num_workers - 1) / num_workers);
 
   if (print_rank0_timings && opts.verbosity >= 1) {
-    printf("Starting simulation over all input-output pairs:\n -- Total output "
-           "bitstrings = %lld -- active workers = %zu - OMP_THREADS per worker = "
-           "%d - batch_size = %zu --:\n",
-           total_output_bitstrings, num_workers, t_omp, batch_size);
+    printf(
+        "Starting simulation over all input-output pairs:\n -- Total output "
+        "bitstrings = %lld -- active workers = %zu - OMP_THREADS per worker = "
+        "%d - batch_size = %zu --:\n",
+        total_output_bitstrings, num_workers, t_omp, batch_size);
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -314,6 +302,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   MPI_Barrier(MPI_COMM_WORLD);
+
   auto end_svcc_simulation = get_time();
 
   // parallel output to disk
@@ -360,6 +349,28 @@ int main(int argc, char *argv[]) {
            total_clocktime_svcc_writing.count());
     printf("Total clocktime (including I/O) for sv.cpp: %f seconds\n",
            total_clocktime_svcc_full.count());
+  }
+}
+
+int main(int argc, char *argv[]) {
+  MPI_Init(&argc, &argv);
+  int world_rank = -1;
+  int world_size = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank); // my rank
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size); // total ranks
+
+  // prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
+#if PERF_INSTRUMENT
+  int fd =
+      open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
+#endif
+
+  Options opts = get_options(argc, argv);
+
+  try {
+    run(opts, world_rank, world_size);
+  } catch (const std::exception &e) {
+    cerr << "Exception in run() function: " << e.what() << '\n';
   }
 
   MPI_Finalize();
