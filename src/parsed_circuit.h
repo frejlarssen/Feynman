@@ -1,4 +1,6 @@
 #include "gate_types.h"
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 

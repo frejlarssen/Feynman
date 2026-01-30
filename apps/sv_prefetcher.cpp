@@ -45,12 +45,12 @@ Options get_options(int argc, char *argv[]) {
 
   int k;
 
-  auto to_int = [](const std::string &word) -> unsigned {
+  auto to_int = [](const std::string &word) -> int {
     return std::atoi(word.c_str());
   };
 
   auto to_float = [](const std::string &word) -> float {
-    return std::atof(word.c_str());
+    return float(std::atof(word.c_str()));
   };
 
   for (int i = 0; i < argc; i++) {
@@ -148,10 +148,10 @@ int main(int argc, char *argv[]) {
 
   if (print_rank0_timings >= 1) {
     const int num_gates = ParsedCircuit::nr_gates;
-    printf("Circuit has %d gates. Distributed as:\n", num_gates, Circuit::n);
-    printf("  Chunk 0: %d gates\n", Circuit::chunks.at(0).gates.size());
-    printf("  Chunk 1: %d gates\n", Circuit::chunks.at(1).gates.size());
-    printf("  Chunk 2: %d gates\n", Circuit::chunks.at(2).gates.size());
+    printf("Circuit has %d gates. Distributed as:\n", num_gates);
+    printf("  Chunk 0: %zu gates\n", Circuit::chunks.at(0).gates.size());
+    printf("  Chunk 1: %zu gates\n", Circuit::chunks.at(1).gates.size());
+    printf("  Chunk 2: %zu gates\n", Circuit::chunks.at(2).gates.size());
     const int num_artificial = Circuit::chunks.at(0).num_artificial +
                                Circuit::chunks.at(1).num_artificial +
                                Circuit::chunks.at(2).num_artificial;
@@ -167,8 +167,8 @@ int main(int argc, char *argv[]) {
         (TypeLongInt(1) << Circuit::chunks.at(2).num_artificial);
 
     printf("For each simulate call we simulate over: \n");
-    printf("  %lu histories in total.\n", num_histories_total);
-    printf("  %lu histories in parallel.\n",
+    printf("  %lld histories in total.\n", num_histories_total);
+    printf("  %d histories in parallel.\n",
            (1 << Circuit::chunks.at(2).num_artificial));
   }
 
@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
   // #ifdef USE_SUBSET_OUTBITSTRINGS
   vector<vector<bool>> output_bitstrings = load_output_bitvectors_from_master(
       opts.output_bitstring_subset, world_rank, MPI_COMM_WORLD);
-  const TypeLongInt total_output_bitstrings = output_bitstrings.size();
+  const TypeLongInt total_output_bitstrings = static_cast<TypeLongInt>(output_bitstrings.size());
   // #else
   //     const TypeLongInt total_output_bitstrings = 1ULL << Circuit::n; //
   //     overflow if n >= 128
@@ -206,8 +206,8 @@ int main(int argc, char *argv[]) {
 
   if (print_rank0_timings && opts.verbosity >= 1) {
     printf("Starting simulation over all input-output pairs:\n -- Total output "
-           "bitstrings = %d -- active workers = %d - OMP_THREADS per worker = "
-           "%d - batch_size = %d --:\n",
+           "bitstrings = %lld -- active workers = %zu - OMP_THREADS per worker = "
+           "%d - batch_size = %zu --:\n",
            total_output_bitstrings, num_workers, t_omp, batch_size);
   }
   MPI_Barrier(MPI_COMM_WORLD);
@@ -252,7 +252,7 @@ int main(int argc, char *argv[]) {
             end_simulate - start_simulate;
 
         if (opts.verbosity >= 2) {
-          printf("Worker %d - Clocktime to simulate input |", my_worker);
+          printf("Worker %zu - Clocktime to simulate input |", my_worker);
           for (int i = Circuit::n - 1; i >= 0; --i)
             printf("%d", input_bits[i] ? 1 : 0);
           printf("> to output |");
@@ -337,7 +337,7 @@ int main(int argc, char *argv[]) {
   if (opts.verbosity >= 1) {
     fflush(stdin);
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("Worker %d - processed %d / %d bitstrings\n", my_worker,
+    printf("Worker %zu - processed %zu / %lld bitstrings\n", my_worker,
            count_processed_bitstrings, total_output_bitstrings);
   }
 

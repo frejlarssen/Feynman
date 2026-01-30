@@ -19,7 +19,8 @@
 using namespace std;
 using namespace std::chrono;
 
-static int open_leader(pid_t pid, int cpu, uint64_t type, uint64_t config) {
+static long int open_leader(pid_t pid, int cpu, uint64_t type,
+                            uint64_t config) {
   struct perf_event_attr attr;
   memset(&attr, 0, sizeof(attr));
   attr.type = type;     // e.g., PERF_TYPE_HARDWARE
@@ -141,7 +142,7 @@ template <typename Tdata> string int128_to_string(Tdata value) {
 
   string result;
   while (temp > 0) {
-    int digit = temp % 10;
+    const char digit = temp % 10;
     result += '0' + digit;
     temp /= 10;
   }

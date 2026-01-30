@@ -2,6 +2,7 @@
 #include "circuit.h"
 #include "parallel_for.h"
 #include "typedef.h"
+#include <chrono>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
@@ -56,7 +57,7 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
         gate.qubits.at(num_ctrl)->wire_left->get_val(thread);
     const auto wire_right_value =
         gate.qubits.at(num_ctrl)->wire_right->get_val(thread);
-    const float inv_over_sqrt2 = 1.0 / sqrt(2.0);
+    const float inv_over_sqrt2 = 1.0f / sqrt(2.0f);
     // Activate gate
     switch (gate.type) {
     case HADAMARD:
@@ -77,7 +78,6 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
       }
       break;
     case NOT:
-      break;
     case SWAP:
       break;
     default:
@@ -139,14 +139,14 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
 
   // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
   const float threshold2 = threshold * threshold;
-  parallel_for(0, num_par_histories, [&](size_t history2_ind, size_t t_idx) {
+  parallel_for(0, num_par_histories, [&](TypeLongInt history2_ind, int t_idx) {
     std::complex<float> local_sum(0, 0);
 
-    const size_t thread_ind = t_idx;
+    const int thread_ind = t_idx;
     const TypeLongInt history2 =
         (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
-    auto start_history2 = get_time();
+    auto start_history2 = std::chrono::steady_clock::now();
 
     // TODO: Make a real run setting the values of all internal wires.
     // We only need to iterate a vector of all deterministic, wire-breaking
