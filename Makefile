@@ -1,5 +1,5 @@
 # Compiler settings
-CXX       = g++
+CXX       = clang++
 MPICXX    = mpic++
 CXXFLAGS  = -O2
 OMPFLAGS  = -fopenmp
