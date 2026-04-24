@@ -1,102 +1,136 @@
+#!/usr/bin/env python3
+import argparse
+from pathlib import Path
+
 import numpy as np
 
-size = 7 #Size of QC in qubytes
+DEFAULT_OUTPUT_DIR = (
+    Path(__file__).resolve().parents[2] / "data/generated/statevectors"
+)
+
+# Ket0 presets
+BULK_KET0_SIZES = [
+    1,
+    3,
+    4,
+    5,
+    8,
+    16,
+    32,
+    64,
+    128,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+    65536,
+    1048576,
+]
+
+# Signal presets
+BULK_TWO_FREQ = [
+    (1, 6, float((2 ** (1 * 8)) / 4), 0.2, 0.5),
+    (2, 6, float((2 ** (2 * 8)) / 4), 0.2, 0.99999),
+    (3, 6, float((2 ** (3 * 8)) / 4), 0.2, 0.999999999),
+    (4, 6, float((2 ** (4 * 8)) / 4), 0.2, 0.99999999999999),
+    (4, 6, float((2 ** (4 * 8)) / 4), 0.2, 0.999999999999999),
+    (5, 6, float((2 ** (5 * 8)) / 4), 0.2, 1.0),
+]
 
 
-def ket0():
-    filename = f"ket0_size{size}.hsv"
-    
+def write_ket0(size: int, out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"ket0_size{size}.hsv"
     nr_nibbles = size * 2
-    
-    hex = "0" * nr_nibbles
-    
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(f"0x{hex}:1+0i\n")
+
+    with out_path.open("w", encoding="utf-8") as f:
+        # |0...0>
+        f.write(f"0x{'0' * nr_nibbles}:1+0i\n")
+
+    return out_path
 
 
+def _two_freq_name(size: int, f1: int, f2: float, f2_amp: float, threshold: float) -> str:
+    return f"amplitude_signal_size{size}QB_f{f1}_f{f2}_relamp{f2_amp}_t{threshold}.hsv"
 
-def amplitude_encoded(f = 1, threshold=0.0):
+
+def _margin_from_threshold(n_states: int, delta_theta: float, threshold: float) -> int:
+    # First crossing
+    for i in range(n_states):
+        if np.cos(i * delta_theta) < threshold:
+            return i - 1
+    raise ValueError("Threshold too small; no margin found.")
+
+
+def write_two_freq(
+    size: int, f1: int, f2: float, f2_amp: float, threshold: float, out_dir: Path
+) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
     nr_nibbles = size * 2
-    N = 2 ** (size*8)
-    delta_theta = f * 2*np.pi / N
-    filename = f"amplitude_signal_size{size}QB_f{f}_t{threshold}.hsv"
-    with open(filename, "w", encoding="utf-8") as file:
-        for i in range(N): #Infeasible for more than size = 3QB = 24qubit
-            real_part = np.cos(i*delta_theta)
-            if real_part > threshold or real_part < -threshold:
+    n_states = 2 ** (size * 8)
+    delta_theta1 = f1 * 2 * np.pi / n_states
+    delta_theta2 = f2 * 2 * np.pi / n_states
+    margin = _margin_from_threshold(
+        n_states=n_states, delta_theta=delta_theta1, threshold=threshold
+    )
+    out_path = out_dir / _two_freq_name(
+        size=size, f1=f1, f2=f2, f2_amp=f2_amp, threshold=threshold
+    )
+
+    with out_path.open("w", encoding="utf-8") as file:
+        # Adaptive window
+        for half_period in range(2 * f1):
+            middle = int(half_period * n_states / (2 * f1))
+            for i in range(max(middle - margin, 0), min(middle + margin + 1, n_states)):
+                real_part = np.cos(i * delta_theta1) + f2_amp * np.cos(i * delta_theta2)
                 file.write(f"0x{i:0{nr_nibbles}X}:{real_part}+0i\n")
 
-
-def amplitude_encoded_v2(f = 1, threshold=0.0):
-    nr_nibbles = size * 2
-    N = 2 ** (size*8)
-    delta_theta = f * 2*np.pi / N
-
-    margin = -1
-    for i in range(N):
-        real_part = np.cos(i*delta_theta)
-        if real_part < threshold:
-            margin = i - 1
-            break
-    
-    if margin < 0:
-        print("Too small threshold to use margin version.")
-        exit(1)
-        
-    print("margin: ", margin)
-
-    filename = f"amplitude_signal_size{size}QB_f{f}_t{threshold}_v2.hsv"
-    with open(filename, "w", encoding="utf-8") as file:
-        #for i in range(N): #Infeasible for more than size = 3QB = 24qubit
-        for half_period in range(2*f):
-            middle = int(half_period * N/(2*f))
-            
-            print("real at middle: ", np.cos(middle*delta_theta))
-            
-            for i in range(max(middle - margin, 0), min(middle + margin + 1, N)):
-                real_part = np.cos(i*delta_theta)
-                file.write(f"0x{i:0{nr_nibbles}X}:{real_part}+0i\n")
+    return out_path
 
 
-# Takes a low frequency f1 and one high frequency f2
-# f2_amp is relative amplitude of f2
-# NB: Not normalized
-def amplitude_encoded_2_freq(f1 = 1, f2 = 64, f2_amp = 0.2, margin=-1, threshold=0.0):
-    nr_nibbles = size * 2
-    N = 2 ** (size*8)
-    delta_theta1 = f1 * 2*np.pi / N
-    delta_theta2 = f2 * 2*np.pi / N
+def bulk_generate(out_dir: Path) -> list[Path]:
+    created: list[Path] = []
 
-    if margin == -1:
-        for i in range(N): #Margin is set based on low frequency f1
-            real_part = np.cos(i*delta_theta1)
-            if real_part < threshold:
-                margin = i - 1
-                break
-        if margin < 0:
-            print("Too small threshold to use this version.")
-            exit(1)
-            
-        print("margin: ", margin)
+    # Ket0
+    for size in BULK_KET0_SIZES:
+        created.append(write_ket0(size=size, out_dir=out_dir))
 
-        filename = f"amplitude_signal_size{size}QB_f{f1}_f{f2}_relamp{f2_amp}_t{threshold}.hsv"
-    else:
-        filename = f"amplitude_signal_size{size}QB_f{f1}_f{f2}_relamp{f2_amp}_m{margin}.hsv"
+    # Two-freq
+    for size, f1, f2, f2_amp, threshold in BULK_TWO_FREQ:
+        created.append(
+            write_two_freq(
+                size=size,
+                f1=f1,
+                f2=f2,
+                f2_amp=f2_amp,
+                threshold=threshold,
+                out_dir=out_dir,
+            )
+        )
 
-    with open(filename, "w", encoding="utf-8") as file:
-        #for i in range(N): #Infeasible for more than size = 3QB = 24qubit
-        for half_period in range(2*f1):
-            middle = int(half_period * N/(2*f1))
-            
-            print("real at middle: ", np.cos(middle*delta_theta1))
-            
-            for i in range(max(middle - margin, 0), min(middle + margin + 1, N)):
-                real_part = np.cos(i*delta_theta1) + f2_amp * np.cos(i*delta_theta2)
-                file.write(f"0x{i:0{nr_nibbles}X}:{real_part}+0i\n")
+    return created
 
 
-#amplitude_encoded_v2(6, 0.999999999999999)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate bulk statevectors (ket0 + two-frequency signals)."
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help=f"Output directory (default: {DEFAULT_OUTPUT_DIR}).",
+    )
+    return parser.parse_args()
 
-#amplitude_encoded_2_freq(f1=6, f2=2**(size*8) / 4, f2_amp=0.2, threshold=0.999999999999999999999999999) # For example: 1QB = 8 qubits => N=256 => f2=64
 
-amplitude_encoded_2_freq(f1=6, f2=2**(size*8) / 4, f2_amp=0.2, margin=50) # For example: 1QB = 8 qubits => N=256 => f2=64
+def main() -> None:
+    args = parse_args()
+    for path in bulk_generate(out_dir=args.output_dir):
+        print(path)
+
+
+if __name__ == "__main__":
+    main()
