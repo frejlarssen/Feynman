@@ -44,10 +44,8 @@
 # Generated compile commands
 compile_commands.json
 
-outputs/tmp/
-outputs/legacy/
+data/outputs/tmp/
+data/outputs/legacy/
 
-# Generated data by directory
-circuits/*.qasm
-hexstring_sets/*.hs
-statevectors/*.hsv
+# Generated data
+data/generated/
