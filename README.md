@@ -16,21 +16,28 @@ hexstrings
 Subset of QASM, with some extensions such as multi-controlled gates (eg. `ccccx`).
 The circuit size is rounded up automatically to closest multiple of 8.
 
-## Example usage
-
+## Setup
+(TODO: Document conda env.)
 ```
-conda activate feynman
+# Optional:
+# conda activate feynman
+```
 
+## Example usage
+Generate desired circuits in `circuits/`.
+
+```bash
 make sv_prefetcher_mpi_subsetbitstrings
-cd circuits/
-python3 quantum_walk_generator.py
-python3 qft_generator.py
-cd ../
-mkdir outputs
-mpirun -n 4 ./sv_prefetcher_subset_mpi.x -c circuits/qft_12.qasm -i statevectors/ket0.sv -o outputs/qftout -t 0.0 -v 1
+mkdir -p outputs/tmp
+mpirun -n 1 ./sv_prefetcher_subset_mpi.x \
+  -c circuits/qft_n8_k2.qasm \
+  -i statevectors/ket0_size1.hsv \
+  -b hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \
+  -o outputs/tmp/qft_n8_k2_run.hsv \
+  -t 0.0 -v 1
 
-
-python tests.py
+# If interesting results
+scripts/save_output.sh outputs/tmp/qft_n8_k2_run.hsv qft-n8-k2-example "threshold=0.0 n=1"
 
 ```
 ## For development
