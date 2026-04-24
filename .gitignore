@@ -41,7 +41,9 @@
 # debug information files
 *.dwo
 
+# development environment files
 .vscode/
+.codex
 
 .cache/
 
