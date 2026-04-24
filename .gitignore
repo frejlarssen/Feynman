@@ -41,17 +41,10 @@
 # debug information files
 *.dwo
 
-# development environment files
-.vscode/
-.codex
-
-.cache/
-
+# Generated
 compile_commands.json
 
 outputs/
-
-**untracked/
 
 # circuit files
 *.qasm
