@@ -41,6 +41,9 @@
 # debug information files
 *.dwo
 
+# Pycache
+__pycache__/
+
 # Generated compile commands
 compile_commands.json
 

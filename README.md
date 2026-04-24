@@ -16,6 +16,12 @@ hexstrings
 Subset of QASM, with some extensions such as multi-controlled gates (eg. `ccccx`).
 The circuit size is rounded up automatically to closest multiple of 8.
 
+Generators produce bulks of datafiles:
+
+```bash
+python3 generators/generate_bulk.py
+```
+
 ## Setup
 (TODO: Document conda env.)
 ```
