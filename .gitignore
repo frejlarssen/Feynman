@@ -41,19 +41,13 @@
 # debug information files
 *.dwo
 
-# Generated
+# Generated compile commands
 compile_commands.json
 
-outputs/
+outputs/tmp/
+outputs/legacy/
 
-# circuit files
-*.qasm
-
-# hexstring set
-*.hs
-
-# statevectors
-*.sv
-
-# hexstring statevectors
-*.hsv
+# Generated data by directory
+circuits/*.qasm
+hexstring_sets/*.hs
+statevectors/*.hsv
