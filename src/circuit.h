@@ -20,7 +20,7 @@
 using namespace std;
 
 // This info is needed over all histories, which is why SET is not here.
-enum InternalWireStatus { NOT_REACHED, NATURAL, ARTIFICIAL, REACHED };
+enum InternalWireStatus : uint8_t { NOT_REACHED, NATURAL, ARTIFICIAL, REACHED };
 
 inline std::string internal_wire_status_to_string(InternalWireStatus status) {
   // cout << "in internal_wire_status_to_string" << '\n';
