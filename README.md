@@ -75,7 +75,6 @@ python3 scripts/run_sv_prefetcher_sweep.py \
 
 python3 scripts/plot_sv_prefetcher_sweep.py \
   --summary-csv data/outputs/experiments/<timestamp>_qft_n8_batch_sweep/summary.csv \
-  --x-column varied_value \
   --y-column total_full_s \
   --mode meanstd
 ```
@@ -100,7 +99,13 @@ Example config file:
 Each sweep creates:
 - `summary.csv` with one row per run (parameter values, return code, extracted timings).
 - `sweep_metadata.json` (commit, branch, dirty flag, host, invocation, env snapshot).
+- `git_diff_apps_src.patch` with staged/unstaged/untracked snapshot for `apps/` and `src/`.
+- Provenance in metadata also includes binary SHA256, input file SHA256, CMake build/compiler info, and `mpirun` version output.
 - A per-run folder containing `output.hsv`, `timeBitstrings.tm`, `stdout.log`, `stderr.log`.
+
+Sweep script layout:
+- `scripts/sweeplib/` contains shared sweep/plot/provenance helpers (`sweep`, `plotting`, `provenance`, `utils`).
+- `scripts/sv_prefetcher_sweep/` contains project-specific modules (`schema`, `cli`, `project`, `main`).
 
 ## For development
 
