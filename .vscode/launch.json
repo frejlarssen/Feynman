@@ -5,7 +5,14 @@
         "request": "launch",
         "name": "Debug sv_prefetcher_subset_mpi (LLDB)",
         "program": "${workspaceFolder}/build/sv_prefetcher_subset_mpi.x",
-        "args": [],
+        "args": [
+            "-c data/generated/circuits/qft/qft_n8_k2.qasm",
+            "-i data/generated/statevectors/ket0_size1.hsv",
+            "-b data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs",
+            "-o data/outputs/tmp/qft_n8_k2_run.hsv",
+            "-t 0.0",
+            "-v 1"
+        ],
         "cwd": "${workspaceFolder}",
         "preLaunchTask": "CMake: build"
     }
