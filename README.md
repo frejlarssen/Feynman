@@ -23,10 +23,10 @@ python3 generators/generate_bulk.py
 ```
 
 ## Setup
-(TODO: Document conda env.)
+
 ```
-# Optional:
-# conda activate feynman
+micromamba create -n feynman -f environment.yml
+micromamba activate feynman
 ```
 
 ### Build with CMake

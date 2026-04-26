@@ -1,0 +1,20 @@
+name: newproj
+channels:
+  - conda-forge
+dependencies:
+  # C++ tooling
+  - clang
+  - clangxx
+  - clang-tools
+  - lldb
+  - cmake
+  - ninja
+  - pkg-config
+  # Parallelization
+  - openmpi
+  - llvm-openmp
+  # Python stack (for utilities)
+  - python=3.11
+  - numpy
+  - matplotlib
+  - pybind11
