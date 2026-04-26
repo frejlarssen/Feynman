@@ -1,0 +1,13 @@
+{
+    "configurations": [
+    {
+        "type": "lldb",
+        "request": "launch",
+        "name": "Debug sv_prefetcher_subset_mpi (LLDB)",
+        "program": "${workspaceFolder}/build/sv_prefetcher_subset_mpi.x",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "preLaunchTask": "CMake: build"
+    }
+    ]
+}
