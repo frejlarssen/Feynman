@@ -29,21 +29,32 @@ python3 generators/generate_bulk.py
 # conda activate feynman
 ```
 
+### Build with CMake
+
+```bash
+cmake -S . -B build
+cmake --build build -j
+```
+
+Build one target:
+```bash
+cmake --build build --target sv_prefetcher_mpi_subsetbitstrings -j
+```
+
 ## Example usage
 Generate desired circuits in `circuits/`.
 
 ```bash
-make sv_prefetcher_mpi_subsetbitstrings
-mkdir -p outputs/tmp
-mpirun -n 1 ./sv_prefetcher_subset_mpi.x \
-  -c circuits/qft_n8_k2.qasm \
-  -i statevectors/ket0_size1.hsv \
-  -b hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \
-  -o outputs/tmp/qft_n8_k2_run.hsv \
+mkdir -p data/outputs/tmp
+mpirun -n 1 ./build/sv_prefetcher_subset_mpi.x \
+  -c data/generated/circuits/qft/qft_n8_k2.qasm \
+  -i data/generated/statevectors/ket0_size1.hsv \
+  -b data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \
+  -o data/outputs/tmp/qft_n8_k2_run.hsv \
   -t 0.0 -v 1
 
 # If interesting results
-scripts/save_output.sh outputs/tmp/qft_n8_k2_run.hsv qft-n8-k2-example "threshold=0.0 n=1"
+scripts/save_output.sh data/outputs/tmp/qft_n8_k2_run.hsv qft-n8-k2-example "threshold=0.0 n=8"
 
 ```
 ## For development

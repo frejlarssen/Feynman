@@ -7,7 +7,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ARCHIVE_DIR="${ROOT_DIR}/outputs/archive"
+ARCHIVE_DIR="${ROOT_DIR}/data/outputs/archive"
 MANIFEST="${ARCHIVE_DIR}/manifest.tsv"
 HEADER="saved_at\tcommit\tbranch\tdirty\tlabel\tfile\tnotes"
 
@@ -19,8 +19,8 @@ if [[ $# -gt 0 ]]; then
 fi
 notes="${*:-}"
 
-if [[ ! -e "${src}" && -e "${ROOT_DIR}/outputs/${src}" ]]; then
-  src="${ROOT_DIR}/outputs/${src}"
+if [[ ! -e "${src}" && -e "${ROOT_DIR}/data/outputs/${src}" ]]; then
+  src="${ROOT_DIR}/data/outputs/${src}"
 fi
 
 if [[ ! -f "${src}" ]]; then
