@@ -49,6 +49,7 @@ compile_commands.json
 build/
 
 data/outputs/tmp/
+data/outputs/experiments/
 data/outputs/legacy/
 
 # Generated data
