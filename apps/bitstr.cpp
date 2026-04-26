@@ -2,6 +2,7 @@
 // bitstring
 
 #include "../src/simulator.h"
+#include "../src/utils.h"
 
 struct Options {
   string circuit_file;
@@ -142,12 +143,11 @@ int main(int argc, char *argv[]) {
     printf("Total gates: %ld\n", total_gates);
     printf("Artificial sources: %d\n", total_artificial_sources);
   } else {
-    std::ostringstream buf;
-
     // TODO: For benchmarking: Run this many times with different input/output
     // pairs.
-    complex<float> amp =
-        simulate(opts.output_bits, opts.input_bits, opts.fraction, buf, 3);
+    const std::complex<float> input_amp(1.0f, 0.0f);
+    complex<float> amp = simulate(opts.output_bits, opts.input_bits, input_amp,
+                                  opts.fraction, 0.0f, 3);
     //        int a = simulate();
     printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
   }

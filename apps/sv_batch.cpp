@@ -7,6 +7,7 @@
 
 #include "../src/simulator.h"
 #include "../src/typedef.h"
+#include "../src/utils.h"
 #include <iostream>
 
 #define CLOSE_TO_ZERO 1e-8
