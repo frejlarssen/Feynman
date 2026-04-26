@@ -5,7 +5,6 @@ project(Feynman LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -16,7 +15,7 @@ find_package(OpenMP REQUIRED)
 
 function(add_feynman_target target_name source_file)
   add_executable(${target_name} ${source_file})
-  target_compile_options(${target_name} PRIVATE -O2)
+  target_compile_options(${target_name} PRIVATE)
   target_link_libraries(${target_name} PRIVATE MPI::MPI_CXX)
 endfunction()
 
@@ -63,5 +62,5 @@ set_target_properties(
 )
 
 add_executable(sim_qft simulator_qft.cpp)
-target_compile_options(sim_qft PRIVATE -O2)
+target_compile_options(sim_qft PRIVATE)
 set_target_properties(sim_qft PROPERTIES OUTPUT_NAME sim_qft.x)
