@@ -33,7 +33,6 @@ def main() -> int:
         output=output_path,
         time_column=args.time_column,
         fidelity_column=args.fidelity_column,
-        title=args.title,
         xscale=args.xscale,
         label_fontsize=args.label_fontsize,
     )

@@ -32,7 +32,7 @@ def main(entry_script: Path | None = None) -> int:
 
     def _auto_plot(_sweep_dir: Path, summary_csv: Path, _metadata_path: Path, failures: int) -> None:
         try:
-            plot_path = plot_time_fidelity(summary_csv=summary_csv, title=config.experiment_name)
+            plot_path = plot_time_fidelity(summary_csv=summary_csv)
             if failures > 0:
                 print(f"Auto-generated plot (partial sweep): {plot_path}")
             else:

@@ -55,7 +55,6 @@ def plot_time_fidelity(
     output: Path | None = None,
     time_column: str = "total_full_s",
     fidelity_column: str = "fidelity_to_reference",
-    title: str = "QAOA pruning sweep",
     xscale: str = "symlog",
     label_fontsize: float | None = None,
 ) -> Path:
@@ -105,13 +104,11 @@ def plot_time_fidelity(
     ax_time.set_xlabel("threshold t")
     ax_time.set_ylabel(time_column)
     ax_fidelity.set_ylabel(fidelity_column)
-    ax_time.yaxis.label.set_color("#1f77b4")
-    ax_fidelity.yaxis.label.set_color("#d62728")
     ax_time.tick_params(axis="y", colors="#1f77b4")
     ax_fidelity.tick_params(axis="y", colors="#d62728")
     ax_fidelity.set_ylim(0.0, 1.02)
     ax_time.grid(True, linestyle="--", alpha=0.35)
-    ax_time.set_title(title)
+    ax_time.set_title("QAOA Pruning Sweep")
     ax_time.legend(handles=[time_line, fidelity_line], loc="best")
 
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
