@@ -6,6 +6,11 @@ import shlex
 from pathlib import Path
 from typing import Any, Callable
 
+from sweeplib.materialize import (
+    resolve_circuit_input,
+    resolve_output_bitstrings_input,
+    resolve_statevector_input,
+)
 from sweeplib.provenance import build_sweep_metadata
 from sweeplib.sweep import execute_command
 from sweeplib.utils import iso_utc, resolve_path, sanitize
@@ -30,12 +35,15 @@ _ARTIFICIAL_DISTRIBUTION_PATTERN = re.compile(
 
 
 def resolve_paths(config: SweepConfig, repo_root: Path) -> ProjectPaths:
+    circuit_path, _ = resolve_circuit_input(config.circuit, repo_root)
+    input_statevector_path, _ = resolve_statevector_input(config.input_statevector, repo_root)
+    output_bitstrings_path, _ = resolve_output_bitstrings_input(config.output_bitstrings, repo_root)
     return ProjectPaths(
         repo_root=repo_root,
         binary=resolve_path(config.binary, repo_root, must_exist=True),
-        circuit=resolve_path(config.circuit, repo_root, must_exist=True),
-        input_statevector=resolve_path(config.input_statevector, repo_root, must_exist=True),
-        output_bitstrings=resolve_path(config.output_bitstrings, repo_root, must_exist=True),
+        circuit=circuit_path,
+        input_statevector=input_statevector_path,
+        output_bitstrings=output_bitstrings_path,
         output_root=resolve_path(config.output_root, repo_root, must_exist=False),
     )
 

@@ -5,7 +5,16 @@ from pathlib import Path
 
 import numpy as np
 
-from sweeplib.plotting import apply_plot_fontsizes, configure_headless_matplotlib
+from sweeplib.plot_style import (
+    DEFAULT_LINEWIDTH_PRIMARY,
+    DEFAULT_LINEWIDTH_SECONDARY,
+    DEFAULT_MARKER_PRIMARY,
+    DEFAULT_MARKER_SECONDARY,
+    LINE_COLOR_PRIMARY,
+    LINE_COLOR_SECONDARY,
+    apply_plot_fontsizes,
+    configure_headless_matplotlib,
+)
 
 
 def _to_float(value: str) -> float | None:
@@ -15,7 +24,13 @@ def _to_float(value: str) -> float | None:
         return None
 
 
-def load_rows(path: Path, time_column: str, fidelity_column: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def load_rows(
+    path: Path,
+    time_column: str,
+    fidelity_column: str,
+    *,
+    include_failures: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     thresholds: list[float] = []
     times: list[float] = []
     fidelities: list[float] = []
@@ -23,7 +38,7 @@ def load_rows(path: Path, time_column: str, fidelity_column: str) -> tuple[np.nd
     with path.open("r", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
-            if row.get("returncode", "1") != "0":
+            if (not include_failures) and row.get("returncode", "1") != "0":
                 continue
             t = _to_float(row.get("threshold", ""))
             tm = _to_float(row.get(time_column, ""))
@@ -55,7 +70,9 @@ def plot_time_fidelity(
     output: Path | None = None,
     time_column: str = "total_full_s",
     fidelity_column: str = "fidelity_to_reference",
+    title: str = "QAOA pruning sweep",
     xscale: str = "symlog",
+    include_failures: bool = False,
     label_fontsize: float | None = None,
 ) -> Path:
     summary_path = summary_csv.resolve()
@@ -71,7 +88,10 @@ def plot_time_fidelity(
     import matplotlib.pyplot as plt
 
     thresholds, times, fidelities = load_rows(
-        summary_path, time_column=time_column, fidelity_column=fidelity_column
+        summary_path,
+        time_column=time_column,
+        fidelity_column=fidelity_column,
+        include_failures=include_failures,
     )
 
     fig, ax_time = plt.subplots(figsize=(8.0, 4.8))
@@ -80,17 +100,17 @@ def plot_time_fidelity(
     time_line = ax_time.plot(
         thresholds,
         times,
-        marker="o",
-        linewidth=1.8,
-        color="#1f77b4",
+        marker=DEFAULT_MARKER_PRIMARY,
+        linewidth=DEFAULT_LINEWIDTH_PRIMARY,
+        color=LINE_COLOR_PRIMARY,
         label=f"{time_column}",
     )[0]
     fidelity_line = ax_fidelity.plot(
         thresholds,
         fidelities,
-        marker="s",
-        linewidth=1.6,
-        color="#d62728",
+        marker=DEFAULT_MARKER_SECONDARY,
+        linewidth=DEFAULT_LINEWIDTH_SECONDARY,
+        color=LINE_COLOR_SECONDARY,
         label=f"{fidelity_column}",
     )[0]
 
@@ -104,11 +124,11 @@ def plot_time_fidelity(
     ax_time.set_xlabel("threshold t")
     ax_time.set_ylabel(time_column)
     ax_fidelity.set_ylabel(fidelity_column)
-    ax_time.tick_params(axis="y", colors="#1f77b4")
-    ax_fidelity.tick_params(axis="y", colors="#d62728")
+    ax_time.tick_params(axis="y", colors=LINE_COLOR_PRIMARY)
+    ax_fidelity.tick_params(axis="y", colors=LINE_COLOR_SECONDARY)
     ax_fidelity.set_ylim(0.0, 1.02)
     ax_time.grid(True, linestyle="--", alpha=0.35)
-    ax_time.set_title("QAOA Pruning Sweep")
+    ax_time.set_title(title)
     ax_time.legend(handles=[time_line, fidelity_line], loc="best")
 
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)

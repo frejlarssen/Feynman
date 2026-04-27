@@ -11,7 +11,7 @@ from pathlib import Path
 from sweeplib.plotting import apply_plot_fontsizes, configure_headless_matplotlib
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Plot case-level aggregates (e.g. no_cp/fixed_cp/autotuned)."
     )
@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Axis-label fontsize. Overrides FEYNMAN_PLOT_LABEL_FONTSIZE.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def _to_float(value: str) -> float:
@@ -113,8 +113,8 @@ def render_case_plot(
     fig.savefig(output_path, dpi=160)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     summary_path = Path(args.summary_csv).resolve()
     if not summary_path.exists():
         raise FileNotFoundError(f"Summary CSV not found: {summary_path}")

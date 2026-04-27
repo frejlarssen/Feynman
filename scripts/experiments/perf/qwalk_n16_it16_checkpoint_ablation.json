@@ -1,5 +1,6 @@
 {
   "experiment_name": "qwalk_n16_it16_checkpoint_ablation",
+  "repo_root": ".",
   "vary": "batch_size",
   "values": [32],
   "repeat": 5,

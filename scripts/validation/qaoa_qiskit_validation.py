@@ -18,6 +18,11 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import HGate, PhaseGate, RXGate, RYGate, SwapGate, XGate, ZGate
 from qiskit.quantum_info import Statevector
+from sweeplib.materialize import (
+    resolve_circuit_input,
+    resolve_output_bitstrings_input,
+    resolve_statevector_input,
+)
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -314,7 +319,7 @@ def _write_hsv(path: Path, values: list[int], amps: list[complex]) -> None:
             fh.write(f"0x{idx:02x}:{amp.real:.6f}+{amp.imag:.6f}i\n")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Compare Feynman simulator vs Qiskit (config-driven) and report runtimes."
     )
@@ -332,11 +337,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--verbosity", type=int, default=None)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     cfg = _merge_config(args)
 
     repo_root = Path(cfg["repo_root"]).resolve()
@@ -346,9 +351,9 @@ def main() -> None:
     run_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_name'])}"
     run_dir.mkdir(parents=True, exist_ok=False)
 
-    circuit = _resolve_path(cfg["circuit"], repo_root).resolve()
-    input_statevector = _resolve_path(cfg["input_statevector"], repo_root).resolve()
-    output_bitstrings = _resolve_path(cfg["output_bitstrings"], repo_root).resolve()
+    circuit, _ = resolve_circuit_input(cfg["circuit"], repo_root)
+    input_statevector, _ = resolve_statevector_input(cfg["input_statevector"], repo_root)
+    output_bitstrings, _ = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
     binary = _resolve_path(cfg["binary"], repo_root).resolve()
     if not binary.exists():
         raise FileNotFoundError(f"Binary not found: {binary}")
@@ -473,7 +478,8 @@ def main() -> None:
     print(f"Max |amp_feynman - amp_qiskit|: {max_abs_err:.6e}")
     print(f"Mean |amp_feynman - amp_qiskit|: {mean_abs_err:.6e}")
     print(f"Wrote: {summary_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

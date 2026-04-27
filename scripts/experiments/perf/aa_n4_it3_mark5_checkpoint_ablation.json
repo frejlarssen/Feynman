@@ -1,5 +1,6 @@
 {
   "experiment_name": "aa_n4_it3_mark5_checkpoint_ablation",
+  "repo_root": ".",
   "vary": "batch_size",
   "values": [32],
   "repeat": 5,

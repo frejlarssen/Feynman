@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
+from sweeplib.materialize import (
+    resolve_circuit_input,
+    resolve_output_bitstrings_input,
+    resolve_statevector_input,
+)
 from sweeplib.provenance import build_sweep_metadata
 from sweeplib.sweep import execute_command
 from sweeplib.utils import iso_utc, resolve_path, sanitize
@@ -161,9 +166,9 @@ def resolve_paths_and_runtime(config: SweepConfig, repo_root: Path) -> tuple[Pro
 
     output_root = resolve_path(config.output_root, repo_root, must_exist=False)
     binary = resolve_path(str(merged_cfg["binary"]), repo_root, must_exist=True)
-    circuit = resolve_path(str(merged_cfg["circuit"]), repo_root, must_exist=True)
-    input_statevector = resolve_path(str(merged_cfg["input_statevector"]), repo_root, must_exist=True)
-    output_bitstrings = resolve_path(str(merged_cfg["output_bitstrings"]), repo_root, must_exist=True)
+    circuit, _ = resolve_circuit_input(merged_cfg["circuit"], repo_root)
+    input_statevector, _ = resolve_statevector_input(merged_cfg["input_statevector"], repo_root)
+    output_bitstrings, _ = resolve_output_bitstrings_input(merged_cfg["output_bitstrings"], repo_root)
     subset_indices, _ = parse_hs(output_bitstrings)
 
     paths = ProjectPaths(

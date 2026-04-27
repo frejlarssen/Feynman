@@ -13,8 +13,8 @@ from .project import build_metadata, build_run_points, make_run_one, resolve_pat
 from .schema import SUMMARY_FIELDS
 
 
-def main(entry_script: Path | None = None) -> int:
-    config = build_config()
+def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int:
+    config = build_config(argv)
     repo_root_raw = Path(config.repo_root).expanduser()
     repo_root = repo_root_raw.resolve() if repo_root_raw.is_absolute() else (Path.cwd() / repo_root_raw).resolve()
     paths, runtime = resolve_paths_and_runtime(config, repo_root)
@@ -32,7 +32,7 @@ def main(entry_script: Path | None = None) -> int:
 
     def _auto_plot(_sweep_dir: Path, summary_csv: Path, _metadata_path: Path, failures: int) -> None:
         try:
-            plot_path = plot_time_fidelity(summary_csv=summary_csv)
+            plot_path = plot_time_fidelity(summary_csv=summary_csv, include_failures=(failures > 0))
             if failures > 0:
                 print(f"Auto-generated plot (partial sweep): {plot_path}")
             else:
@@ -58,7 +58,7 @@ def main(entry_script: Path | None = None) -> int:
             runner_script_path=runner_script_path,
             invocation=invocation,
         ),
-        on_complete=_auto_plot,
+        on_complete=None if config.no_plot else _auto_plot,
     )
     return rc
 

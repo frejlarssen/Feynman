@@ -12,9 +12,10 @@ from .project import build_metadata, build_run_points, make_run_one, resolve_pat
 from .schema import SUMMARY_FIELDS
 
 
-def main(entry_script: Path | None = None) -> int:
-    config = build_config()
-    repo_root = Path(__file__).resolve().parents[2]
+def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int:
+    config = build_config(argv)
+    repo_root_raw = Path(config.repo_root).expanduser()
+    repo_root = repo_root_raw.resolve() if repo_root_raw.is_absolute() else (Path.cwd() / repo_root_raw).resolve()
     paths = resolve_paths(config, repo_root)
     git_info = get_git_info(paths.repo_root)
     run_one = make_run_one(config=config, paths=paths, git_info=git_info)

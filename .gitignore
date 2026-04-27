@@ -48,10 +48,7 @@ __pycache__/
 compile_commands.json
 build/
 
-data/outputs/tmp/
-data/outputs/experiments/
-data/outputs/validation/
-data/outputs/legacy/
+data/outputs/
 
 # Generated data
 data/generated/

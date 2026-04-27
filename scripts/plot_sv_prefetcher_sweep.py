@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot parameter sweeps from scripts/run_sv_prefetcher_sweep.py summary.csv."""
+"""Plot parameter sweeps from sv_prefetcher summary.csv files."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from sweeplib.plotting import (
 )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot sweep results produced by run_sv_prefetcher_sweep.py"
+        description="Plot sweep results produced by perf-sweep runs."
     )
     parser.add_argument("--summary-csv", required=True, help="Path to summary.csv")
     parser.add_argument("--y-column", default="total_full_s")
@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Axis-label fontsize. Overrides FEYNMAN_PLOT_LABEL_FONTSIZE.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def infer_vary_label(summary_path: Path) -> str:
@@ -45,8 +45,8 @@ def infer_vary_label(summary_path: Path) -> str:
     return vary if isinstance(vary, str) and vary else "varied_value"
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     summary_path = Path(args.summary_csv).resolve()
     if not summary_path.exists():
         raise FileNotFoundError(f"Summary CSV not found: {summary_path}")
