@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qft_two_freq_nqubits_demo",
+  "experiment_name": "qft_demo",
   "binary": "build/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
   "ranks": 1,
@@ -12,7 +12,7 @@
     "generator": "two_freq",
     "n_qubits": 12,
     "f1": 5,
-    "f2": 2000,
+    "f2": 2001,
     "f2_amp": 0.5,
     "threshold": 0.0,
     "complex": true,
@@ -26,7 +26,7 @@
       "count": 4
     },
     "interval2": {
-      "start": 1998,
+      "start": 1999,
       "count": 4
     }
   },

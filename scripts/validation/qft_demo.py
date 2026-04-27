@@ -46,6 +46,7 @@ from generators.statevectors.statevector_generator import (  # noqa: E402
     write_two_freq_n_qubits,
     write_two_tone_dense,
 )
+from scripts.sweeplib.plotting import apply_plot_fontsizes, resolve_label_fontsize  # noqa: E402
 
 
 def _utc_stamp() -> str:
@@ -116,10 +117,13 @@ def _merge_config(
         "plot_pdf": pick("plot_pdf", args.plot_pdf, None),
         "plot_title": pick("plot_title", args.plot_title, None),
         "plot_max_xticks": int(pick("plot_max_xticks", args.plot_max_xticks, 24)),
+        "plot_label_fontsize": pick("plot_label_fontsize", args.plot_label_fontsize, None),
         "qiskit_reference": bool(pick("qiskit_reference", None, True)),
         "qiskit_max_qubits": int(pick("qiskit_max_qubits", None, 16)),
         "signal": cfg.get("signal", {}),
     }
+    if merged["plot_label_fontsize"] is not None:
+        merged["plot_label_fontsize"] = float(merged["plot_label_fontsize"])
 
     if not merged["from_csv"]:
         for key in ("circuit", "input_statevector", "output_bitstrings"):
@@ -754,8 +758,8 @@ def _render_demo_plot(
     output_bins: list[int],
     output_pop: np.ndarray,
     qiskit_pop: np.ndarray | None,
-    title: str,
     max_xticks: int = 24,
+    label_fontsize: float | None = None,
 ) -> None:
     out_pdf.parent.mkdir(parents=True, exist_ok=True)
     import os
@@ -767,6 +771,8 @@ def _render_demo_plot(
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
+    subplot_title_fontsize = max(1.0, resolve_label_fontsize(label_fontsize) - 2.0)
 
     # Left panel: sparse input real part.
     in_idx = np.array(sorted(input_sparse.keys()), dtype=np.int64)
@@ -779,7 +785,7 @@ def _render_demo_plot(
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
 
     axes[0].plot(in_idx, in_real, linewidth=1.0)
-    axes[0].set_title("Input Signal (Real Part)")
+    axes[0].set_title("Input Signal (Real Part)", fontsize=subplot_title_fontsize)
     axes[0].set_xlabel("Basis Index (Time domain)")
     axes[0].set_ylabel("Amplitude")
     axes[0].grid(True, axis="y", alpha=0.25)
@@ -790,7 +796,7 @@ def _render_demo_plot(
         axes[1].bar(x_out + bar_w / 2.0, qiskit_pop, width=bar_w, alpha=0.72, label="Qiskit")
     else:
         axes[1].bar(x_out, output_pop, alpha=0.82, label="Feynman")
-    axes[1].set_title("Output Population (Requested Bitstrings)")
+    axes[1].set_title("Output Population (Requested Bitstrings)", fontsize=subplot_title_fontsize)
     axes[1].set_xlabel("Output Bitstring (Frequency domain)")
     axes[1].set_ylabel(r"$|amp|^2$")
     if len(output_bins) <= max_xticks:
@@ -805,7 +811,6 @@ def _render_demo_plot(
     if qiskit_pop is not None:
         axes[1].legend()
 
-    fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(out_pdf)
     plt.close(fig)
@@ -838,6 +843,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plot-pdf", default=None)
     parser.add_argument("--plot-title", default=None)
     parser.add_argument("--plot-max-xticks", type=int, default=None)
+    parser.add_argument("--plot-label-fontsize", type=float, default=None)
     parser.add_argument("--qiskit-reference", action="store_true", default=None)
     parser.add_argument("--qiskit-max-qubits", type=int, default=None)
     return parser.parse_args()
@@ -862,7 +868,6 @@ def main() -> int:
         input_statevector_cfg: str | None = (
             input_statevector_cfg_raw if isinstance(input_statevector_cfg_raw, str) else None
         )
-        plot_title: str | None = cfg["plot_title"]
 
         if population_csv is None and isinstance(summary.get("paths"), dict):
             population_csv = summary["paths"].get("output_population_csv")
@@ -870,9 +875,6 @@ def main() -> int:
             input_statevector_cfg = summary["paths"].get("input_statevector_used") or summary["paths"].get(
                 "input_statevector"
             )
-        if plot_title is None:
-            exp = summary.get("experiment_name")
-            plot_title = f"{exp} (from CSV)" if exp else "Feynman QFT Frequency Demo (from CSV)"
 
         if population_csv is None:
             raise ValueError(
@@ -912,8 +914,8 @@ def main() -> int:
             output_bins=output_bins,
             output_pop=output_pop,
             qiskit_pop=qiskit_pop,
-            title=plot_title,
             max_xticks=int(cfg["plot_max_xticks"]),
+            label_fontsize=cfg["plot_label_fontsize"],
         )
 
         print(f"Plot written: {plot_pdf}")
@@ -1110,20 +1112,14 @@ def main() -> int:
         input_cfg=cfg["input_statevector"],
         signal_fallback=cfg.get("signal", {}),
     )
-    signal_str = ""
-    if signal:
-        low = signal.get("f_low")
-        high = signal.get("f_high")
-        rel = signal.get("relative_amp")
-        signal_str = f" (f_low={low}, f_high={high}, rel_amp={rel})"
     _render_demo_plot(
         out_pdf=plot_pdf,
         input_sparse=input_sparse,
         output_bins=output_bins,
         output_pop=output_pop,
         qiskit_pop=qiskit_pop,
-        title="Feynman QFT Frequency Demo" + signal_str,
         max_xticks=int(cfg["plot_max_xticks"]),
+        label_fontsize=cfg["plot_label_fontsize"],
     )
 
     low_bucket_population = None

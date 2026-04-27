@@ -8,7 +8,7 @@ import csv
 import statistics
 from pathlib import Path
 
-from sweeplib.plotting import configure_headless_matplotlib
+from sweeplib.plotting import apply_plot_fontsizes, configure_headless_matplotlib
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +25,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output", default="", help="Output PDF path.")
     parser.add_argument("--title", default="", help="Optional title.")
+    parser.add_argument(
+        "--label-fontsize",
+        type=float,
+        default=None,
+        help="Axis-label fontsize. Overrides FEYNMAN_PLOT_LABEL_FONTSIZE.",
+    )
     return parser.parse_args()
 
 
@@ -76,6 +82,7 @@ def render_case_plot(
     y_label: str,
     title: str,
     output_path: Path,
+    label_fontsize: float | None = None,
 ) -> None:
     configure_headless_matplotlib()
 
@@ -83,6 +90,7 @@ def render_case_plot(
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
 
     case_names = sorted(grouped)
     means = [statistics.mean(grouped[name]) for name in case_names]
@@ -129,6 +137,7 @@ def main() -> int:
         y_label=args.y_column,
         title=args.title,
         output_path=output_path,
+        label_fontsize=args.label_fontsize,
     )
     print(f"Saved plot: {output_path}")
     return 0

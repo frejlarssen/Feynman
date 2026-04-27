@@ -24,6 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-failures", action="store_true")
     parser.add_argument("--output", default="", help="PDF path. Default: next to summary.csv")
     parser.add_argument("--title", default="", help="Optional plot title.")
+    parser.add_argument(
+        "--label-fontsize",
+        type=float,
+        default=None,
+        help="Axis-label fontsize. Overrides FEYNMAN_PLOT_LABEL_FONTSIZE.",
+    )
     return parser.parse_args()
 
 
@@ -72,6 +78,7 @@ def main() -> int:
         y_label=args.y_column,
         title=args.title,
         output_path=output_path,
+        label_fontsize=args.label_fontsize,
     )
     print(f"Saved plot: {output_path}")
     return 0
