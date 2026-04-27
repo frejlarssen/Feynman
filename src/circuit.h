@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -332,9 +333,13 @@ struct Chunk {
     // cout << "      In natural_pass_all for chunk " << id << " with " <<
     // gates.size() << " gates." << '\n';
 
-    // Iterate gate list right to left.
-    for (int i = static_cast<int>(gates.size()) - 1; i >= 0; i--) {
-      Gate &gate = *gates.at(i);
+    // Iterate only deterministic, wire-breaking gates right to left.
+    // Wire-preserving deterministic gates (e.g., PHASE/PAULIZ and their
+    // controlled variants) do not change wire values, so they do not
+    // contribute to right-to-left value propagation.
+    for (int i = static_cast<int>(deterministically_breaking.size()) - 1;
+         i >= 0; i--) {
+      Gate &gate = *deterministically_breaking.at(i);
 
       // cout << "      In natural_pass_all for gate " << gate.id << '\n';
 
@@ -407,7 +412,10 @@ struct Chunk {
             }
             break;
           default:
-            cerr << "Gate not implemented in right_to_left_natural_all" << '\n';
+            throw std::runtime_error(
+                "Internal error: unsupported deterministic wire-breaking gate "
+                "in right_to_left_natural_all: " +
+                gate_type_to_string(gate.type));
           }
         }
       }
