@@ -519,7 +519,10 @@ struct Chunk {
           }
           break;
         default:
-          cerr << "Gate not implemented in right_to_left_vals" << '\n';
+          throw std::runtime_error(
+              "Internal error: unsupported deterministic wire-breaking gate "
+              "in right_to_left_vals: " +
+              gate_type_to_string(gate.type));
         }
       }
 
