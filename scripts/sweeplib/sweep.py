@@ -62,6 +62,7 @@ def run_sweep(
     continue_on_error: bool,
     run_one: Callable[[Path, int, int, Any], tuple[dict[str, Any], int]],
     build_metadata: Callable[[Path, dt.datetime], dict[str, Any]],
+    on_complete: Callable[[Path, Path, Path, int], None] | None = None,
     metadata_filename: str = "sweep_metadata.json",
 ) -> int:
     sweep_dir, created_at = create_sweep_dir(output_root, experiment_name)
@@ -106,6 +107,8 @@ def run_sweep(
     print(f"Sweep directory: {sweep_dir}")
     print(f"Summary CSV: {summary_path}")
     print(f"Sweep metadata: {metadata_path}")
+    if on_complete is not None:
+        on_complete(sweep_dir, summary_path, metadata_path, failures)
     if failures > 0:
         print(f"Completed with {failures} failed run(s).", file=sys.stderr)
         return 1

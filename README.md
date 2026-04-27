@@ -144,6 +144,20 @@ python3 scripts/merge_sv_prefetcher_summaries.py \
 Sweep script layout:
 - `scripts/sweeplib/` contains shared sweep/plot/provenance helpers (`sweep`, `plotting`, `provenance`, `utils`).
 - `scripts/sv_prefetcher_sweep/` contains project-specific modules (`schema`, `cli`, `project`, `main`).
+- `scripts/qaoa_pruning_sweep/` contains QAOA threshold sweep modules (`schema`, `cli`, `project`, `main`).
+
+QAOA pruning threshold sweep (experiment):
+```bash
+python3 scripts/run_qaoa_pruning_sweep.py \
+  --config scripts/experiments/qaoa_pruning_sweep_cycle_n8_p2.json
+
+# Plot only (from an existing sweep summary.csv; no simulator rerun)
+python3 scripts/plot_qaoa_pruning_sweep.py \
+  --summary-csv data/outputs/experiments/<timestamp>_qaoa_pruning_sweep_cycle_n8_p2/summary.csv
+```
+
+In the generated plot, blue is `total_full_s` (left y-axis) and red is
+`fidelity_to_reference` (right y-axis).
 
 ## Qiskit Validation (Accuracy)
 
@@ -151,8 +165,8 @@ For paper-style correctness checks against a state-vector reference on small
 instances (separate from performance sweeps):
 
 ```bash
-python3 scripts/validation/qft_vs_qiskit.py \
-  --config scripts/experiments/qft_n8_k4_qiskit_validation.json
+python3 scripts/validation/qaoa_qiskit_validation.py \
+  --config scripts/experiments/qaoa_cycle_n8_p2_qiskit_validation.json
 ```
 
 This creates a timestamped folder in `data/outputs/validation/` with:
@@ -187,26 +201,26 @@ and reports bucket metrics (`f_low`/`f_high`) in `summary.json`.
 
 Optional wider output subset (for leakage visibility around both buckets):
 ```bash
-python3 scripts/validation/qft_feynman_demo.py \
+python3 scripts/validation/qft_demo.py \
   --config scripts/experiments/qft_n32_feynman_low_high_demo_wide.json
 ```
 
 Less-extreme demo input (for clearer, larger bucket populations):
 ```bash
-python3 scripts/validation/qft_feynman_demo.py \
+python3 scripts/validation/qft_demo.py \
   --config scripts/experiments/qft_n8_feynman_low_high_demo_less_extreme.json
 ```
 
 Replot from existing CSV output (skip simulator rerun):
 ```bash
-python3 scripts/validation/qft_feynman_demo.py \
+python3 scripts/validation/qft_demo.py \
   --from-csv \
   --summary-json data/outputs/validation/<run_dir>/summary.json
 ```
 
 Equivalent explicit CSV-based replot:
 ```bash
-python3 scripts/validation/qft_feynman_demo.py \
+python3 scripts/validation/qft_demo.py \
   --from-csv \
   --population-csv data/outputs/validation/<run_dir>/output_population.csv \
   --input-statevector data/outputs/validation/<run_dir>/input_normalized.hsv \

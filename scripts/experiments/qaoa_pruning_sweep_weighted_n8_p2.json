@@ -1,0 +1,17 @@
+{
+  "experiment_name": "qaoa_pruning_sweep_weighted_n8_p2",
+  "repo_root": ".",
+  "output_root": "data/outputs/experiments",
+  "base_config": "scripts/experiments/qaoa_weighted_n8_p2_qiskit_validation.json",
+  "thresholds": [
+    0.0,
+    1e-10,
+    1e-9,
+    1e-8,
+    1e-7,
+    1e-6,
+    1e-5,
+    1e-4,
+    1e-3
+  ]
+}
