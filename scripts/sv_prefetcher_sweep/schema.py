@@ -8,6 +8,16 @@ from typing import Any
 
 VARY_CHOICES = ("ranks", "batch_size", "fraction", "threshold", "p", "r")
 FLOAT_SWEEP_PARAMS = {"fraction", "threshold"}
+CASE_OVERRIDE_FIELDS = (
+    "ranks",
+    "batch_size",
+    "fraction",
+    "threshold",
+    "p",
+    "r",
+    "verbosity",
+    "dense",
+)
 
 PARAM_FIELDS = (
     "ranks",
@@ -37,11 +47,28 @@ METRIC_PATTERNS = {
     "total_full_s": re.compile(
         r"Total clocktime \(including I/O\) for sv.cpp:\s+([0-9eE+.\-]+) seconds"
     ),
+    "autotune_time_s": re.compile(r"Autotuning time:\s+([0-9eE+.\-]+)\s+seconds"),
+    "autotune_candidates": re.compile(r"Autotuning time:.*candidates=(\d+)"),
+    "autotune_step_size": re.compile(r"Autotuning time:.*step_size=(\d+)"),
+    "autotune_best_gate_ops_estimate": re.compile(
+        r"Autotuning time:.*best_gate_ops_estimate=([0-9]+)"
+    ),
 }
-METRIC_FIELDS = tuple(METRIC_PATTERNS.keys())
+METRIC_FIELDS = tuple(METRIC_PATTERNS.keys()) + (
+    "total_gates",
+    "chunk0_gates",
+    "chunk1_gates",
+    "chunk2_gates",
+    "total_artificial_sources",
+    "chunk0_artificial",
+    "chunk1_artificial",
+    "chunk2_artificial",
+    "num_histories_estimate",
+    "gate_ops_estimate",
+)
 
 SUMMARY_FIELDS = list(
-    ("run_index", "repeat_index", "varied_param", "varied_value")
+    ("run_index", "repeat_index", "case_name", "varied_param", "varied_value")
     + PARAM_FIELDS
     + METRIC_FIELDS
     + (
@@ -85,6 +112,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "notes": "",
     "dry_run": False,
     "config": "",
+    "cases": None,
 }
 
 REQUIRED_FIELDS = (
@@ -136,6 +164,7 @@ class SweepConfig:
     continue_on_error: bool
     notes: str
     dry_run: bool
+    cases: list[dict[str, Any]] | None
 
 
 @dataclass(frozen=True)

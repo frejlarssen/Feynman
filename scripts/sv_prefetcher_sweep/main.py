@@ -8,7 +8,7 @@ from sweeplib.provenance import get_git_info
 from sweeplib.sweep import run_sweep
 
 from .cli import build_config
-from .project import build_metadata, make_run_one, resolve_paths
+from .project import build_metadata, build_run_points, make_run_one, resolve_paths
 from .schema import SUMMARY_FIELDS
 
 
@@ -18,6 +18,7 @@ def main(entry_script: Path | None = None) -> int:
     paths = resolve_paths(config, repo_root)
     git_info = get_git_info(paths.repo_root)
     run_one = make_run_one(config=config, paths=paths, git_info=git_info)
+    run_points = build_run_points(config)
     runner_script_path = entry_script or Path(__file__).resolve()
     invocation = shlex.join(sys.argv)
 
@@ -25,7 +26,7 @@ def main(entry_script: Path | None = None) -> int:
         output_root=paths.output_root,
         experiment_name=config.experiment_name,
         summary_fields=SUMMARY_FIELDS,
-        values=config.values,
+        values=run_points,
         repeat=config.repeat,
         continue_on_error=config.continue_on_error,
         run_one=run_one,

@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from .schema import (
     BOOLEAN_FIELDS,
+    CASE_OVERRIDE_FIELDS,
     DEFAULT_OPTIONS,
     FLOAT_SWEEP_PARAMS,
     NUMERIC_CASTS,
@@ -115,6 +116,42 @@ def _normalize_options(options: dict[str, Any]) -> None:
     if isinstance(values, str) or (values is not None and not isinstance(values, list)):
         raise ValueError(f"'values' must be a list, got: {values!r}")
 
+    cases_raw = options.get("cases")
+    if cases_raw is None:
+        return
+    if not isinstance(cases_raw, list):
+        raise ValueError(f"'cases' must be a list when provided, got: {cases_raw!r}")
+
+    normalized_cases: list[dict[str, Any]] = []
+    allowed_case_keys = {"name", *CASE_OVERRIDE_FIELDS}
+    for idx, case in enumerate(cases_raw, start=1):
+        if not isinstance(case, dict):
+            raise ValueError(f"Case #{idx} must be an object, got: {case!r}")
+        unknown_case_keys = sorted(set(case) - allowed_case_keys)
+        if unknown_case_keys:
+            raise ValueError(
+                f"Case #{idx} has unknown keys: {', '.join(unknown_case_keys)}. "
+                f"Allowed keys: {', '.join(sorted(allowed_case_keys))}"
+            )
+
+        name = case.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"Case #{idx} must have a non-empty string 'name'.")
+
+        normalized_case: dict[str, Any] = {"name": name.strip()}
+        for key in CASE_OVERRIDE_FIELDS:
+            if key not in case:
+                continue
+            if key in NUMERIC_CASTS:
+                normalized_case[key] = _to_number(f"cases[{idx}].{key}", case[key], NUMERIC_CASTS[key])
+            elif key in BOOLEAN_FIELDS:
+                normalized_case[key] = _to_bool(f"cases[{idx}].{key}", case[key])
+            else:
+                normalized_case[key] = case[key]
+        normalized_cases.append(normalized_case)
+
+    options["cases"] = normalized_cases
+
 
 def _validate_required(options: dict[str, Any]) -> None:
     missing: list[str] = []
@@ -143,12 +180,35 @@ def _validate_semantics(options: dict[str, Any]) -> None:
         raise ValueError("--ranks must be >= 1")
     if int(options["batch_size"]) < 0:
         raise ValueError("--batch-size must be >= 0")
-    if (options["p"] is None) ^ (options["r"] is None):
-        raise ValueError("Provide both --p and --r, or neither.")
-    if options["vary"] == "p" and options["r"] is None:
-        raise ValueError("Sweeping --vary p requires fixed --r.")
-    if options["vary"] == "r" and options["p"] is None:
-        raise ValueError("Sweeping --vary r requires fixed --p.")
+
+    cases = options.get("cases")
+    if not cases:
+        if (options["p"] is None) ^ (options["r"] is None):
+            raise ValueError("Provide both --p and --r, or neither.")
+        if options["vary"] == "p" and options["r"] is None:
+            raise ValueError("Sweeping --vary p requires fixed --r.")
+        if options["vary"] == "r" and options["p"] is None:
+            raise ValueError("Sweeping --vary r requires fixed --p.")
+        return
+
+    seen_names: set[str] = set()
+    for case in cases:
+        name = case["name"]
+        if name in seen_names:
+            raise ValueError(f"Duplicate case name: {name!r}")
+        seen_names.add(name)
+
+        p_eff = case.get("p", options["p"])
+        r_eff = case.get("r", options["r"])
+        if (p_eff is None) ^ (r_eff is None):
+            raise ValueError(
+                f"Case {name!r} must resolve to both p/r set or both unset "
+                "(after applying top-level defaults)."
+            )
+        if options["vary"] == "p" and r_eff is None:
+            raise ValueError(f"Case {name!r}: sweeping --vary p requires fixed r.")
+        if options["vary"] == "r" and p_eff is None:
+            raise ValueError(f"Case {name!r}: sweeping --vary r requires fixed p.")
 
 
 def _parse_values(options: dict[str, Any]) -> None:

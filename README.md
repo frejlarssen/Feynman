@@ -97,11 +97,49 @@ Example config file:
 ```
 
 Each sweep creates:
-- `summary.csv` with one row per run (parameter values, return code, extracted timings).
+- `summary.csv` with one row per run (parameter values, case name, return code, extracted timings).
+- `summary.csv` also includes parsed chunk/source metrics, autotuning metrics (`autotune_time_s`, `autotune_candidates`, `autotune_step_size`, `autotune_best_gate_ops_estimate`), and derived fields such as `gate_ops_estimate`.
 - `sweep_metadata.json` (commit, branch, dirty flag, host, invocation, env snapshot).
 - `git_diff_apps_src.patch` with staged/unstaged/untracked snapshot for `apps/` and `src/`.
 - Provenance in metadata also includes binary SHA256, input file SHA256, CMake build/compiler info, and `mpirun` version output.
 - A per-run folder containing `output.hsv`, `timeBitstrings.tm`, `stdout.log`, `stderr.log`.
+
+Case-based ablation in one sweep (optional):
+```json
+{
+  "experiment_name": "qwalk_cp_ablation",
+  "vary": "batch_size",
+  "values": [32],
+  "repeat": 5,
+  "ranks": 4,
+  "batch_size": 32,
+  "fraction": 1.0,
+  "threshold": 1e-8,
+  "circuit": "data/generated/circuits/qwalk/qwalk_n16_it16.qasm",
+  "input_statevector": "data/fixtures/ket0.hsv",
+  "output_bitstrings": "data/generated/hexstring_sets/nrhex10_size2_from0x0_to0xA.hs",
+  "cases": [
+    {"name": "no_cp", "p": 0, "r": 0},
+    {"name": "fixed_cp", "p": 176, "r": 176},
+    {"name": "autotuned_cp", "p": null, "r": null}
+  ]
+}
+```
+
+Case plot helper:
+```bash
+python3 scripts/plot_sv_prefetcher_cases.py \
+  --summary-csv data/outputs/experiments/<timestamp>_qwalk_cp_ablation/summary.csv \
+  --y-column gate_ops_estimate
+```
+
+Merge helper for multiple sweep directories:
+```bash
+python3 scripts/merge_sv_prefetcher_summaries.py \
+  --summary-csv data/outputs/experiments/<run1>/summary.csv \
+  --summary-csv data/outputs/experiments/<run2>/summary.csv \
+  --output data/outputs/experiments/merged.csv
+```
 
 Sweep script layout:
 - `scripts/sweeplib/` contains shared sweep/plot/provenance helpers (`sweep`, `plotting`, `provenance`, `utils`).

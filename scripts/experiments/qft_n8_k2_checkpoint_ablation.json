@@ -1,0 +1,31 @@
+{
+  "experiment_name": "qft_n8_k2_checkpoint_ablation",
+  "vary": "batch_size",
+  "values": [32],
+  "repeat": 5,
+  "ranks": 4,
+  "batch_size": 32,
+  "fraction": 1.0,
+  "threshold": 1e-8,
+  "circuit": "data/generated/circuits/qft/qft_n8_k2.qasm",
+  "input_statevector": "data/generated/statevectors/ket0_size1.hsv",
+  "output_bitstrings": "data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs",
+  "cases": [
+    {
+      "name": "no_cp",
+      "p": 0,
+      "r": 0
+    },
+    {
+      "name": "fixed_cp",
+      "p": 8,
+      "r": 8
+    },
+    {
+      "name": "autotuned_cp",
+      "p": null,
+      "r": null
+    }
+  ],
+  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on qft_n8_k2."
+}
