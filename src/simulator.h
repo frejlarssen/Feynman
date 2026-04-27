@@ -96,9 +96,9 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
       if (wire_left_value == wire_right_value) {
         contribution *= cos_half;
       } else if (!wire_left_value && wire_right_value) {
-        contribution *= -sin_half;
-      } else {
         contribution *= sin_half;
+      } else {
+        contribution *= -sin_half;
       }
       break;
     }
