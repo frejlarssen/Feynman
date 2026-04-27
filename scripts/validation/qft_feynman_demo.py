@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Feynman-only QFT frequency demo (no Qiskit reference).
 
-Runs sv_prefetcher on a provided signal/statevector and plots:
+Runs sv_prefetcher and plots:
 1) Input signal real part over the sparse support.
 2) Output populations for requested output bitstrings.
+
+Input artifacts can be provided directly as file paths or generated from
+JSON-specified generator parameters.
 """
 
 from __future__ import annotations
@@ -15,10 +18,32 @@ import json
 import math
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(SCRIPT_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_REPO_ROOT))
+
+from generators.circuits.qft_generator import (  # noqa: E402
+    DEFAULT_OUTPUT_DIR as QFT_DEFAULT_OUTPUT_DIR,
+    generate_qft,
+)
+from generators.hexstrings.hexstring_set_generator import (  # noqa: E402
+    DEFAULT_OUTPUT_DIR as HEXSTR_DEFAULT_OUTPUT_DIR,
+    write_one_interval,
+    write_two_intervals,
+)
+from generators.statevectors.statevector_generator import (  # noqa: E402
+    DEFAULT_OUTPUT_DIR as STATEVEC_DEFAULT_OUTPUT_DIR,
+    write_ket0,
+    write_two_freq,
+    write_two_freq_n_qubits,
+    write_two_tone_dense,
+)
 
 
 def _utc_stamp() -> str:
@@ -119,6 +144,20 @@ def _read_output_bitstrings(path: Path) -> tuple[list[int], int]:
     return values, size_bytes
 
 
+def _infer_declared_qubits_from_qasm(path: Path) -> int | None:
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if line.startswith("qreg ") or line.startswith("qubit "):
+            lb = line.find("[")
+            rb = line.find("]")
+            if lb == -1 or rb == -1 or rb <= lb:
+                return None
+            return int(line[lb + 1 : rb])
+    return None
+
+
 def _read_hsv_sparse(path: Path) -> dict[int, complex]:
     out: dict[int, complex] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -156,6 +195,271 @@ def _write_hsv_sparse(path: Path, sparse: dict[int, complex], size_bytes: int) -
         for idx in sorted(sparse):
             amp = sparse[idx]
             fh.write(f"0x{idx:0{width}X}:{amp.real:.18f}+{amp.imag:.18f}i\n")
+
+
+def _require_int(spec: dict[str, Any], key: str, label: str) -> int:
+    if key not in spec:
+        raise ValueError(f"Missing '{key}' in {label} generator spec.")
+    return int(spec[key])
+
+
+def _resolve_output_dir(spec: dict[str, Any], repo_root: Path, default_dir: Path) -> Path:
+    out_dir_raw = spec.get("output_dir", None)
+    if out_dir_raw is None:
+        return default_dir.resolve()
+    out_dir = Path(str(out_dir_raw))
+    if not out_dir.is_absolute():
+        out_dir = (repo_root / out_dir).resolve()
+    return out_dir
+
+
+def _build_interval(interval_spec: Any, label: str) -> list[int]:
+    if isinstance(interval_spec, list):
+        values = [int(v) for v in interval_spec]
+    elif isinstance(interval_spec, dict):
+        if "values" in interval_spec:
+            values = [int(v) for v in interval_spec["values"]]
+        elif "start" in interval_spec and "count" in interval_spec:
+            start = int(interval_spec["start"])
+            count = int(interval_spec["count"])
+            if count <= 0:
+                raise ValueError(f"{label}.count must be > 0")
+            values = list(range(start, start + count))
+        elif "start" in interval_spec and "end" in interval_spec:
+            start = int(interval_spec["start"])
+            end = int(interval_spec["end"])
+            if end <= start:
+                raise ValueError(f"{label}.end must be > {label}.start")
+            values = list(range(start, end))
+        elif "center" in interval_spec and "radius" in interval_spec:
+            center = int(interval_spec["center"])
+            radius = int(interval_spec["radius"])
+            if radius <= 0:
+                raise ValueError(f"{label}.radius must be > 0")
+            values = list(range(center - radius, center + radius))
+        else:
+            raise ValueError(
+                f"{label} must define one of: values, (start+count), (start+end), or (center+radius)."
+            )
+    else:
+        raise ValueError(f"{label} must be an object or an array of integers.")
+
+    if not values:
+        raise ValueError(f"{label} must not be empty.")
+    if min(values) < 0:
+        raise ValueError(f"{label} contains negative values.")
+    return values
+
+
+def _resolve_circuit_path(circuit_cfg: Any, repo_root: Path) -> tuple[Path, dict[str, Any] | None]:
+    if isinstance(circuit_cfg, str):
+        path = Path(circuit_cfg)
+        if not path.is_absolute():
+            path = (repo_root / path).resolve()
+        return path, None
+    if not isinstance(circuit_cfg, dict):
+        raise ValueError("circuit must be a path string or a generator object.")
+
+    generator = str(circuit_cfg.get("generator", "qft")).strip().lower()
+    if generator != "qft":
+        raise ValueError(f"Unsupported circuit generator: {generator!r}")
+    n = _require_int(circuit_cfg, "n", "circuit")
+    k = _require_int(circuit_cfg, "k", "circuit")
+    out_dir = _resolve_output_dir(circuit_cfg, repo_root, QFT_DEFAULT_OUTPUT_DIR)
+    path = generate_qft(n=n, k=k, out_dir=out_dir).resolve()
+    return path, {"generator": generator, "n": n, "k": k, "output_dir": str(out_dir)}
+
+
+def _resolve_statevector_path(
+    statevector_cfg: Any, repo_root: Path
+) -> tuple[Path, dict[str, Any] | None]:
+    if isinstance(statevector_cfg, str):
+        path = Path(statevector_cfg)
+        if not path.is_absolute():
+            path = (repo_root / path).resolve()
+        return path, None
+    if not isinstance(statevector_cfg, dict):
+        raise ValueError("input_statevector must be a path string or a generator object.")
+
+    generator = str(statevector_cfg.get("generator", "two_freq")).strip().lower()
+    out_dir = _resolve_output_dir(statevector_cfg, repo_root, STATEVEC_DEFAULT_OUTPUT_DIR)
+
+    if generator in ("two_freq", "amplitude_signal"):
+        size_raw = statevector_cfg.get("size")
+        n_qubits_raw = statevector_cfg.get("n_qubits", statevector_cfg.get("n"))
+        f1_raw = statevector_cfg.get("f1", statevector_cfg.get("f_low"))
+        f2_raw = statevector_cfg.get("f2", statevector_cfg.get("f_high"))
+        if f1_raw is None or f2_raw is None:
+            raise ValueError("input_statevector two_freq requires f1/f2 (or f_low/f_high).")
+        f1 = int(f1_raw)
+        f2 = float(f2_raw)
+        f2_amp = float(
+            statevector_cfg.get(
+                "f2_amp",
+                statevector_cfg.get("rel_amp", statevector_cfg.get("relative_amp", 1.0)),
+            )
+        )
+        threshold = float(statevector_cfg.get("threshold", 0.9999))
+        if size_raw is not None:
+            size = int(size_raw)
+            path = write_two_freq(
+                size=size,
+                f1=f1,
+                f2=f2,
+                f2_amp=f2_amp,
+                threshold=threshold,
+                out_dir=out_dir,
+            ).resolve()
+            n_qubits = size * 8
+        else:
+            if n_qubits_raw is None:
+                raise ValueError(
+                    "input_statevector two_freq requires either size (bytes) or n_qubits (or n)."
+                )
+            n_qubits = int(n_qubits_raw)
+            path = write_two_freq_n_qubits(
+                n_qubits=n_qubits,
+                f1=f1,
+                f2=f2,
+                f2_amp=f2_amp,
+                threshold=threshold,
+                out_dir=out_dir,
+            ).resolve()
+        return path, {
+            "generator": generator,
+            "size": size_raw,
+            "n_qubits": n_qubits,
+            "f1": f1,
+            "f2": f2,
+            "f2_amp": f2_amp,
+            "threshold": threshold,
+            "output_dir": str(out_dir),
+        }
+
+    if generator in ("two_tone", "two_tone_dense"):
+        n_qubits_raw = statevector_cfg.get("n_qubits", statevector_cfg.get("n"))
+        if n_qubits_raw is None:
+            raise ValueError("input_statevector two_tone requires n_qubits (or n).")
+        n_qubits = int(n_qubits_raw)
+        f1 = _require_int(statevector_cfg, "f1", "input_statevector")
+        f2 = _require_int(statevector_cfg, "f2", "input_statevector")
+        rel_amp = float(
+            statevector_cfg.get(
+                "rel_amp",
+                statevector_cfg.get("relative_amp", statevector_cfg.get("f2_amp", 1.0)),
+            )
+        )
+        path = write_two_tone_dense(
+            n_qubits=n_qubits, f1=f1, f2=f2, rel_amp=rel_amp, out_dir=out_dir
+        ).resolve()
+        return path, {
+            "generator": generator,
+            "n_qubits": n_qubits,
+            "f1": f1,
+            "f2": f2,
+            "rel_amp": rel_amp,
+            "output_dir": str(out_dir),
+        }
+
+    if generator == "ket0":
+        size = _require_int(statevector_cfg, "size", "input_statevector")
+        path = write_ket0(size=size, out_dir=out_dir).resolve()
+        return path, {"generator": generator, "size": size, "output_dir": str(out_dir)}
+
+    raise ValueError(f"Unsupported input_statevector generator: {generator!r}")
+
+
+def _resolve_output_bitstrings_path(
+    output_cfg: Any, repo_root: Path
+) -> tuple[Path, dict[str, Any] | None]:
+    if isinstance(output_cfg, str):
+        path = Path(output_cfg)
+        if not path.is_absolute():
+            path = (repo_root / path).resolve()
+        return path, None
+    if not isinstance(output_cfg, dict):
+        raise ValueError("output_bitstrings must be a path string or a generator object.")
+
+    generator = str(output_cfg.get("generator", "one_interval")).strip().lower()
+    out_dir = _resolve_output_dir(output_cfg, repo_root, HEXSTR_DEFAULT_OUTPUT_DIR)
+
+    if generator == "one_interval":
+        size = _require_int(output_cfg, "size", "output_bitstrings")
+        count = int(output_cfg.get("count", output_cfg.get("nr_hexstrings", 0)))
+        start = int(output_cfg.get("start", 0))
+        if count <= 0:
+            raise ValueError("output_bitstrings one_interval requires count > 0.")
+        if start != 0:
+            raise ValueError(
+                "one_interval generator currently supports only start=0. Use two_intervals for other ranges."
+            )
+        path = write_one_interval(size=size, nr_hexstrings=count, out_dir=out_dir).resolve()
+        return path, {
+            "generator": generator,
+            "size": size,
+            "start": start,
+            "count": count,
+            "output_dir": str(out_dir),
+        }
+
+    if generator == "two_intervals":
+        size = _require_int(output_cfg, "size", "output_bitstrings")
+        interval1 = _build_interval(output_cfg.get("interval1"), "output_bitstrings.interval1")
+        interval2 = _build_interval(output_cfg.get("interval2"), "output_bitstrings.interval2")
+        path = write_two_intervals(
+            size=size,
+            interval1=interval1,
+            interval2=interval2,
+            out_dir=out_dir,
+        ).resolve()
+        return path, {
+            "generator": generator,
+            "size": size,
+            "interval1_count": len(interval1),
+            "interval2_count": len(interval2),
+            "output_dir": str(out_dir),
+        }
+
+    raise ValueError(f"Unsupported output_bitstrings generator: {generator!r}")
+
+
+def _signal_meta_from_input(
+    *,
+    input_generated: dict[str, Any] | None,
+    input_cfg: Any,
+    signal_fallback: Any,
+) -> dict[str, Any]:
+    def from_spec(spec: Any) -> dict[str, Any] | None:
+        if not isinstance(spec, dict):
+            return None
+        gen = str(spec.get("generator", "")).strip().lower()
+        if gen in ("two_freq", "amplitude_signal"):
+            f_low = spec.get("f1", spec.get("f_low"))
+            f_high = spec.get("f2", spec.get("f_high"))
+            rel = spec.get("f2_amp", spec.get("rel_amp", spec.get("relative_amp")))
+            if f_low is not None and f_high is not None:
+                return {"f_low": f_low, "f_high": f_high, "relative_amp": rel}
+        if gen in ("two_tone", "two_tone_dense"):
+            f_low = spec.get("f1", spec.get("f_low"))
+            f_high = spec.get("f2", spec.get("f_high"))
+            rel = spec.get("rel_amp", spec.get("f2_amp", spec.get("relative_amp")))
+            if f_low is not None and f_high is not None:
+                return {"f_low": f_low, "f_high": f_high, "relative_amp": rel}
+        # Legacy metadata object already using f_low/f_high keys.
+        if "f_low" in spec and "f_high" in spec:
+            return {
+                "f_low": spec.get("f_low"),
+                "f_high": spec.get("f_high"),
+                "relative_amp": spec.get("relative_amp", spec.get("rel_amp")),
+            }
+        return None
+
+    # Priority: exact resolved generator spec -> input cfg spec -> legacy "signal".
+    for candidate in (input_generated, input_cfg, signal_fallback):
+        meta = from_spec(candidate)
+        if meta is not None:
+            return meta
+    return {}
 
 
 def _run_sv_prefetcher(
@@ -242,7 +546,7 @@ def _render_demo_plot(
 
     # Right panel: requested output populations.
     x_out = np.arange(len(output_bins))
-    hex_labels = [f"0x{b:X}" for b in output_bins]
+    dec_labels = [str(b) for b in output_bins]
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
 
@@ -263,7 +567,7 @@ def _render_demo_plot(
         tick_idx = list(range(0, len(output_bins), step))
         if tick_idx[-1] != len(output_bins) - 1:
             tick_idx.append(len(output_bins) - 1)
-    axes[1].set_xticks(tick_idx, [hex_labels[i] for i in tick_idx], rotation=50, ha="right")
+    axes[1].set_xticks(tick_idx, [dec_labels[i] for i in tick_idx], rotation=50, ha="right")
     axes[1].grid(True, axis="y", alpha=0.25)
 
     fig.suptitle(title)
@@ -317,7 +621,10 @@ def main() -> int:
             summary = _load_json(summary_path)
 
         population_csv: str | None = cfg["population_csv"]
-        input_statevector_cfg: str | None = cfg["input_statevector"]
+        input_statevector_cfg_raw: Any = cfg["input_statevector"]
+        input_statevector_cfg: str | None = (
+            input_statevector_cfg_raw if isinstance(input_statevector_cfg_raw, str) else None
+        )
         plot_title: str | None = cfg["plot_title"]
 
         if population_csv is None and isinstance(summary.get("paths"), dict):
@@ -375,10 +682,15 @@ def main() -> int:
         print(f"Population CSV: {population_csv_path}")
         return 0
 
-    binary = (repo_root / cfg["binary"]).resolve()
-    circuit = (repo_root / cfg["circuit"]).resolve()
-    input_statevector = (repo_root / cfg["input_statevector"]).resolve()
-    output_bitstrings = (repo_root / cfg["output_bitstrings"]).resolve()
+    binary = Path(str(cfg["binary"]))
+    if not binary.is_absolute():
+        binary = (repo_root / binary).resolve()
+
+    circuit, circuit_generated = _resolve_circuit_path(cfg["circuit"], repo_root)
+    input_statevector, input_generated = _resolve_statevector_path(cfg["input_statevector"], repo_root)
+    output_bitstrings, output_generated = _resolve_output_bitstrings_path(
+        cfg["output_bitstrings"], repo_root
+    )
     output_root = (repo_root / cfg["output_root"]).resolve()
 
     for p in (binary, circuit, input_statevector, output_bitstrings):
@@ -389,6 +701,15 @@ def main() -> int:
     sweep_dir.mkdir(parents=True, exist_ok=False)
 
     output_bins, size_bytes = _read_output_bitstrings(output_bitstrings)
+    declared_qubits = _infer_declared_qubits_from_qasm(circuit)
+    if declared_qubits is not None:
+        min_size_bytes = max(1, (declared_qubits + 7) // 8)
+        if size_bytes < min_size_bytes:
+            raise ValueError(
+                "output_bitstrings size is too small for the circuit width: "
+                f"got {size_bytes} byte(s), but qasm declares {declared_qubits} qubits "
+                f"(minimum {min_size_bytes} byte(s))."
+            )
 
     input_sparse_orig = _read_hsv_sparse(input_statevector)
     if not input_sparse_orig:
@@ -436,6 +757,16 @@ def main() -> int:
         raise RuntimeError(
             f"sv_prefetcher failed with return code {rc}. See {sweep_dir / 'stderr.log'}"
         )
+    if not output_hsv.exists():
+        err_hint = ""
+        if stderr_text.strip():
+            tail = "\n".join(stderr_text.strip().splitlines()[-6:])
+            err_hint = f"\nStderr tail:\n{tail}"
+        raise RuntimeError(
+            "sv_prefetcher did not produce the expected output file "
+            f"({output_hsv}), even though return code was 0. "
+            f"See logs in {sweep_dir}.{err_hint}"
+        )
 
     feynman_sparse = _read_hsv_sparse(output_hsv)
 
@@ -474,9 +805,13 @@ def main() -> int:
     ]
 
     plot_pdf = sweep_dir / "demo_plot.pdf"
-    signal = cfg.get("signal", {})
+    signal = _signal_meta_from_input(
+        input_generated=input_generated,
+        input_cfg=cfg["input_statevector"],
+        signal_fallback=cfg.get("signal", {}),
+    )
     signal_str = ""
-    if isinstance(signal, dict) and signal:
+    if signal:
         low = signal.get("f_low")
         high = signal.get("f_high")
         rel = signal.get("relative_amp")
@@ -495,15 +830,15 @@ def main() -> int:
     low_bucket_bin = None
     high_bucket_bin = None
     low_to_high_ratio = None
-    if isinstance(signal, dict):
-        if "f_low" in signal:
+    if signal:
+        if signal.get("f_low") is not None:
             f_low = int(signal["f_low"])
             for i, b in enumerate(output_bins):
                 if b == f_low:
                     low_bucket_bin = int(b)
                     low_bucket_population = float(output_pop[i])
                     break
-        if "f_high" in signal:
+        if signal.get("f_high") is not None:
             f_high = int(signal["f_high"])
             for i, b in enumerate(output_bins):
                 if b == f_high:
@@ -539,6 +874,12 @@ def main() -> int:
             "stdout_log": str(sweep_dir / "stdout.log"),
             "stderr_log": str(sweep_dir / "stderr.log"),
         },
+        "generated_inputs": {
+            "circuit": circuit_generated,
+            "input_statevector": input_generated,
+            "output_bitstrings": output_generated,
+        },
+        "signal_used_for_plot_and_buckets": signal,
         "subset_info": {
             "num_requested_outputs": len(output_bins),
             "size_bytes": size_bytes,

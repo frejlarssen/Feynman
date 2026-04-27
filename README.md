@@ -171,6 +171,11 @@ python3 scripts/validation/qft_feynman_demo.py \
   --config scripts/experiments/qft_n32_feynman_low_high_demo.json
 ```
 
+The demo config now supports generator objects for `circuit`,
+`input_statevector`, and `output_bitstrings`; when these are objects
+instead of file paths, the script calls the corresponding modules under
+`generators/` to materialize inputs automatically.
+
 This writes a timestamped folder in `data/outputs/validation/` with:
 - `summary.json` (config snapshot, key metrics, top output bins).
 - `output_population.csv` (amplitude/population over requested bitstrings).

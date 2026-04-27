@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import math
 from pathlib import Path
 
 import numpy as np
@@ -54,8 +55,52 @@ def write_ket0(size: int, out_dir: Path) -> Path:
     return out_path
 
 
+def _size_bytes_from_n_qubits(n_qubits: int) -> int:
+    if n_qubits <= 0:
+        raise ValueError("n_qubits must be > 0")
+    return max(1, math.ceil(n_qubits / 8))
+
+
+def _two_tone_name(n_qubits: int, f1: int, f2: int, rel_amp: float) -> str:
+    return f"two_tone_n{n_qubits}_f{f1}_{f2}_rel{rel_amp}.hsv"
+
+
+def _format_complex_token(z: complex) -> str:
+    return f"{z.real:.18f}+{z.imag:.18f}i"
+
+
+def write_two_tone_dense(
+    n_qubits: int, f1: int, f2: int, rel_amp: float, out_dir: Path
+) -> Path:
+    if n_qubits <= 0:
+        raise ValueError("n_qubits must be > 0")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    dim = 1 << n_qubits
+    x = np.arange(dim)
+    vec = np.exp(2j * np.pi * f1 * x / dim) + rel_amp * np.exp(2j * np.pi * f2 * x / dim)
+    norm = np.linalg.norm(vec)
+    if norm <= 0:
+        raise ValueError("Two-tone vector has zero norm.")
+    vec = vec / norm
+
+    size_bytes = _size_bytes_from_n_qubits(n_qubits)
+    nr_nibbles = size_bytes * 2
+    out_path = out_dir / _two_tone_name(n_qubits=n_qubits, f1=f1, f2=f2, rel_amp=rel_amp)
+    with out_path.open("w", encoding="utf-8") as fh:
+        for idx, amp in enumerate(vec):
+            fh.write(f"0x{idx:0{nr_nibbles}X}:{_format_complex_token(complex(amp))}\n")
+    return out_path
+
+
 def _two_freq_name(size: int, f1: int, f2: float, f2_amp: float, threshold: float) -> str:
     return f"amplitude_signal_size{size}QB_f{f1}_f{f2}_relamp{f2_amp}_t{threshold}.hsv"
+
+
+def _two_freq_name_n_qubits(
+    n_qubits: int, f1: int, f2: float, f2_amp: float, threshold: float
+) -> str:
+    return f"amplitude_signal_n{n_qubits}Q_f{f1}_f{f2}_relamp{f2_amp}_t{threshold}.hsv"
 
 
 def _margin_from_threshold(n_states: int, delta_theta: float, threshold: float) -> int:
@@ -66,30 +111,77 @@ def _margin_from_threshold(n_states: int, delta_theta: float, threshold: float) 
     raise ValueError("Threshold too small; no margin found.")
 
 
-def write_two_freq(
-    size: int, f1: int, f2: float, f2_amp: float, threshold: float, out_dir: Path
+def _write_two_freq_with_path(
+    *,
+    out_path: Path,
+    n_qubits: int,
+    f1: int,
+    f2: float,
+    f2_amp: float,
+    threshold: float,
 ) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    nr_nibbles = size * 2
-    n_states = 2 ** (size * 8)
+    if n_qubits <= 0:
+        raise ValueError("n_qubits must be > 0")
+    if f1 <= 0:
+        raise ValueError("f1 must be > 0")
+
+    size_bytes = _size_bytes_from_n_qubits(n_qubits)
+    nr_nibbles = size_bytes * 2
+    n_states = 1 << n_qubits
     delta_theta1 = f1 * 2 * np.pi / n_states
     delta_theta2 = f2 * 2 * np.pi / n_states
     margin = _margin_from_threshold(
         n_states=n_states, delta_theta=delta_theta1, threshold=threshold
     )
-    out_path = out_dir / _two_freq_name(
-        size=size, f1=f1, f2=f2, f2_amp=f2_amp, threshold=threshold
-    )
 
     with out_path.open("w", encoding="utf-8") as file:
-        # Adaptive window
+        # Adaptive window. Indices are byte-padded in the .hsv output.
         for half_period in range(2 * f1):
             middle = int(half_period * n_states / (2 * f1))
             for i in range(max(middle - margin, 0), min(middle + margin + 1, n_states)):
                 real_part = np.cos(i * delta_theta1) + f2_amp * np.cos(i * delta_theta2)
                 file.write(f"0x{i:0{nr_nibbles}X}:{real_part}+0i\n")
-
     return out_path
+
+
+def write_two_freq_n_qubits(
+    n_qubits: int, f1: int, f2: float, f2_amp: float, threshold: float, out_dir: Path
+) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / _two_freq_name_n_qubits(
+        n_qubits=n_qubits, f1=f1, f2=f2, f2_amp=f2_amp, threshold=threshold
+    )
+    return _write_two_freq_with_path(
+        out_path=out_path,
+        n_qubits=n_qubits,
+        f1=f1,
+        f2=f2,
+        f2_amp=f2_amp,
+        threshold=threshold,
+    )
+
+
+def write_two_freq(
+    size: int, f1: int, f2: float, f2_amp: float, threshold: float, out_dir: Path
+) -> Path:
+    """Backward-compatible byte-based interface.
+
+    `size` is bytes; use `write_two_freq_n_qubits` for arbitrary qubit counts.
+    """
+    if size <= 0:
+        raise ValueError("size must be > 0")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / _two_freq_name(
+        size=size, f1=f1, f2=f2, f2_amp=f2_amp, threshold=threshold
+    )
+    return _write_two_freq_with_path(
+        out_path=out_path,
+        n_qubits=size * 8,
+        f1=f1,
+        f2=f2,
+        f2_amp=f2_amp,
+        threshold=threshold,
+    )
 
 
 def bulk_generate(out_dir: Path) -> list[Path]:
