@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TASKS = [
     "circuits/qft_generator.py",
     "circuits/quantum_walk_generator.py",
+    "circuits/qaoa_maxcut_generator.py",
     "circuits/ghz_generator.py",
     "circuits/increment_generator.py",
     "circuits/aa_iter_generator.py",
