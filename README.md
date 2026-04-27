@@ -32,8 +32,8 @@ micromamba activate feynman
 ### Build with CMake
 
 ```bash
-cmake -S . -B build
-cmake --build build -j
+cmake --preset dev
+cmake --build --preset dev -j
 ```
 
 Build one target:
@@ -42,7 +42,7 @@ cmake --build build --target sv_prefetcher_mpi_subsetbitstrings -j
 ```
 
 ## Example usage
-Generate desired circuits in `circuits/`.
+Generate desired circuits and datafiles with the `generators/`.
 
 ```bash
 mkdir -p data/outputs/tmp
