@@ -203,6 +203,22 @@ def _require_int(spec: dict[str, Any], key: str, label: str) -> int:
     return int(spec[key])
 
 
+def _as_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("1", "true", "yes", "y", "on"):
+            return True
+        if v in ("0", "false", "no", "n", "off"):
+            return False
+    return bool(value)
+
+
 def _resolve_output_dir(spec: dict[str, Any], repo_root: Path, default_dir: Path) -> Path:
     out_dir_raw = spec.get("output_dir", None)
     if out_dir_raw is None:
@@ -300,6 +316,9 @@ def _resolve_statevector_path(
             )
         )
         threshold = float(statevector_cfg.get("threshold", 0.9999))
+        complex_signal = _as_bool(
+            statevector_cfg.get("complex_signal", statevector_cfg.get("complex", False))
+        )
         if size_raw is not None:
             size = int(size_raw)
             path = write_two_freq(
@@ -309,6 +328,7 @@ def _resolve_statevector_path(
                 f2_amp=f2_amp,
                 threshold=threshold,
                 out_dir=out_dir,
+                complex_signal=complex_signal,
             ).resolve()
             n_qubits = size * 8
         else:
@@ -324,6 +344,7 @@ def _resolve_statevector_path(
                 f2_amp=f2_amp,
                 threshold=threshold,
                 out_dir=out_dir,
+                complex_signal=complex_signal,
             ).resolve()
         return path, {
             "generator": generator,
@@ -333,6 +354,7 @@ def _resolve_statevector_path(
             "f2": f2,
             "f2_amp": f2_amp,
             "threshold": threshold,
+            "complex_signal": complex_signal,
             "output_dir": str(out_dir),
         }
 
