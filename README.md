@@ -145,6 +145,22 @@ Sweep script layout:
 - `scripts/sweeplib/` contains shared sweep/plot/provenance helpers (`sweep`, `plotting`, `provenance`, `utils`).
 - `scripts/sv_prefetcher_sweep/` contains project-specific modules (`schema`, `cli`, `project`, `main`).
 
+## Qiskit Validation (Accuracy)
+
+For paper-style correctness checks against a state-vector reference on small
+instances (separate from performance sweeps):
+
+```bash
+python3 scripts/validation/qft_vs_qiskit.py \
+  --config scripts/experiments/qft_n8_k4_qiskit_validation.json
+```
+
+This creates a timestamped folder in `data/outputs/validation/` with:
+- `summary.json` (max amplitude/population error, subset fidelity, metadata).
+- `comparison.csv` (per-output amplitude and error table).
+- `agreement_plot.png` (input real-part on the left, output population comparison on the right).
+- `feynman_output.hsv`, `qiskit_reference_subset.hsv`, and run logs.
+
 ## For development
 
 Add `bear -- ` before `make` to create file used for clangd.
