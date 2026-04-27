@@ -1,0 +1,21 @@
+{
+  "experiment_name": "qft_n32_feynman_low_high_demo",
+  "binary": "build/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "circuit": "data/generated/circuits/qft/qft_n32_k40.qasm",
+  "input_statevector": "data/generated/statevectors/amplitude_signal_size4QB_f6_f1073741824.0_relamp0.2_t0.99999999999999.hsv",
+  "output_bitstrings": "data/generated/hexstring_sets/size4_from0x0_to0x9_and_from0x3FFFFFFB_to0x40000004.hs",
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "batch_size": 32,
+  "verbosity": 1,
+  "dense": false,
+  "normalize_input": true,
+  "output_root": "data/outputs/validation",
+  "signal": {
+    "f_low": 6,
+    "f_high": 1073741824,
+    "relative_amp": 0.2
+  }
+}

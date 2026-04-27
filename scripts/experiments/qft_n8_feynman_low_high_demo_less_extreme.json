@@ -1,0 +1,22 @@
+{
+  "experiment_name": "qft_n8_feynman_low_high_demo_less_extreme",
+  "binary": "build/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "circuit": "data/generated/circuits/qft/qft_n8_k7.qasm",
+  "input_statevector": "data/generated/statevectors/two_tone_n8_f17_63_rel0.7.hsv",
+  "output_bitstrings": "data/generated/hexstring_sets/nrhex256_size1_from0x0_to0x100.hs",
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "batch_size": 32,
+  "verbosity": 1,
+  "dense": false,
+  "normalize_input": true,
+  "plot_max_xticks": 18,
+  "output_root": "data/outputs/validation",
+  "signal": {
+    "f_low": 17,
+    "f_high": 63,
+    "relative_amp": 0.7
+  }
+}

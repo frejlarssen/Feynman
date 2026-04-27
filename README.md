@@ -161,6 +161,53 @@ This creates a timestamped folder in `data/outputs/validation/` with:
 - `agreement_plot.pdf` (input real-part on the left, output population comparison on the right).
 - `feynman_output.hsv`, `qiskit_reference_subset.hsv`, and run logs.
 
+## Feynman-Only Frequency Demo
+
+For large low-vs-high frequency QFT demonstrations where state-vector
+reference simulation is not practical:
+
+```bash
+python3 scripts/validation/qft_feynman_demo.py \
+  --config scripts/experiments/qft_n32_feynman_low_high_demo.json
+```
+
+This writes a timestamped folder in `data/outputs/validation/` with:
+- `summary.json` (config snapshot, key metrics, top output bins).
+- `output_population.csv` (amplitude/population over requested bitstrings).
+- `demo_plot.pdf` (input sparse real-part on the left, output populations on the right).
+- `feynman_output.hsv` and run logs.
+
+The demo config normalizes the sparse input before simulation (`normalize_input: true`)
+and reports bucket metrics (`f_low`/`f_high`) in `summary.json`.
+
+Optional wider output subset (for leakage visibility around both buckets):
+```bash
+python3 scripts/validation/qft_feynman_demo.py \
+  --config scripts/experiments/qft_n32_feynman_low_high_demo_wide.json
+```
+
+Less-extreme demo input (for clearer, larger bucket populations):
+```bash
+python3 scripts/validation/qft_feynman_demo.py \
+  --config scripts/experiments/qft_n8_feynman_low_high_demo_less_extreme.json
+```
+
+Replot from existing CSV output (skip simulator rerun):
+```bash
+python3 scripts/validation/qft_feynman_demo.py \
+  --from-csv \
+  --summary-json data/outputs/validation/<run_dir>/summary.json
+```
+
+Equivalent explicit CSV-based replot:
+```bash
+python3 scripts/validation/qft_feynman_demo.py \
+  --from-csv \
+  --population-csv data/outputs/validation/<run_dir>/output_population.csv \
+  --input-statevector data/outputs/validation/<run_dir>/input_normalized.hsv \
+  --plot-pdf data/outputs/validation/<run_dir>/demo_plot_from_csv.pdf
+```
+
 ## For development
 
 Add `bear -- ` before `make` to create file used for clangd.
