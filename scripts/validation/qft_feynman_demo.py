@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Feynman-only QFT frequency demo (no Qiskit reference).
+"""QFT frequency demo with optional Qiskit reference overlay.
 
 Runs sv_prefetcher and plots:
 1) Input signal real part over the sparse support.
@@ -19,6 +19,8 @@ import math
 import shlex
 import subprocess
 import sys
+import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +116,8 @@ def _merge_config(
         "plot_pdf": pick("plot_pdf", args.plot_pdf, None),
         "plot_title": pick("plot_title", args.plot_title, None),
         "plot_max_xticks": int(pick("plot_max_xticks", args.plot_max_xticks, 24)),
+        "qiskit_reference": bool(pick("qiskit_reference", None, True)),
+        "qiskit_max_qubits": int(pick("qiskit_max_qubits", None, 16)),
         "signal": cfg.get("signal", {}),
     }
 
@@ -158,6 +162,191 @@ def _infer_declared_qubits_from_qasm(path: Path) -> int | None:
     return None
 
 
+@dataclass(frozen=True)
+class QasmInstruction:
+    base_gate: str
+    num_controls: int
+    params: list[float]
+    args: list[int]
+
+
+@dataclass(frozen=True)
+class ParsedQasm:
+    declared_qubits: int
+    simulator_qubits: int
+    instructions: list[QasmInstruction]
+
+
+def _parse_openqasm_subset(path: Path) -> ParsedQasm:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    declared_n: int | None = None
+    instructions: list[QasmInstruction] = []
+
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if line.startswith("OPENQASM ") or line.startswith("include "):
+            continue
+        if line.startswith("qreg ") or line.startswith("qubit "):
+            left = line.find("[")
+            right = line.find("]")
+            if left == -1 or right == -1 or right <= left:
+                raise ValueError(f"Invalid qubit declaration: {line}")
+            declared_n = int(line[left + 1 : right])
+            continue
+
+        if not line.endswith(";"):
+            raise ValueError(f"Expected ';' terminated instruction: {line}")
+        line = line[:-1]
+        split_at = line.find(" ")
+        if split_at == -1:
+            raise ValueError(f"Invalid gate line: {line}")
+        gate_head = line[:split_at].strip()
+        qubits_part = line[split_at + 1 :].strip()
+
+        left_par = gate_head.find("(")
+        right_par = gate_head.rfind(")")
+        if left_par != -1:
+            if right_par == -1 or right_par < left_par:
+                raise ValueError(f"Invalid param list: {gate_head}")
+            gate_name = gate_head[:left_par]
+            params_part = gate_head[left_par + 1 : right_par]
+            params = [float(tok.strip()) for tok in params_part.split(",") if tok.strip()]
+        else:
+            gate_name = gate_head
+            params = []
+
+        num_controls = 0
+        for ch in gate_name:
+            if ch == "c":
+                num_controls += 1
+            else:
+                break
+        base_gate = gate_name[num_controls:]
+        if not base_gate:
+            raise ValueError(f"Invalid controlled gate name: {gate_name}")
+
+        args: list[int] = []
+        for tok in qubits_part.split(","):
+            tok = tok.strip()
+            lb = tok.find("[")
+            rb = tok.find("]")
+            if lb == -1 or rb == -1 or rb <= lb:
+                raise ValueError(f"Invalid qubit token: {tok}")
+            args.append(int(tok[lb + 1 : rb]))
+
+        instructions.append(
+            QasmInstruction(
+                base_gate=base_gate,
+                num_controls=num_controls,
+                params=params,
+                args=args,
+            )
+        )
+
+    if declared_n is None:
+        raise ValueError(f"No qubit register declaration found in {path}")
+    n_sim = ((declared_n + 7) // 8) * 8
+    return ParsedQasm(
+        declared_qubits=declared_n,
+        simulator_qubits=n_sim,
+        instructions=instructions,
+    )
+
+
+def _gate_num_targets(base_gate: str) -> int:
+    if base_gate in ("h", "x", "z", "p"):
+        return 1
+    if base_gate == "swap":
+        return 2
+    raise ValueError(f"Unsupported gate base '{base_gate}' in QASM subset parser.")
+
+
+def _make_base_gate(base_gate: str, params: list[float]):
+    from qiskit.circuit.library import HGate, PhaseGate, SwapGate, XGate, ZGate
+
+    if base_gate == "h":
+        if params:
+            raise ValueError("h gate must not have parameters")
+        return HGate()
+    if base_gate == "x":
+        if params:
+            raise ValueError("x gate must not have parameters")
+        return XGate()
+    if base_gate == "z":
+        if params:
+            raise ValueError("z gate must not have parameters")
+        return ZGate()
+    if base_gate == "p":
+        if len(params) != 1:
+            raise ValueError("p gate requires exactly one parameter")
+        return PhaseGate(params[0])
+    if base_gate == "swap":
+        if params:
+            raise ValueError("swap gate must not have parameters")
+        return SwapGate()
+    raise ValueError(f"Unsupported base gate '{base_gate}'")
+
+
+def _build_qiskit_circuit(parsed: ParsedQasm):
+    from qiskit import QuantumCircuit
+
+    qc = QuantumCircuit(parsed.simulator_qubits)
+    for ins in parsed.instructions:
+        expected_targets = _gate_num_targets(ins.base_gate)
+        if len(ins.args) != ins.num_controls + expected_targets:
+            raise ValueError(
+                f"Gate arity mismatch for '{ins.base_gate}': args={ins.args}, controls={ins.num_controls}"
+            )
+        controls = ins.args[: ins.num_controls]
+        targets = ins.args[ins.num_controls :]
+        base = _make_base_gate(ins.base_gate, ins.params)
+        if ins.num_controls == 0:
+            qc.append(base, targets)
+        else:
+            qc.append(base.control(ins.num_controls), controls + targets)
+    return qc
+
+
+def _build_dense_input_vector(path: Path, n_qubits: int) -> np.ndarray:
+    dim = 1 << n_qubits
+    vec = np.zeros(dim, dtype=np.complex128)
+    sparse = _read_hsv_sparse(path)
+    for idx, amp in sparse.items():
+        if idx < 0 or idx >= dim:
+            raise ValueError(f"Input index 0x{idx:X} is outside dimension 2^{n_qubits} ({dim}).")
+        vec[idx] = amp
+    return vec
+
+
+def _compute_qiskit_subset_pop(
+    *,
+    circuit: Path,
+    input_statevector_path: Path,
+    output_bins: list[int],
+) -> tuple[np.ndarray, dict[str, int]]:
+    from qiskit.quantum_info import Statevector
+
+    parsed_qasm = _parse_openqasm_subset(circuit)
+    qiskit_circuit = _build_qiskit_circuit(parsed_qasm)
+    dim = 1 << parsed_qasm.simulator_qubits
+    for idx in output_bins:
+        if idx < 0 or idx >= dim:
+            raise ValueError(
+                f"Output subset index 0x{idx:X} outside 2^{parsed_qasm.simulator_qubits}."
+            )
+
+    input_vec = _build_dense_input_vector(input_statevector_path, parsed_qasm.simulator_qubits)
+    sv_out = Statevector(input_vec).evolve(qiskit_circuit)
+    subset_amp = np.array([sv_out.data[idx] for idx in output_bins], dtype=np.complex128)
+    subset_pop = np.abs(subset_amp) ** 2
+    return subset_pop.astype(np.float64), {
+        "declared_qubits": parsed_qasm.declared_qubits,
+        "simulator_qubits": parsed_qasm.simulator_qubits,
+    }
+
+
 def _read_hsv_sparse(path: Path) -> dict[int, complex]:
     out: dict[int, complex] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -169,9 +358,10 @@ def _read_hsv_sparse(path: Path) -> dict[int, complex]:
     return out
 
 
-def _read_population_csv(path: Path) -> tuple[list[int], np.ndarray]:
+def _read_population_csv(path: Path) -> tuple[list[int], np.ndarray, np.ndarray | None]:
     bins: list[int] = []
     pop: list[float] = []
+    qiskit_pop: list[float | None] = []
     with path.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         required = {"population"}
@@ -186,7 +376,16 @@ def _read_population_csv(path: Path) -> tuple[list[int], np.ndarray]:
                 raise ValueError(f"CSV row missing bin_dec/bin_hex in {path}")
             bins.append(b)
             pop.append(float(row["population"]))
-    return bins, np.array(pop, dtype=np.float64)
+            if "qiskit_population" in row and row["qiskit_population"] not in (None, ""):
+                qiskit_pop.append(float(row["qiskit_population"]))
+            else:
+                qiskit_pop.append(None)
+    qiskit_arr: np.ndarray | None = None
+    if any(v is not None for v in qiskit_pop):
+        qiskit_arr = np.array(
+            [float("nan") if v is None else float(v) for v in qiskit_pop], dtype=np.float64
+        )
+    return bins, np.array(pop, dtype=np.float64), qiskit_arr
 
 
 def _write_hsv_sparse(path: Path, sparse: dict[int, complex], size_bytes: int) -> None:
@@ -319,6 +518,9 @@ def _resolve_statevector_path(
         complex_signal = _as_bool(
             statevector_cfg.get("complex_signal", statevector_cfg.get("complex", False))
         )
+        full_support = _as_bool(
+            statevector_cfg.get("full_support", statevector_cfg.get("full", False))
+        )
         if size_raw is not None:
             size = int(size_raw)
             path = write_two_freq(
@@ -329,6 +531,7 @@ def _resolve_statevector_path(
                 threshold=threshold,
                 out_dir=out_dir,
                 complex_signal=complex_signal,
+                full_support=full_support,
             ).resolve()
             n_qubits = size * 8
         else:
@@ -345,6 +548,7 @@ def _resolve_statevector_path(
                 threshold=threshold,
                 out_dir=out_dir,
                 complex_signal=complex_signal,
+                full_support=full_support,
             ).resolve()
         return path, {
             "generator": generator,
@@ -355,6 +559,7 @@ def _resolve_statevector_path(
             "f2_amp": f2_amp,
             "threshold": threshold,
             "complex_signal": complex_signal,
+            "full_support": full_support,
             "output_dir": str(out_dir),
         }
 
@@ -548,6 +753,7 @@ def _render_demo_plot(
     input_sparse: dict[int, complex],
     output_bins: list[int],
     output_pop: np.ndarray,
+    qiskit_pop: np.ndarray | None,
     title: str,
     max_xticks: int = 24,
 ) -> None:
@@ -573,14 +779,19 @@ def _render_demo_plot(
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
 
     axes[0].plot(in_idx, in_real, linewidth=1.0)
-    axes[0].set_title("Input Signal (Real Part, Sparse Support)")
-    axes[0].set_xlabel("Basis Index")
+    axes[0].set_title("Input Signal (Real Part)")
+    axes[0].set_xlabel("Basis Index (Time domain)")
     axes[0].set_ylabel("Amplitude")
     axes[0].grid(True, axis="y", alpha=0.25)
 
-    axes[1].bar(x_out, output_pop, alpha=0.9)
+    if qiskit_pop is not None:
+        bar_w = 0.44
+        axes[1].bar(x_out - bar_w / 2.0, output_pop, width=bar_w, alpha=0.82, label="Feynman")
+        axes[1].bar(x_out + bar_w / 2.0, qiskit_pop, width=bar_w, alpha=0.72, label="Qiskit")
+    else:
+        axes[1].bar(x_out, output_pop, alpha=0.82, label="Feynman")
     axes[1].set_title("Output Population (Requested Bitstrings)")
-    axes[1].set_xlabel("Output Bitstring")
+    axes[1].set_xlabel("Output Bitstring (Frequency domain)")
     axes[1].set_ylabel(r"$|amp|^2$")
     if len(output_bins) <= max_xticks:
         tick_idx = list(range(len(output_bins)))
@@ -591,6 +802,8 @@ def _render_demo_plot(
             tick_idx.append(len(output_bins) - 1)
     axes[1].set_xticks(tick_idx, [dec_labels[i] for i in tick_idx], rotation=50, ha="right")
     axes[1].grid(True, axis="y", alpha=0.25)
+    if qiskit_pop is not None:
+        axes[1].legend()
 
     fig.suptitle(title)
     fig.tight_layout()
@@ -600,7 +813,7 @@ def _render_demo_plot(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a Feynman-only QFT frequency demo and produce a PDF plot."
+        description="Run a QFT frequency demo and produce a PDF plot."
     )
     parser.add_argument("--config", default=None, help="JSON config path.")
     parser.add_argument("--experiment-name", default=None)
@@ -625,6 +838,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plot-pdf", default=None)
     parser.add_argument("--plot-title", default=None)
     parser.add_argument("--plot-max-xticks", type=int, default=None)
+    parser.add_argument("--qiskit-reference", action="store_true", default=None)
+    parser.add_argument("--qiskit-max-qubits", type=int, default=None)
     return parser.parse_args()
 
 
@@ -686,7 +901,7 @@ def main() -> int:
             if not p.exists():
                 raise FileNotFoundError(f"Required path not found: {p}")
 
-        output_bins, output_pop = _read_population_csv(population_csv_path)
+        output_bins, output_pop, qiskit_pop = _read_population_csv(population_csv_path)
         input_sparse = _read_hsv_sparse(input_statevector_plot)
         if not input_sparse:
             raise ValueError(f"Input statevector has no amplitudes: {input_statevector_plot}")
@@ -696,6 +911,7 @@ def main() -> int:
             input_sparse=input_sparse,
             output_bins=output_bins,
             output_pop=output_pop,
+            qiskit_pop=qiskit_pop,
             title=plot_title,
             max_xticks=int(cfg["plot_max_xticks"]),
         )
@@ -755,6 +971,7 @@ def main() -> int:
     )
 
     output_hsv = sweep_dir / "feynman_output.hsv"
+    feynman_t0 = time.perf_counter()
     cmd, rc, stdout_text, stderr_text = _run_sv_prefetcher(
         repo_root=repo_root,
         mpirun=cfg["mpirun"],
@@ -772,6 +989,7 @@ def main() -> int:
         p=cfg["p"],
         r=cfg["r"],
     )
+    feynman_runtime_s = float(time.perf_counter() - feynman_t0)
     (sweep_dir / "stdout.log").write_text(stdout_text, encoding="utf-8")
     (sweep_dir / "stderr.log").write_text(stderr_text, encoding="utf-8")
     (sweep_dir / "command.txt").write_text(shlex.join(cmd) + "\n", encoding="utf-8")
@@ -796,13 +1014,71 @@ def main() -> int:
         [feynman_sparse.get(b, 0.0 + 0.0j) for b in output_bins], dtype=np.complex128
     )
     output_pop = np.abs(feynman_amp) ** 2
+    qiskit_pop: np.ndarray | None = None
+    qiskit_runtime_s: float | None = None
+    qiskit_ref_info: dict[str, Any] = {
+        "enabled": bool(cfg["qiskit_reference"]),
+        "used": False,
+        "reason": "",
+        "declared_qubits": None,
+        "simulator_qubits": None,
+    }
+    if cfg["qiskit_reference"]:
+        declared_for_limit = _infer_declared_qubits_from_qasm(circuit)
+        if declared_for_limit is None:
+            qiskit_ref_info["reason"] = "Could not determine declared qubits from qasm; skipped."
+        elif declared_for_limit > int(cfg["qiskit_max_qubits"]):
+            qiskit_ref_info["reason"] = (
+                f"Skipped: declared qubits ({declared_for_limit}) > "
+                f"qiskit_max_qubits ({int(cfg['qiskit_max_qubits'])})."
+            )
+        else:
+            try:
+                qiskit_t0 = time.perf_counter()
+                qiskit_pop, qinfo = _compute_qiskit_subset_pop(
+                    circuit=circuit,
+                    input_statevector_path=input_path_used,
+                    output_bins=output_bins,
+                )
+                qiskit_runtime_s = float(time.perf_counter() - qiskit_t0)
+                qiskit_ref_info["used"] = True
+                qiskit_ref_info["reason"] = ""
+                qiskit_ref_info["declared_qubits"] = int(qinfo["declared_qubits"])
+                qiskit_ref_info["simulator_qubits"] = int(qinfo["simulator_qubits"])
+            except ImportError as exc:
+                qiskit_ref_info["reason"] = f"Skipped: Qiskit import failed ({exc})."
+            except Exception as exc:
+                qiskit_ref_info["reason"] = f"Qiskit reference failed: {exc}"
+
+    abs_pop_err: np.ndarray | None = None
+    max_abs_pop_err: float | None = None
+    mean_abs_pop_err: float | None = None
+    rmse_pop_err: float | None = None
+    if qiskit_pop is not None:
+        abs_pop_err = np.abs(output_pop - qiskit_pop)
+        max_abs_pop_err = float(np.max(abs_pop_err)) if abs_pop_err.size else 0.0
+        mean_abs_pop_err = float(np.mean(abs_pop_err)) if abs_pop_err.size else 0.0
+        rmse_pop_err = float(np.sqrt(np.mean(abs_pop_err**2))) if abs_pop_err.size else 0.0
 
     pop_csv = sweep_dir / "output_population.csv"
     with pop_csv.open("w", newline="", encoding="utf-8") as fh:
         wr = csv.writer(fh)
-        wr.writerow(["ordinal", "bin_dec", "bin_hex", "amplitude_real", "amplitude_imag", "population"])
+        wr.writerow(
+            [
+                "ordinal",
+                "bin_dec",
+                "bin_hex",
+                "amplitude_real",
+                "amplitude_imag",
+                "population",
+                "qiskit_population",
+                "abs_pop_error",
+            ]
+        )
         for i, b in enumerate(output_bins):
             a = feynman_amp[i]
+            qp = "" if qiskit_pop is None else f"{qiskit_pop[i]:.18e}"
+            ap = "" if abs_pop_err is None else f"{abs_pop_err[i]:.18e}"
             wr.writerow(
                 [
                     i,
@@ -811,6 +1087,8 @@ def main() -> int:
                     f"{a.real:.18e}",
                     f"{a.imag:.18e}",
                     f"{output_pop[i]:.18e}",
+                    qp,
+                    ap,
                 ]
             )
 
@@ -843,6 +1121,7 @@ def main() -> int:
         input_sparse=input_sparse,
         output_bins=output_bins,
         output_pop=output_pop,
+        qiskit_pop=qiskit_pop,
         title="Feynman QFT Frequency Demo" + signal_str,
         max_xticks=int(cfg["plot_max_xticks"]),
     )
@@ -906,15 +1185,33 @@ def main() -> int:
             "num_requested_outputs": len(output_bins),
             "size_bytes": size_bytes,
         },
+        "qiskit_reference": qiskit_ref_info,
         "metrics": {
             "subset_population_sum": float(np.sum(output_pop)),
+            "qiskit_subset_population_sum": float(np.nansum(qiskit_pop))
+            if qiskit_pop is not None
+            else None,
+            "feynman_runtime_s": feynman_runtime_s,
+            "qiskit_runtime_s": qiskit_runtime_s,
             "max_population": float(np.max(output_pop)) if output_pop.size else 0.0,
+            "max_qiskit_population": float(np.nanmax(qiskit_pop))
+            if qiskit_pop is not None and qiskit_pop.size
+            else None,
+            "max_abs_population_error": max_abs_pop_err,
+            "mean_abs_population_error": mean_abs_pop_err,
+            "rmse_population_error": rmse_pop_err,
             "input_norm2_before": input_norm2_before,
             "input_norm2_after": input_norm2_after,
             "low_bucket_bin": low_bucket_bin,
             "high_bucket_bin": high_bucket_bin,
             "low_bucket_population": low_bucket_population,
             "high_bucket_population": high_bucket_population,
+            "qiskit_low_bucket_population": float(qiskit_pop[output_bins.index(low_bucket_bin)])
+            if qiskit_pop is not None and low_bucket_bin is not None and low_bucket_bin in output_bins
+            else None,
+            "qiskit_high_bucket_population": float(qiskit_pop[output_bins.index(high_bucket_bin)])
+            if qiskit_pop is not None and high_bucket_bin is not None and high_bucket_bin in output_bins
+            else None,
             "low_to_high_population_ratio": low_to_high_ratio,
         },
         "top_bins_by_population": top_bins,
@@ -926,6 +1223,21 @@ def main() -> int:
     print(f"Demo run directory: {sweep_dir}")
     print(f"Summary: {summary_path}")
     print(f"Subset population sum: {summary['metrics']['subset_population_sum']:.12f}")
+    print(f"Feynman runtime (s): {summary['metrics']['feynman_runtime_s']:.6f}")
+    if qiskit_ref_info["used"]:
+        print(
+            "Qiskit subset population sum: "
+            f"{summary['metrics']['qiskit_subset_population_sum']:.12f}"
+        )
+        print(f"Qiskit runtime (s): {summary['metrics']['qiskit_runtime_s']:.6f}")
+        print(
+            "Population error |Feynman-Qiskit|: "
+            f"max={summary['metrics']['max_abs_population_error']:.6e}, "
+            f"mean={summary['metrics']['mean_abs_population_error']:.6e}, "
+            f"rmse={summary['metrics']['rmse_population_error']:.6e}"
+        )
+    elif qiskit_ref_info["enabled"] and qiskit_ref_info["reason"]:
+        print(f"Qiskit reference: {qiskit_ref_info['reason']}")
     if top_bins:
         top = top_bins[0]
         print(f"Top bin: {top['bin_hex']} with population {top['population']:.6f}")

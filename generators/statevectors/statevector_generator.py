@@ -94,9 +94,19 @@ def write_two_tone_dense(
 
 
 def _two_freq_name(
-    size: int, f1: int, f2: float, f2_amp: float, threshold: float, complex_signal: bool = False
+    size: int,
+    f1: int,
+    f2: float,
+    f2_amp: float,
+    threshold: float,
+    complex_signal: bool = False,
+    full_support: bool = False,
 ) -> str:
-    suffix = "_complex" if complex_signal else ""
+    suffix = ""
+    if complex_signal:
+        suffix += "_complex"
+    if full_support:
+        suffix += "_full"
     return f"amplitude_signal_size{size}QB_f{f1}_f{f2}_relamp{f2_amp}_t{threshold}{suffix}.hsv"
 
 
@@ -107,8 +117,13 @@ def _two_freq_name_n_qubits(
     f2_amp: float,
     threshold: float,
     complex_signal: bool = False,
+    full_support: bool = False,
 ) -> str:
-    suffix = "_complex" if complex_signal else ""
+    suffix = ""
+    if complex_signal:
+        suffix += "_complex"
+    if full_support:
+        suffix += "_full"
     return f"amplitude_signal_n{n_qubits}Q_f{f1}_f{f2}_relamp{f2_amp}_t{threshold}{suffix}.hsv"
 
 
@@ -129,6 +144,7 @@ def _write_two_freq_with_path(
     f2_amp: float,
     threshold: float,
     complex_signal: bool = False,
+    full_support: bool = False,
 ) -> Path:
     if n_qubits <= 0:
         raise ValueError("n_qubits must be > 0")
@@ -140,21 +156,29 @@ def _write_two_freq_with_path(
     n_states = 1 << n_qubits
     delta_theta1 = f1 * 2 * np.pi / n_states
     delta_theta2 = f2 * 2 * np.pi / n_states
-    margin = _margin_from_threshold(
-        n_states=n_states, delta_theta=delta_theta1, threshold=threshold
-    )
-
     with out_path.open("w", encoding="utf-8") as file:
-        # Adaptive window. Indices are byte-padded in the .hsv output.
-        for half_period in range(2 * f1):
-            middle = int(half_period * n_states / (2 * f1))
-            for i in range(max(middle - margin, 0), min(middle + margin + 1, n_states)):
-                if complex_signal:
-                    amp = np.exp(1j * i * delta_theta1) + f2_amp * np.exp(1j * i * delta_theta2)
-                    file.write(f"0x{i:0{nr_nibbles}X}:{_format_complex_token(complex(amp))}\n")
-                else:
-                    real_part = np.cos(i * delta_theta1) + f2_amp * np.cos(i * delta_theta2)
-                    file.write(f"0x{i:0{nr_nibbles}X}:{real_part}+0i\n")
+        if full_support:
+            index_iter = range(n_states)
+        else:
+            margin = _margin_from_threshold(
+                n_states=n_states, delta_theta=delta_theta1, threshold=threshold
+            )
+            indices: set[int] = set()
+            # Adaptive window. Indices are byte-padded in the .hsv output.
+            for half_period in range(2 * f1):
+                middle = int(half_period * n_states / (2 * f1))
+                lo = max(middle - margin, 0)
+                hi = min(middle + margin + 1, n_states)
+                indices.update(range(lo, hi))
+            index_iter = sorted(indices)
+
+        for i in index_iter:
+            if complex_signal:
+                amp = np.exp(1j * i * delta_theta1) + f2_amp * np.exp(1j * i * delta_theta2)
+                file.write(f"0x{i:0{nr_nibbles}X}:{_format_complex_token(complex(amp))}\n")
+            else:
+                real_part = np.cos(i * delta_theta1) + f2_amp * np.cos(i * delta_theta2)
+                file.write(f"0x{i:0{nr_nibbles}X}:{real_part}+0i\n")
     return out_path
 
 
@@ -166,6 +190,7 @@ def write_two_freq_n_qubits(
     threshold: float,
     out_dir: Path,
     complex_signal: bool = False,
+    full_support: bool = False,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / _two_freq_name_n_qubits(
@@ -175,6 +200,7 @@ def write_two_freq_n_qubits(
         f2_amp=f2_amp,
         threshold=threshold,
         complex_signal=complex_signal,
+        full_support=full_support,
     )
     return _write_two_freq_with_path(
         out_path=out_path,
@@ -184,6 +210,7 @@ def write_two_freq_n_qubits(
         f2_amp=f2_amp,
         threshold=threshold,
         complex_signal=complex_signal,
+        full_support=full_support,
     )
 
 
@@ -195,6 +222,7 @@ def write_two_freq(
     threshold: float,
     out_dir: Path,
     complex_signal: bool = False,
+    full_support: bool = False,
 ) -> Path:
     """Backward-compatible byte-based interface.
 
@@ -210,6 +238,7 @@ def write_two_freq(
         f2_amp=f2_amp,
         threshold=threshold,
         complex_signal=complex_signal,
+        full_support=full_support,
     )
     return _write_two_freq_with_path(
         out_path=out_path,
@@ -219,6 +248,7 @@ def write_two_freq(
         f2_amp=f2_amp,
         threshold=threshold,
         complex_signal=complex_signal,
+        full_support=full_support,
     )
 
 

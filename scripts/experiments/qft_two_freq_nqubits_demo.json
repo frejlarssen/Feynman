@@ -15,7 +15,8 @@
     "f2": 2000,
     "f2_amp": 0.5,
     "threshold": 0.0,
-    "complex": true
+    "complex": true,
+    "full_support": true
   },
   "output_bitstrings": {
     "generator": "two_intervals",
