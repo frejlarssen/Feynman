@@ -50,6 +50,7 @@ build/
 
 data/outputs/tmp/
 data/outputs/experiments/
+data/outputs/validation/
 data/outputs/legacy/
 
 # Generated data

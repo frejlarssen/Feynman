@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Optional numeric filter on varied_value (e.g. 32).",
     )
-    parser.add_argument("--output", default="", help="Output PNG path.")
+    parser.add_argument("--output", default="", help="Output PDF path.")
     parser.add_argument("--title", default="", help="Optional title.")
     return parser.parse_args()
 
@@ -67,7 +67,7 @@ def load_case_series(
 
 
 def default_output_path(summary_path: Path, y_column: str) -> Path:
-    return summary_path.parent / f"plot_{y_column}_by_case.png"
+    return summary_path.parent / f"plot_{y_column}_by_case.pdf"
 
 
 def render_case_plot(

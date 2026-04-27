@@ -371,7 +371,7 @@ def _safe_fidelity(a: np.ndarray, b: np.ndarray) -> float:
 
 def _render_plot(
     *,
-    out_png: Path,
+    out_pdf: Path,
     input_vec: np.ndarray,
     bins: list[int],
     feynman_amp: np.ndarray,
@@ -379,11 +379,11 @@ def _render_plot(
     title: str,
 ) -> None:
     # Configure a writable cache path in restricted environments.
-    out_png.parent.mkdir(parents=True, exist_ok=True)
+    out_pdf.parent.mkdir(parents=True, exist_ok=True)
     import os
 
-    os.environ.setdefault("MPLCONFIGDIR", str(out_png.parent / ".mplconfig"))
-    os.environ.setdefault("XDG_CACHE_HOME", str(out_png.parent / ".cache"))
+    os.environ.setdefault("MPLCONFIGDIR", str(out_pdf.parent / ".mplconfig"))
+    os.environ.setdefault("XDG_CACHE_HOME", str(out_pdf.parent / ".cache"))
 
     import matplotlib
 
@@ -401,21 +401,21 @@ def _render_plot(
 
     axes[0].plot(x_in, in_real, linewidth=1.2)
     axes[0].set_title("Input Signal (Real Part)")
-    axes[0].set_xlabel("Basis Index")
+    axes[0].set_xlabel("Input Index (Time Domain)")
     axes[0].set_ylabel("Amplitude")
     axes[0].grid(True, axis="y", alpha=0.25)
 
     axes[1].plot(x_out, q_pop, label="Qiskit reference", linewidth=1.8)
     axes[1].plot(x_out, f_pop, label="Feynman", linewidth=1.0, alpha=0.9)
     axes[1].set_title("Output Population")
-    axes[1].set_xlabel("Requested Output Index")
+    axes[1].set_xlabel("Requested Output Index (Frequency Domain)")
     axes[1].set_ylabel(r"$|amp|^2$")
     axes[1].grid(True, axis="y", alpha=0.25)
     axes[1].legend()
 
     fig.suptitle(title)
     fig.tight_layout()
-    fig.savefig(out_png, dpi=180)
+    fig.savefig(out_pdf)
     plt.close(fig)
 
 
@@ -616,7 +616,7 @@ def main() -> int:
             "feynman_output": str(output_hsv),
             "qiskit_reference_subset": str(qiskit_hsv),
             "comparison_csv": str(compare_csv),
-            "plot_png": str(sweep_dir / "agreement_plot.png"),
+            "plot_pdf": str(sweep_dir / "agreement_plot.pdf"),
             "stdout_log": str(sweep_dir / "stdout.log"),
             "stderr_log": str(sweep_dir / "stderr.log"),
         },
@@ -644,7 +644,7 @@ def main() -> int:
     }
 
     _render_plot(
-        out_png=sweep_dir / "agreement_plot.png",
+        out_pdf=sweep_dir / "agreement_plot.pdf",
         input_vec=input_vec,
         bins=subset_indices,
         feynman_amp=feynman_subset,

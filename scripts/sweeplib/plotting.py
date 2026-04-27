@@ -103,4 +103,4 @@ def render_sweep_plot(
 
 
 def default_plot_output_path(summary_path: Path, *, x_column: str, y_column: str) -> Path:
-    return summary_path.parent / f"plot_{y_column}_vs_{x_column}.png"
+    return summary_path.parent / f"plot_{y_column}_vs_{x_column}.pdf"

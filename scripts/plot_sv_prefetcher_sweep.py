@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--y-column", default="total_full_s")
     parser.add_argument("--mode", choices=["scatter", "meanstd"], default="meanstd")
     parser.add_argument("--include-failures", action="store_true")
-    parser.add_argument("--output", default="", help="PNG path. Default: next to summary.csv")
+    parser.add_argument("--output", default="", help="PDF path. Default: next to summary.csv")
     parser.add_argument("--title", default="", help="Optional plot title.")
     return parser.parse_args()
 

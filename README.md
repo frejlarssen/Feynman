@@ -158,7 +158,7 @@ python3 scripts/validation/qft_vs_qiskit.py \
 This creates a timestamped folder in `data/outputs/validation/` with:
 - `summary.json` (max amplitude/population error, subset fidelity, metadata).
 - `comparison.csv` (per-output amplitude and error table).
-- `agreement_plot.png` (input real-part on the left, output population comparison on the right).
+- `agreement_plot.pdf` (input real-part on the left, output population comparison on the right).
 - `feynman_output.hsv`, `qiskit_reference_subset.hsv`, and run logs.
 
 ## For development
