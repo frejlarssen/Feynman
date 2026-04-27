@@ -1,6 +1,7 @@
 #include "parsed_circuit.h"
 #include "typedef.h"
 #include <algorithm>
+#include <chrono>
 #include <climits>
 #include <iostream>
 #include <limits>
@@ -605,6 +606,10 @@ struct Circuit {
   static vector<std::shared_ptr<InternalWire>> input_sources;
   static vector<std::shared_ptr<InternalWire>> output_sources;
   static array<Chunk, NUM_CHUNKS> chunks;
+  static double last_autotune_seconds;
+  static int last_autotune_candidates;
+  static int last_autotune_step_size;
+  static TypeLongInt last_autotune_best_gate_ops;
 
   static void clear_circuit() {
     all_internal_wires.clear();
@@ -810,10 +815,12 @@ struct Circuit {
   // Builds many times, first to decide optimal parameters and then build with
   // those. Minimize number of gate applications over all histories and nodes.
   static void build_autotuned_circuit() {
+    auto start_autotune = std::chrono::steady_clock::now();
     int nr_gates = ParsedCircuit::nr_gates;
     TypeLongInt min_nr_app = std::numeric_limits<TypeLongInt>::max();
     int opt_num_chunk1 = -1;
     int opt_num_chunk2 = -1;
+    int num_candidates = 0;
 
     // Just to get number of artificial sources.
     build_circuit(0, 0, true);
@@ -825,7 +832,12 @@ struct Circuit {
     if (total_artificial == 0) {
       // No histories => The chunk division only matters for pruning. A third in
       // each is fine.
+      last_autotune_candidates = 0;
+      last_autotune_step_size = 0;
+      last_autotune_best_gate_ops = static_cast<TypeLongInt>(nr_gates);
       build_circuit(nr_gates / 3, nr_gates / 3, false);
+      auto end_autotune = std::chrono::steady_clock::now();
+      last_autotune_seconds = std::chrono::duration<double>(end_autotune - start_autotune).count();
       return;
     }
 
@@ -836,6 +848,7 @@ struct Circuit {
       // printf("Testing num_chunk2=%d\n", num_chunk2);
       for (int num_chunk1 = 0; num_chunk1 < nr_gates - num_chunk2;
            num_chunk1 += step_size) {
+        num_candidates++;
         // printf("  Testing num_chunk1=%d\n", num_chunk1);
         build_circuit(num_chunk1, num_chunk2, true);
         // 2^{A_2} (G_2 + 2^{A_1}(G_1 + 2^{A_0} G_0))
@@ -862,7 +875,12 @@ struct Circuit {
       }
     }
 
+    last_autotune_candidates = num_candidates;
+    last_autotune_step_size = step_size;
+    last_autotune_best_gate_ops = min_nr_app;
     build_circuit(opt_num_chunk1, opt_num_chunk2);
+    auto end_autotune = std::chrono::steady_clock::now();
+    last_autotune_seconds = std::chrono::duration<double>(end_autotune - start_autotune).count();
   }
 
   static string circuit_to_string(int thread = -1, int verbosity = 0) {
@@ -898,3 +916,7 @@ vector<std::shared_ptr<InternalWire>> Circuit::all_internal_wires;
 vector<std::shared_ptr<InternalWire>> Circuit::input_sources;
 vector<std::shared_ptr<InternalWire>> Circuit::output_sources;
 std::array<Chunk, NUM_CHUNKS> Circuit::chunks = {Chunk(0), Chunk(1), Chunk(2)};
+double Circuit::last_autotune_seconds = 0.0;
+int Circuit::last_autotune_candidates = 0;
+int Circuit::last_autotune_step_size = 0;
+TypeLongInt Circuit::last_autotune_best_gate_ops = 0;

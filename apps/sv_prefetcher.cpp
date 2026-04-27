@@ -117,8 +117,9 @@ void run(Options &opts, const int world_rank, const int world_size) {
   }
 
   ParsedCircuit::parse_circuit(opts.circuit_file);
+  const bool use_autotune = (opts.num_chunk1 == -1 && opts.num_chunk2 == -1);
 
-  if (opts.num_chunk1 == -1 && opts.num_chunk2 == -1) {
+  if (use_autotune) {
     // Autotune if checkpoints not given. (This takes longer time initially.)
     Circuit::build_autotuned_circuit();
   } else if (opts.num_chunk1 > -1 && opts.num_chunk2 > -1) {
@@ -156,6 +157,17 @@ void run(Options &opts, const int world_rank, const int world_size) {
     printf("  %lld histories in total.\n", num_histories_total);
     printf("  %d histories in parallel.\n",
            (1 << Circuit::chunks.at(2).num_artificial));
+    if (use_autotune) {
+      printf(
+          "Autotuning time: %.6f seconds (candidates=%d, step_size=%d, "
+          "best_gate_ops_estimate=%lld, mode=autotuned)\n",
+          Circuit::last_autotune_seconds, Circuit::last_autotune_candidates,
+          Circuit::last_autotune_step_size, Circuit::last_autotune_best_gate_ops);
+    } else {
+      printf(
+          "Autotuning time: 0.000000 seconds (candidates=0, step_size=0, "
+          "best_gate_ops_estimate=0, mode=fixed)\n");
+    }
   }
 
   // Load input bitstrings
