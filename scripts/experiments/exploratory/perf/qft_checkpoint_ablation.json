@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qft_n8_k2_checkpoint_ablation",
+  "experiment_name": "qft_checkpoint_ablation",
   "repo_root": ".",
   "vary": "batch_size",
   "values": [
@@ -41,6 +41,6 @@
       "r": null
     }
   ],
-  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on qft_n8_k2.",
+  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on qft.",
   "binary": "build-release/sv_prefetcher_subset_mpi.x"
 }

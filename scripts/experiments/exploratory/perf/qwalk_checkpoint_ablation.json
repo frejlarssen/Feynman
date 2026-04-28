@@ -1,5 +1,5 @@
 {
-  "experiment_name": "aa_n4_it3_mark5_checkpoint_ablation",
+  "experiment_name": "qwalk_checkpoint_ablation",
   "repo_root": ".",
   "vary": "batch_size",
   "values": [
@@ -11,18 +11,17 @@
   "fraction": 1.0,
   "threshold": 1e-08,
   "circuit": {
-    "generator": "aa",
-    "n": 4,
-    "it": 3,
-    "mark": 5
+    "generator": "qwalk",
+    "n": 16,
+    "it": 16
   },
   "input_statevector": {
     "generator": "ket0",
-    "size": 1
+    "size": 2
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 1,
+    "size": 2,
     "count": 10
   },
   "cases": [
@@ -33,8 +32,8 @@
     },
     {
       "name": "fixed_cp",
-      "p": 23,
-      "r": 23
+      "p": 176,
+      "r": 176
     },
     {
       "name": "autotuned_cp",
@@ -42,6 +41,6 @@
       "r": null
     }
   ],
-  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on aa_n4_it3_mark5.",
+  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on qwalk.",
   "binary": "build-release/sv_prefetcher_subset_mpi.x"
 }
