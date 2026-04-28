@@ -99,6 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_qaoa.add_argument("--title", default="QAOA pruning sweep")
     p_qaoa.add_argument("--xscale", choices=["linear", "log", "symlog"], default="symlog")
     p_qaoa.add_argument("--label-fontsize", type=float, default=None)
+
+    p_qaoa_val = plot_sub.add_parser("qaoa-qiskit", help="Plot QAOA validation agreement from comparison.csv.")
+    p_qaoa_val.add_argument("--comparison-csv", required=True)
+    p_qaoa_val.add_argument("--output", default="")
+    p_qaoa_val.add_argument("--label-fontsize", type=float, default=None)
     return parser
 
 
@@ -244,6 +249,18 @@ def _plot_qaoa_pruning(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plot_qaoa_qiskit(args: argparse.Namespace) -> int:
+    from validation.qaoa_qiskit_validation import plot_from_comparison_csv
+
+    comparison_csv = Path(args.comparison_csv).resolve()
+    if not comparison_csv.exists():
+        raise FileNotFoundError(f"Comparison CSV not found: {comparison_csv}")
+    output = Path(args.output).resolve() if args.output else None
+    saved = plot_from_comparison_csv(comparison_csv, output_path=output, label_fontsize=args.label_fontsize)
+    print(f"Saved plot: {saved}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -276,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
             return _plot_perf_cases(args)
         if args.plot_kind == "qaoa-pruning":
             return _plot_qaoa_pruning(args)
+        if args.plot_kind == "qaoa-qiskit":
+            return _plot_qaoa_qiskit(args)
         parser.error(f"Unknown plot kind: {args.plot_kind}")
     parser.error(f"Unknown command: {args.command}")
     return 2

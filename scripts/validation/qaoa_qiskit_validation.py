@@ -23,6 +23,7 @@ from sweeplib.materialize import (
     resolve_output_bitstrings_input,
     resolve_statevector_input,
 )
+from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -84,7 +85,10 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "threshold": float(pick("threshold", args.threshold, 0.0)),
         "batch_size": int(pick("batch_size", args.batch_size, 32)),
         "verbosity": int(pick("verbosity", args.verbosity, 1)),
+        "plot_label_fontsize": pick("plot_label_fontsize", args.plot_label_fontsize, None),
     }
+    if merged["plot_label_fontsize"] is not None:
+        merged["plot_label_fontsize"] = float(merged["plot_label_fontsize"])
 
     for key in ("circuit", "input_statevector", "output_bitstrings"):
         if not merged[key]:
@@ -337,7 +341,54 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--verbosity", type=int, default=None)
+    parser.add_argument("--plot-label-fontsize", type=float, default=None)
     return parser.parse_args(argv)
+
+
+def plot_from_comparison_csv(
+    comparison_csv: Path, output_path: Path | None = None, label_fontsize: float | None = None
+) -> Path:
+    xs: list[int] = []
+    feynman_real: list[float] = []
+    feynman_pop: list[float] = []
+    qiskit_pop: list[float] = []
+    with comparison_csv.open("r", newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for i, row in enumerate(reader):
+            xs.append(i)
+            feynman_real.append(float(row["feynman_real"]))
+            feynman_pop.append(float(row["feynman_population"]))
+            qiskit_pop.append(float(row["qiskit_population"]))
+    if not xs:
+        raise ValueError(f"No rows found in comparison CSV: {comparison_csv}")
+
+    configure_headless_matplotlib()
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    axes[0].plot(xs, feynman_real, marker="o", linewidth=1.3, markersize=3)
+    axes[0].set_xlabel("subset output index")
+    axes[0].set_ylabel("feynman_real")
+    axes[0].set_title("Feynman amplitude real part")
+    axes[0].grid(True, alpha=0.25)
+
+    axes[1].plot(xs, feynman_pop, marker="o", linewidth=1.3, markersize=3, label="Feynman")
+    axes[1].plot(xs, qiskit_pop, marker="x", linewidth=1.1, markersize=3, label="Qiskit")
+    axes[1].set_xlabel("subset output index")
+    axes[1].set_ylabel("population")
+    axes[1].set_title("Output population agreement")
+    axes[1].grid(True, alpha=0.25)
+    axes[1].legend()
+
+    fig.tight_layout()
+    out = output_path.resolve() if output_path else comparison_csv.with_name("agreement_plot.pdf")
+    fig.savefig(out, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -435,6 +486,9 @@ def main(argv: list[str] | None = None) -> int:
     mean_abs_err = float(np.mean(abs_errs)) if abs_errs else 0.0
     max_pop_err = max(pop_errs) if pop_errs else 0.0
     mean_pop_err = float(np.mean(pop_errs)) if pop_errs else 0.0
+    agreement_plot = plot_from_comparison_csv(
+        comparison_csv, output_path=run_dir / "agreement_plot.pdf", label_fontsize=cfg.get("plot_label_fontsize")
+    )
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -447,6 +501,7 @@ def main(argv: list[str] | None = None) -> int:
             "feynman_output": str(feynman_output),
             "qiskit_reference_subset": str(run_dir / "qiskit_reference_subset.hsv"),
             "comparison_csv": str(comparison_csv),
+            "agreement_plot": str(agreement_plot),
             "stdout_log": str(run_dir / "stdout.log"),
             "stderr_log": str(run_dir / "stderr.log"),
         },
@@ -477,6 +532,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Qiskit runtime (s): {qiskit_runtime_s:.6f}")
     print(f"Max |amp_feynman - amp_qiskit|: {max_abs_err:.6e}")
     print(f"Mean |amp_feynman - amp_qiskit|: {mean_abs_err:.6e}")
+    print(f"Agreement plot: {agreement_plot}")
     print(f"Wrote: {summary_path}")
     return 0
 

@@ -75,6 +75,11 @@ python3 scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/perf/qft_n8_batch_sweep.json
 ```
 
+This automatically writes `summary.csv` and a default sweep plot
+(`plot_total_full_s_vs_<vary>.pdf`) in the run directory.
+For multi-case sweeps, a case aggregate plot (`plot_total_full_s_by_case.pdf`)
+is also generated automatically.
+
 Override extra mode-specific flags by passing them after `--`:
 
 ```bash
@@ -95,6 +100,11 @@ python3 scripts/run_pipeline.py plot perf-sweep \
 Case aggregate plot:
 
 ```bash
+# First run a case-based perf experiment (creates the summary.csv)
+python3 scripts/run_pipeline.py perf-sweep \
+  --config scripts/experiments/perf/qwalk_n16_it16_checkpoint_ablation.json
+
+# Then (optionally) regenerate only the case plot from summary.csv
 python3 scripts/run_pipeline.py plot perf-cases \
   --summary-csv data/outputs/experiments/<timestamp>_qwalk_n16_it16_checkpoint_ablation/summary.csv \
   --y-column gate_ops_estimate
@@ -136,12 +146,25 @@ python3 scripts/run_pipeline.py validation qaoa-qiskit \
   --config scripts/experiments/validation/qaoa_cycle_n8_p2_qiskit_validation.json
 ```
 
+This run writes `summary.json`, `comparison.csv`, and
+`agreement_plot.pdf` automatically.
+
+Plot-only from an existing validation result:
+
+```bash
+python3 scripts/run_pipeline.py plot qaoa-qiskit \
+  --comparison-csv data/outputs/validation/<timestamp>_qaoa_cycle_n8_p2_qiskit_validation/comparison.csv
+```
+
 QFT demo validation:
 
 ```bash
 python3 scripts/run_pipeline.py validation qft-demo \
   --config scripts/experiments/validation/qft_demo.json
 ```
+
+This run writes `summary.json`, `output_population.csv`, and
+`demo_plot.pdf` automatically.
 
 `qft-demo` supports generator objects for `circuit`, `input_statevector`, and
 `output_bitstrings`, and this path/object materialization is shared with sweep
