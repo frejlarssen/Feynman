@@ -97,7 +97,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "vary": None,
     "values": None,
     "repeat": 1,
-    "binary": "build/sv_prefetcher_subset_mpi.x",
+    "binary": "build-release/sv_prefetcher_subset_mpi.x",
     "mpirun": "mpirun",
     "circuit": None,
     "input_statevector": None,

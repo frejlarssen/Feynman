@@ -75,7 +75,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "experiment_name": pick("experiment_name", args.experiment_name, "qaoa_qiskit_validation"),
         "repo_root": pick("repo_root", args.repo_root, str(SCRIPT_REPO_ROOT)),
         "output_root": pick("output_root", args.output_root, "data/outputs/validation"),
-        "binary": pick("binary", args.binary, "build/sv_prefetcher_subset_mpi.x"),
+        "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
         "circuit": pick("circuit", args.circuit),

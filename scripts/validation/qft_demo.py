@@ -93,7 +93,7 @@ def _merge_config(
 
     merged = {
         "experiment_name": pick("experiment_name", args.experiment_name, "qft_demo"),
-        "binary": pick("binary", args.binary, "build/sv_prefetcher_subset_mpi.x"),
+        "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
         "circuit": pick("circuit", args.circuit),
