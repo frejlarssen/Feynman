@@ -73,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--continue-on-error", action="store_true", default=argparse.SUPPRESS)
     parser.add_argument("--timeout-seconds", type=float, default=argparse.SUPPRESS)
     parser.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS)
+    parser.add_argument("--no-plot", action="store_true", default=argparse.SUPPRESS)
     parser.add_argument("--notes", default=argparse.SUPPRESS)
     parser.add_argument(
         "--max-cases",
@@ -189,10 +190,10 @@ def _finalize_thresholds(options: dict[str, Any]) -> None:
         raise ValueError("No thresholds left after applying --max-cases.")
 
 
-def build_config() -> SweepConfig:
+def build_config(argv: list[str] | None = None) -> SweepConfig:
     parser = build_parser()
     try:
-        options = _merge_config(vars(parser.parse_args()))
+        options = _merge_config(vars(parser.parse_args(argv)))
         _normalize_options(options)
         _validate_required(options)
         _validate_semantics(options)

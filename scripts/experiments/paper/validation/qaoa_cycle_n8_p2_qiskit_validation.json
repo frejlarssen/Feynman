@@ -1,0 +1,28 @@
+{
+  "experiment_name": "qaoa_cycle_n8_p2_qiskit_validation",
+  "binary": "build/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "circuit": {
+    "generator": "qaoa_maxcut",
+    "graph": "ring",
+    "n": 8,
+    "p": 2,
+    "gammas": [0.8, 0.6],
+    "betas": [0.4, 0.25]
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 10
+  },
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "batch_size": 32,
+  "verbosity": 1,
+  "output_root": "data/outputs/validation"
+}

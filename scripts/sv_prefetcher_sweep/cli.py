@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--config", default=argparse.SUPPRESS)
     parser.add_argument("--experiment-name", default=argparse.SUPPRESS)
+    parser.add_argument("--repo-root", default=argparse.SUPPRESS)
     parser.add_argument("--vary", choices=VARY_CHOICES, default=argparse.SUPPRESS)
     parser.add_argument("--values", nargs="+", default=argparse.SUPPRESS)
 
@@ -216,10 +217,10 @@ def _parse_values(options: dict[str, Any]) -> None:
     options["values"] = [_to_number("values", value, conv) for value in options["values"]]
 
 
-def build_config() -> SweepConfig:
+def build_config(argv: list[str] | None = None) -> SweepConfig:
     parser = build_parser()
     try:
-        options = _merge_config(vars(parser.parse_args()))
+        options = _merge_config(vars(parser.parse_args(argv)))
         _normalize_options(options)
         _validate_required(options)
         _validate_semantics(options)

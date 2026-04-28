@@ -224,7 +224,7 @@ def write_two_freq(
     complex_signal: bool = False,
     full_support: bool = False,
 ) -> Path:
-    """Backward-compatible byte-based interface.
+    """Byte-based interface.
 
     `size` is bytes; use `write_two_freq_n_qubits` for arbitrary qubit counts.
     """

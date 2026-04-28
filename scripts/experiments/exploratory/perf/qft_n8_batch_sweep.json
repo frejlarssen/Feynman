@@ -1,0 +1,26 @@
+{
+  "experiment_name": "qft_n8_batch_sweep",
+  "repo_root": ".",
+  "vary": "batch_size",
+  "values": [8, 16, 32, 64, 128],
+  "repeat": 3,
+  "ranks": 4,
+  "circuit": {
+    "generator": "qft",
+    "n": 8,
+    "k": 2
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 10
+  },
+  "p": 8,
+  "r": 4,
+  "output_root": "data/outputs/experiments",
+  "notes": "Sweep batch size for qft_n8_k2."
+}

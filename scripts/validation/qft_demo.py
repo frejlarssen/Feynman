@@ -30,23 +30,15 @@ SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(SCRIPT_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_REPO_ROOT))
 
-from generators.circuits.qft_generator import (  # noqa: E402
-    DEFAULT_OUTPUT_DIR as QFT_DEFAULT_OUTPUT_DIR,
-    generate_qft,
+from scripts.sweeplib.materialize import (  # noqa: E402
+    resolve_circuit_input,
+    resolve_output_bitstrings_input,
+    resolve_statevector_input,
 )
-from generators.hexstrings.hexstring_set_generator import (  # noqa: E402
-    DEFAULT_OUTPUT_DIR as HEXSTR_DEFAULT_OUTPUT_DIR,
-    write_one_interval,
-    write_two_intervals,
+from scripts.sweeplib.plot_style import (  # noqa: E402
+    apply_plot_fontsizes,
+    resolve_subplot_title_fontsize,
 )
-from generators.statevectors.statevector_generator import (  # noqa: E402
-    DEFAULT_OUTPUT_DIR as STATEVEC_DEFAULT_OUTPUT_DIR,
-    write_ket0,
-    write_two_freq,
-    write_two_freq_n_qubits,
-    write_two_tone_dense,
-)
-from scripts.sweeplib.plotting import apply_plot_fontsizes, resolve_label_fontsize  # noqa: E402
 
 
 def _utc_stamp() -> str:
@@ -94,7 +86,7 @@ def _merge_config(
         return cli_value if cli_value is not None else cfg.get(key, default)
 
     merged = {
-        "experiment_name": pick("experiment_name", args.experiment_name, "qft_feynman_demo"),
+        "experiment_name": pick("experiment_name", args.experiment_name, "qft_demo"),
         "binary": pick("binary", args.binary, "build/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
@@ -120,7 +112,6 @@ def _merge_config(
         "plot_label_fontsize": pick("plot_label_fontsize", args.plot_label_fontsize, None),
         "qiskit_reference": bool(pick("qiskit_reference", None, True)),
         "qiskit_max_qubits": int(pick("qiskit_max_qubits", None, 16)),
-        "signal": cfg.get("signal", {}),
     }
     if merged["plot_label_fontsize"] is not None:
         merged["plot_label_fontsize"] = float(merged["plot_label_fontsize"])
@@ -400,265 +391,10 @@ def _write_hsv_sparse(path: Path, sparse: dict[int, complex], size_bytes: int) -
             fh.write(f"0x{idx:0{width}X}:{amp.real:.18f}+{amp.imag:.18f}i\n")
 
 
-def _require_int(spec: dict[str, Any], key: str, label: str) -> int:
-    if key not in spec:
-        raise ValueError(f"Missing '{key}' in {label} generator spec.")
-    return int(spec[key])
-
-
-def _as_bool(value: Any, *, default: bool = False) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        v = value.strip().lower()
-        if v in ("1", "true", "yes", "y", "on"):
-            return True
-        if v in ("0", "false", "no", "n", "off"):
-            return False
-    return bool(value)
-
-
-def _resolve_output_dir(spec: dict[str, Any], repo_root: Path, default_dir: Path) -> Path:
-    out_dir_raw = spec.get("output_dir", None)
-    if out_dir_raw is None:
-        return default_dir.resolve()
-    out_dir = Path(str(out_dir_raw))
-    if not out_dir.is_absolute():
-        out_dir = (repo_root / out_dir).resolve()
-    return out_dir
-
-
-def _build_interval(interval_spec: Any, label: str) -> list[int]:
-    if isinstance(interval_spec, list):
-        values = [int(v) for v in interval_spec]
-    elif isinstance(interval_spec, dict):
-        if "values" in interval_spec:
-            values = [int(v) for v in interval_spec["values"]]
-        elif "start" in interval_spec and "count" in interval_spec:
-            start = int(interval_spec["start"])
-            count = int(interval_spec["count"])
-            if count <= 0:
-                raise ValueError(f"{label}.count must be > 0")
-            values = list(range(start, start + count))
-        elif "start" in interval_spec and "end" in interval_spec:
-            start = int(interval_spec["start"])
-            end = int(interval_spec["end"])
-            if end <= start:
-                raise ValueError(f"{label}.end must be > {label}.start")
-            values = list(range(start, end))
-        elif "center" in interval_spec and "radius" in interval_spec:
-            center = int(interval_spec["center"])
-            radius = int(interval_spec["radius"])
-            if radius <= 0:
-                raise ValueError(f"{label}.radius must be > 0")
-            values = list(range(center - radius, center + radius))
-        else:
-            raise ValueError(
-                f"{label} must define one of: values, (start+count), (start+end), or (center+radius)."
-            )
-    else:
-        raise ValueError(f"{label} must be an object or an array of integers.")
-
-    if not values:
-        raise ValueError(f"{label} must not be empty.")
-    if min(values) < 0:
-        raise ValueError(f"{label} contains negative values.")
-    return values
-
-
-def _resolve_circuit_path(circuit_cfg: Any, repo_root: Path) -> tuple[Path, dict[str, Any] | None]:
-    if isinstance(circuit_cfg, str):
-        path = Path(circuit_cfg)
-        if not path.is_absolute():
-            path = (repo_root / path).resolve()
-        return path, None
-    if not isinstance(circuit_cfg, dict):
-        raise ValueError("circuit must be a path string or a generator object.")
-
-    generator = str(circuit_cfg.get("generator", "qft")).strip().lower()
-    if generator != "qft":
-        raise ValueError(f"Unsupported circuit generator: {generator!r}")
-    n = _require_int(circuit_cfg, "n", "circuit")
-    k = _require_int(circuit_cfg, "k", "circuit")
-    out_dir = _resolve_output_dir(circuit_cfg, repo_root, QFT_DEFAULT_OUTPUT_DIR)
-    path = generate_qft(n=n, k=k, out_dir=out_dir).resolve()
-    return path, {"generator": generator, "n": n, "k": k, "output_dir": str(out_dir)}
-
-
-def _resolve_statevector_path(
-    statevector_cfg: Any, repo_root: Path
-) -> tuple[Path, dict[str, Any] | None]:
-    if isinstance(statevector_cfg, str):
-        path = Path(statevector_cfg)
-        if not path.is_absolute():
-            path = (repo_root / path).resolve()
-        return path, None
-    if not isinstance(statevector_cfg, dict):
-        raise ValueError("input_statevector must be a path string or a generator object.")
-
-    generator = str(statevector_cfg.get("generator", "two_freq")).strip().lower()
-    out_dir = _resolve_output_dir(statevector_cfg, repo_root, STATEVEC_DEFAULT_OUTPUT_DIR)
-
-    if generator in ("two_freq", "amplitude_signal"):
-        size_raw = statevector_cfg.get("size")
-        n_qubits_raw = statevector_cfg.get("n_qubits", statevector_cfg.get("n"))
-        f1_raw = statevector_cfg.get("f1", statevector_cfg.get("f_low"))
-        f2_raw = statevector_cfg.get("f2", statevector_cfg.get("f_high"))
-        if f1_raw is None or f2_raw is None:
-            raise ValueError("input_statevector two_freq requires f1/f2 (or f_low/f_high).")
-        f1 = int(f1_raw)
-        f2 = float(f2_raw)
-        f2_amp = float(
-            statevector_cfg.get(
-                "f2_amp",
-                statevector_cfg.get("rel_amp", statevector_cfg.get("relative_amp", 1.0)),
-            )
-        )
-        threshold = float(statevector_cfg.get("threshold", 0.9999))
-        complex_signal = _as_bool(
-            statevector_cfg.get("complex_signal", statevector_cfg.get("complex", False))
-        )
-        full_support = _as_bool(
-            statevector_cfg.get("full_support", statevector_cfg.get("full", False))
-        )
-        if size_raw is not None:
-            size = int(size_raw)
-            path = write_two_freq(
-                size=size,
-                f1=f1,
-                f2=f2,
-                f2_amp=f2_amp,
-                threshold=threshold,
-                out_dir=out_dir,
-                complex_signal=complex_signal,
-                full_support=full_support,
-            ).resolve()
-            n_qubits = size * 8
-        else:
-            if n_qubits_raw is None:
-                raise ValueError(
-                    "input_statevector two_freq requires either size (bytes) or n_qubits (or n)."
-                )
-            n_qubits = int(n_qubits_raw)
-            path = write_two_freq_n_qubits(
-                n_qubits=n_qubits,
-                f1=f1,
-                f2=f2,
-                f2_amp=f2_amp,
-                threshold=threshold,
-                out_dir=out_dir,
-                complex_signal=complex_signal,
-                full_support=full_support,
-            ).resolve()
-        return path, {
-            "generator": generator,
-            "size": size_raw,
-            "n_qubits": n_qubits,
-            "f1": f1,
-            "f2": f2,
-            "f2_amp": f2_amp,
-            "threshold": threshold,
-            "complex_signal": complex_signal,
-            "full_support": full_support,
-            "output_dir": str(out_dir),
-        }
-
-    if generator in ("two_tone", "two_tone_dense"):
-        n_qubits_raw = statevector_cfg.get("n_qubits", statevector_cfg.get("n"))
-        if n_qubits_raw is None:
-            raise ValueError("input_statevector two_tone requires n_qubits (or n).")
-        n_qubits = int(n_qubits_raw)
-        f1 = _require_int(statevector_cfg, "f1", "input_statevector")
-        f2 = _require_int(statevector_cfg, "f2", "input_statevector")
-        rel_amp = float(
-            statevector_cfg.get(
-                "rel_amp",
-                statevector_cfg.get("relative_amp", statevector_cfg.get("f2_amp", 1.0)),
-            )
-        )
-        path = write_two_tone_dense(
-            n_qubits=n_qubits, f1=f1, f2=f2, rel_amp=rel_amp, out_dir=out_dir
-        ).resolve()
-        return path, {
-            "generator": generator,
-            "n_qubits": n_qubits,
-            "f1": f1,
-            "f2": f2,
-            "rel_amp": rel_amp,
-            "output_dir": str(out_dir),
-        }
-
-    if generator == "ket0":
-        size = _require_int(statevector_cfg, "size", "input_statevector")
-        path = write_ket0(size=size, out_dir=out_dir).resolve()
-        return path, {"generator": generator, "size": size, "output_dir": str(out_dir)}
-
-    raise ValueError(f"Unsupported input_statevector generator: {generator!r}")
-
-
-def _resolve_output_bitstrings_path(
-    output_cfg: Any, repo_root: Path
-) -> tuple[Path, dict[str, Any] | None]:
-    if isinstance(output_cfg, str):
-        path = Path(output_cfg)
-        if not path.is_absolute():
-            path = (repo_root / path).resolve()
-        return path, None
-    if not isinstance(output_cfg, dict):
-        raise ValueError("output_bitstrings must be a path string or a generator object.")
-
-    generator = str(output_cfg.get("generator", "one_interval")).strip().lower()
-    out_dir = _resolve_output_dir(output_cfg, repo_root, HEXSTR_DEFAULT_OUTPUT_DIR)
-
-    if generator == "one_interval":
-        size = _require_int(output_cfg, "size", "output_bitstrings")
-        count = int(output_cfg.get("count", output_cfg.get("nr_hexstrings", 0)))
-        start = int(output_cfg.get("start", 0))
-        if count <= 0:
-            raise ValueError("output_bitstrings one_interval requires count > 0.")
-        if start != 0:
-            raise ValueError(
-                "one_interval generator currently supports only start=0. Use two_intervals for other ranges."
-            )
-        path = write_one_interval(size=size, nr_hexstrings=count, out_dir=out_dir).resolve()
-        return path, {
-            "generator": generator,
-            "size": size,
-            "start": start,
-            "count": count,
-            "output_dir": str(out_dir),
-        }
-
-    if generator == "two_intervals":
-        size = _require_int(output_cfg, "size", "output_bitstrings")
-        interval1 = _build_interval(output_cfg.get("interval1"), "output_bitstrings.interval1")
-        interval2 = _build_interval(output_cfg.get("interval2"), "output_bitstrings.interval2")
-        path = write_two_intervals(
-            size=size,
-            interval1=interval1,
-            interval2=interval2,
-            out_dir=out_dir,
-        ).resolve()
-        return path, {
-            "generator": generator,
-            "size": size,
-            "interval1_count": len(interval1),
-            "interval2_count": len(interval2),
-            "output_dir": str(out_dir),
-        }
-
-    raise ValueError(f"Unsupported output_bitstrings generator: {generator!r}")
-
-
 def _signal_meta_from_input(
     *,
     input_generated: dict[str, Any] | None,
     input_cfg: Any,
-    signal_fallback: Any,
 ) -> dict[str, Any]:
     def from_spec(spec: Any) -> dict[str, Any] | None:
         if not isinstance(spec, dict):
@@ -676,17 +412,9 @@ def _signal_meta_from_input(
             rel = spec.get("rel_amp", spec.get("f2_amp", spec.get("relative_amp")))
             if f_low is not None and f_high is not None:
                 return {"f_low": f_low, "f_high": f_high, "relative_amp": rel}
-        # Legacy metadata object already using f_low/f_high keys.
-        if "f_low" in spec and "f_high" in spec:
-            return {
-                "f_low": spec.get("f_low"),
-                "f_high": spec.get("f_high"),
-                "relative_amp": spec.get("relative_amp", spec.get("rel_amp")),
-            }
         return None
 
-    # Priority: exact resolved generator spec -> input cfg spec -> legacy "signal".
-    for candidate in (input_generated, input_cfg, signal_fallback):
+    for candidate in (input_generated, input_cfg):
         meta = from_spec(candidate)
         if meta is not None:
             return meta
@@ -772,7 +500,7 @@ def _render_demo_plot(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
-    subplot_title_fontsize = max(1.0, resolve_label_fontsize(label_fontsize) - 2.0)
+    subplot_title_fontsize = resolve_subplot_title_fontsize(label_fontsize)
 
     # Left panel: sparse input real part.
     in_idx = np.array(sorted(input_sparse.keys()), dtype=np.int64)
@@ -816,7 +544,7 @@ def _render_demo_plot(
     plt.close(fig)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run a QFT frequency demo and produce a PDF plot."
     )
@@ -846,11 +574,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plot-label-fontsize", type=float, default=None)
     parser.add_argument("--qiskit-reference", action="store_true", default=None)
     parser.add_argument("--qiskit-max-qubits", type=int, default=None)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     cfg, raw_cfg, config_path_str = _merge_config(args)
 
     repo_root = Path(cfg["repo_root"]).resolve()
@@ -926,11 +654,9 @@ def main() -> int:
     if not binary.is_absolute():
         binary = (repo_root / binary).resolve()
 
-    circuit, circuit_generated = _resolve_circuit_path(cfg["circuit"], repo_root)
-    input_statevector, input_generated = _resolve_statevector_path(cfg["input_statevector"], repo_root)
-    output_bitstrings, output_generated = _resolve_output_bitstrings_path(
-        cfg["output_bitstrings"], repo_root
-    )
+    circuit, circuit_generated = resolve_circuit_input(cfg["circuit"], repo_root)
+    input_statevector, input_generated = resolve_statevector_input(cfg["input_statevector"], repo_root)
+    output_bitstrings, output_generated = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
     output_root = (repo_root / cfg["output_root"]).resolve()
 
     for p in (binary, circuit, input_statevector, output_bitstrings):
@@ -1110,7 +836,6 @@ def main() -> int:
     signal = _signal_meta_from_input(
         input_generated=input_generated,
         input_cfg=cfg["input_statevector"],
-        signal_fallback=cfg.get("signal", {}),
     )
     _render_demo_plot(
         out_pdf=plot_pdf,

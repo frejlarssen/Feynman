@@ -82,6 +82,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "timeout_seconds": None,
     "notes": "",
     "dry_run": False,
+    "no_plot": False,
     "max_cases": None,
     "binary": None,
     "mpirun": None,
@@ -107,7 +108,7 @@ NUMERIC_CASTS: dict[str, Any] = {
     "verbosity": int,
 }
 
-BOOLEAN_FIELDS = ("continue_on_error", "dry_run")
+BOOLEAN_FIELDS = ("continue_on_error", "dry_run", "no_plot")
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,7 @@ class SweepConfig:
     timeout_seconds: float | None
     notes: str
     dry_run: bool
+    no_plot: bool
     max_cases: int | None
     binary: str | None
     mpirun: str | None

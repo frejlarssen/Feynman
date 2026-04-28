@@ -2,7 +2,7 @@
   "experiment_name": "qaoa_pruning_sweep_cycle_n8_p2",
   "repo_root": ".",
   "output_root": "data/outputs/experiments",
-  "base_config": "scripts/experiments/qaoa_cycle_n8_p2_qiskit_validation.json",
+  "base_config": "scripts/experiments/paper/validation/qaoa_cycle_n8_p2_qiskit_validation.json",
   "thresholds": [
     0.0,
     2e-6,

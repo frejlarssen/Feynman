@@ -90,6 +90,7 @@ SUMMARY_FIELDS = list(
 
 DEFAULT_OPTIONS: dict[str, Any] = {
     "experiment_name": None,
+    "repo_root": ".",
     "vary": None,
     "values": None,
     "repeat": 1,
@@ -143,14 +144,15 @@ BOOLEAN_FIELDS = ("dense", "continue_on_error", "dry_run")
 class SweepConfig:
     config: str
     experiment_name: str
+    repo_root: str
     vary: str
     values: list[Any]
     repeat: int
     binary: str
     mpirun: str
-    circuit: str
-    input_statevector: str
-    output_bitstrings: str
+    circuit: Any
+    input_statevector: Any
+    output_bitstrings: Any
     output_root: str
     ranks: int
     batch_size: int

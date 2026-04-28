@@ -1,0 +1,39 @@
+{
+  "experiment_name": "qft_n16_feynman_low_high_bulk",
+  "binary": "build/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "circuit": {
+    "generator": "qft",
+    "n": 16,
+    "k": 2
+  },
+  "input_statevector": {
+    "generator": "two_freq",
+    "size": 2,
+    "f1": 6,
+    "f2": 16384,
+    "f2_amp": 0.2,
+    "threshold": 0.9999
+  },
+  "output_bitstrings": {
+    "generator": "two_intervals",
+    "size": 2,
+    "interval1": {
+      "start": 0,
+      "count": 10
+    },
+    "interval2": {
+      "start": 16379,
+      "count": 10
+    }
+  },
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "batch_size": 32,
+  "verbosity": 1,
+  "dense": false,
+  "normalize_input": true,
+  "plot_max_xticks": 20,
+  "output_root": "data/outputs/validation"
+}
