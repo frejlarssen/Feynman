@@ -394,6 +394,7 @@ def plot_from_comparison_csv(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     cfg = _merge_config(args)
+    config_stem = Path(args.config).resolve().stem if args.config else _sanitize(str(cfg["experiment_name"]))
 
     repo_root = Path(cfg["repo_root"]).resolve()
     output_root = _resolve_path(cfg["output_root"], repo_root).resolve()
@@ -487,7 +488,9 @@ def main(argv: list[str] | None = None) -> int:
     max_pop_err = max(pop_errs) if pop_errs else 0.0
     mean_pop_err = float(np.mean(pop_errs)) if pop_errs else 0.0
     agreement_plot = plot_from_comparison_csv(
-        comparison_csv, output_path=run_dir / "agreement_plot.pdf", label_fontsize=cfg.get("plot_label_fontsize")
+        comparison_csv,
+        output_path=run_dir / f"{config_stem}.pdf",
+        label_fontsize=cfg.get("plot_label_fontsize"),
     )
 
     summary = {
@@ -506,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
             "stderr_log": str(run_dir / "stderr.log"),
         },
         "config": cfg,
+        "config_file": str(Path(args.config).resolve()) if args.config else None,
         "circuit": {
             "declared_qubits": declared_n,
             "simulator_qubits": sim_n,

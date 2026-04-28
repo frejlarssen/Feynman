@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import subprocess
 import sys
@@ -287,6 +288,77 @@ def _resolve_latest_artifact(
     )
 
 
+def _strip_timestamp_prefix(run_dir_name: str) -> str:
+    return re.sub(r"^\d{8}_\d{6}_", "", run_dir_name)
+
+
+def _config_stem_from_experiment_run_dir(run_dir: Path) -> str:
+    metadata_path = run_dir / "sweep_metadata.json"
+    if metadata_path.exists():
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        cfg_file = payload.get("config", {}).get("config_file")
+        if isinstance(cfg_file, str) and cfg_file:
+            return Path(cfg_file).stem
+    fallback = _strip_timestamp_prefix(run_dir.name)
+    return fallback if fallback else "plot"
+
+
+def _config_stem_from_validation_run_dir(run_dir: Path) -> str:
+    summary_path = run_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        cfg_file = payload.get("config_file")
+        if isinstance(cfg_file, str) and cfg_file:
+            return Path(cfg_file).stem
+    fallback = _strip_timestamp_prefix(run_dir.name)
+    return fallback if fallback else "plot"
+
+
+def _default_plot_path(
+    *,
+    artifact_path: Path,
+    run_type: str,
+    current_stem: str,
+    multiple_plots_for_config: bool,
+) -> Path:
+    if run_type == "experiments":
+        cfg_stem = _config_stem_from_experiment_run_dir(artifact_path.parent)
+    elif run_type == "validation":
+        cfg_stem = _config_stem_from_validation_run_dir(artifact_path.parent)
+    else:
+        raise ValueError(f"Unsupported run_type: {run_type}")
+    stem = f"{cfg_stem}_{_short_plot_suffix(current_stem)}" if multiple_plots_for_config else cfg_stem
+    return artifact_path.parent / f"{stem}.pdf"
+
+
+def _short_plot_suffix(stem: str) -> str:
+    short = stem.strip()
+    if short.startswith("plot_"):
+        short = short[len("plot_") :]
+
+    replacements = {
+        "total_full_s": "ttot",
+        "total_artificial_sources": "a",
+        "fidelity_to_reference": "fidelity",
+        "batch_size": "batch",
+        "circuit_it": "it",
+        "varied_value": "vary",
+        "summary_time_fidelity": "time_fidelity",
+    }
+    for old, new in replacements.items():
+        short = short.replace(old, new)
+
+    short = re.sub(r"[^a-zA-Z0-9_]+", "_", short)
+    short = re.sub(r"_+", "_", short).strip("_")
+    return short or "plot"
+
+
 def _resolve_summary_csv_arg(
     *,
     args: argparse.Namespace,
@@ -319,10 +391,11 @@ def _plot_perf_sweep(args: argparse.Namespace) -> int:
         y_column=args.y_column,
         include_failures=args.include_failures,
     )
-    output_path = (
-        Path(args.output).resolve()
-        if args.output
-        else default_plot_output_path(summary_path, x_column=x_label, y_column=args.y_column)
+    output_path = Path(args.output).resolve() if args.output else _default_plot_path(
+        artifact_path=summary_path,
+        run_type="experiments",
+        current_stem=default_plot_output_path(summary_path, x_column=x_label, y_column=args.y_column).stem,
+        multiple_plots_for_config=True,
     )
     render_sweep_plot(
         xs=xs,
@@ -339,7 +412,7 @@ def _plot_perf_sweep(args: argparse.Namespace) -> int:
 
 
 def _plot_perf_cases(args: argparse.Namespace) -> int:
-    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
 
     import csv
 
@@ -389,13 +462,25 @@ def _plot_perf_cases(args: argparse.Namespace) -> int:
     xs = list(range(len(case_names)))
     ax.bar(xs, means, yerr=stds, capsize=5, alpha=0.9)
     ax.set_xticks(xs, case_names)
-    ax.set_ylabel(args.y_column)
-    ax.set_xlabel("case_name")
-    ax.set_title(args.title or f"{args.y_column} by case")
+    ax.set_ylabel(format_metric_label(args.y_column))
+    ax.set_xlabel("")
+    default_title = (
+        "Autotuning and Checkpoint Ablation"
+        if args.y_column == "total_full_s"
+        else f"{format_metric_label(args.y_column)} by case"
+    )
+    ax.set_title(args.title or default_title)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     output_path = (
-        Path(args.output).resolve() if args.output else (summary_path.parent / f"plot_{args.y_column}_by_case.pdf")
+        Path(args.output).resolve()
+        if args.output
+        else _default_plot_path(
+            artifact_path=summary_path,
+            run_type="experiments",
+            current_stem=f"plot_{args.y_column}_by_case",
+            multiple_plots_for_config=True,
+        )
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)
@@ -404,7 +489,7 @@ def _plot_perf_cases(args: argparse.Namespace) -> int:
 
 
 def _plot_perf_case_lines(args: argparse.Namespace) -> int:
-    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
 
     import csv
 
@@ -470,9 +555,14 @@ def _plot_perf_case_lines(args: argparse.Namespace) -> int:
 
     ax.set_xscale(args.xscale)
     ax.set_yscale(args.yscale)
-    ax.set_xlabel(args.x_column)
-    ax.set_ylabel(args.y_column)
-    default_title = f"{args.y_column} vs {args.x_column} by case ({args.xscale}/{args.yscale})"
+    display_x = format_metric_label(args.x_column)
+    display_y = format_metric_label(args.y_column)
+    ax.set_xlabel(display_x)
+    ax.set_ylabel(display_y)
+    if args.x_column == "total_artificial_sources" and args.y_column == "total_full_s":
+        default_title = "Time vs Number of Artificial Sources"
+    else:
+        default_title = f"{display_y} vs {display_x} by case ({args.xscale}/{args.yscale})"
     ax.set_title(args.title or default_title)
     ax.grid(True, alpha=0.3)
     ax.legend()
@@ -480,7 +570,12 @@ def _plot_perf_case_lines(args: argparse.Namespace) -> int:
     output_path = (
         Path(args.output).resolve()
         if args.output
-        else (summary_path.parent / f"plot_{args.y_column}_vs_{args.x_column}_by_case.pdf")
+        else _default_plot_path(
+            artifact_path=summary_path,
+            run_type="experiments",
+            current_stem=f"plot_{args.y_column}_vs_{args.x_column}_by_case",
+            multiple_plots_for_config=True,
+        )
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)
@@ -492,7 +587,12 @@ def _plot_qaoa_pruning(args: argparse.Namespace) -> int:
     from qaoa_pruning_sweep.plotting import plot_time_fidelity
 
     summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
-    output_path = Path(args.output).resolve() if args.output else None
+    output_path = Path(args.output).resolve() if args.output else _default_plot_path(
+        artifact_path=summary_path,
+        run_type="experiments",
+        current_stem="summary_time_fidelity",
+        multiple_plots_for_config=False,
+    )
     saved_path = plot_time_fidelity(
         summary_csv=summary_path,
         output=output_path,
@@ -523,7 +623,12 @@ def _plot_qaoa_qiskit(args: argparse.Namespace) -> int:
         raise ValueError("Provide --comparison-csv or use --latest.")
     if not comparison_csv.exists():
         raise FileNotFoundError(f"Comparison CSV not found: {comparison_csv}")
-    output = Path(args.output).resolve() if args.output else None
+    output = Path(args.output).resolve() if args.output else _default_plot_path(
+        artifact_path=comparison_csv,
+        run_type="validation",
+        current_stem="agreement_plot",
+        multiple_plots_for_config=False,
+    )
     saved = plot_from_comparison_csv(comparison_csv, output_path=output, label_fontsize=args.label_fontsize)
     print(f"Saved plot: {saved}")
     return 0

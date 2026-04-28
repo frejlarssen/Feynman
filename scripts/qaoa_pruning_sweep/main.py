@@ -32,7 +32,13 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
 
     def _auto_plot(_sweep_dir: Path, summary_csv: Path, _metadata_path: Path, failures: int) -> None:
         try:
-            plot_path = plot_time_fidelity(summary_csv=summary_csv, include_failures=(failures > 0))
+            config_stem = Path(config.config).stem if config.config else "qaoa_pruning_sweep"
+            output_path = summary_csv.parent / f"{config_stem}.pdf"
+            plot_path = plot_time_fidelity(
+                summary_csv=summary_csv,
+                output=output_path,
+                include_failures=(failures > 0),
+            )
             if failures > 0:
                 print(f"Auto-generated plot (partial sweep): {plot_path}")
             else:

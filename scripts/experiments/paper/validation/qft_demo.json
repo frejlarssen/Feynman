@@ -1,31 +1,33 @@
 {
-  "experiment_name": "qft_two_freq_nqubits_demo_normtest",
+  "experiment_name": "qft_demo",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
   "ranks": 1,
   "circuit": {
     "generator": "qft",
-    "n": 8,
-    "k": 8
+    "n": 12,
+    "k": 12
   },
   "input_statevector": {
     "generator": "two_freq",
-    "n_qubits": 8,
+    "n_qubits": 12,
     "f1": 5,
-    "f2": 6,
-    "f2_amp": 0.0,
-    "threshold": 0.0
+    "f2": 2001,
+    "f2_amp": 0.5,
+    "threshold": 0.0,
+    "complex": true,
+    "full_support": true
   },
   "output_bitstrings": {
     "generator": "two_intervals",
-    "size": 1,
+    "size": 2,
     "interval1": {
-      "start": 0,
-      "count": 10
+      "start": 3,
+      "count": 4
     },
     "interval2": {
-      "start": 246,
-      "count": 10
+      "start": 1999,
+      "count": 4
     }
   },
   "fraction": 1.0,

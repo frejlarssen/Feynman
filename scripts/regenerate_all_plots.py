@@ -18,6 +18,7 @@ RUN_PIPELINE = [sys.executable, str((REPO_ROOT / "scripts" / "run_pipeline.py").
 class ReplotStats:
     perf_sweep: int = 0
     perf_cases: int = 0
+    perf_case_lines: int = 0
     qaoa_pruning: int = 0
     qaoa_qiskit: int = 0
     qft_demo: int = 0
@@ -92,6 +93,7 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
                     stats = ReplotStats(
                         perf_sweep=stats.perf_sweep,
                         perf_cases=stats.perf_cases,
+                        perf_case_lines=stats.perf_case_lines,
                         qaoa_pruning=stats.qaoa_pruning + 1,
                         qaoa_qiskit=stats.qaoa_qiskit,
                         qft_demo=stats.qft_demo,
@@ -120,6 +122,7 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
                 stats = ReplotStats(
                     perf_sweep=stats.perf_sweep + 1,
                     perf_cases=stats.perf_cases,
+                    perf_case_lines=stats.perf_case_lines,
                     qaoa_pruning=stats.qaoa_pruning,
                     qaoa_qiskit=stats.qaoa_qiskit,
                     qft_demo=stats.qft_demo,
@@ -147,12 +150,37 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
                         stats = ReplotStats(
                             perf_sweep=stats.perf_sweep,
                             perf_cases=stats.perf_cases + 1,
+                            perf_case_lines=stats.perf_case_lines,
                             qaoa_pruning=stats.qaoa_pruning,
                             qaoa_qiskit=stats.qaoa_qiskit,
                             qft_demo=stats.qft_demo,
                         )
                     else:
                         errors.append(f"perf-cases {summary_csv.parent}: {err_case}")
+                        if fail_fast:
+                            break
+
+                    ok_lines, err_lines = _run(
+                        [
+                            *RUN_PIPELINE,
+                            "plot",
+                            "perf-case-lines",
+                            "--summary-csv",
+                            str(summary_csv),
+                        ],
+                        dry_run=dry_run,
+                    )
+                    if ok_lines:
+                        stats = ReplotStats(
+                            perf_sweep=stats.perf_sweep,
+                            perf_cases=stats.perf_cases,
+                            perf_case_lines=stats.perf_case_lines + 1,
+                            qaoa_pruning=stats.qaoa_pruning,
+                            qaoa_qiskit=stats.qaoa_qiskit,
+                            qft_demo=stats.qft_demo,
+                        )
+                    else:
+                        errors.append(f"perf-case-lines {summary_csv.parent}: {err_lines}")
                         if fail_fast:
                             break
             except (OSError, csv.Error) as exc:
@@ -170,6 +198,7 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
                 stats = ReplotStats(
                     perf_sweep=stats.perf_sweep,
                     perf_cases=stats.perf_cases,
+                    perf_case_lines=stats.perf_case_lines,
                     qaoa_pruning=stats.qaoa_pruning,
                     qaoa_qiskit=stats.qaoa_qiskit + 1,
                     qft_demo=stats.qft_demo,
@@ -199,6 +228,7 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
                 stats = ReplotStats(
                     perf_sweep=stats.perf_sweep,
                     perf_cases=stats.perf_cases,
+                    perf_case_lines=stats.perf_case_lines,
                     qaoa_pruning=stats.qaoa_pruning,
                     qaoa_qiskit=stats.qaoa_qiskit,
                     qft_demo=stats.qft_demo + 1,
@@ -211,6 +241,7 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
     print("Replot summary:")
     print(f"  perf-sweep plots: {stats.perf_sweep}")
     print(f"  perf-case plots:  {stats.perf_cases}")
+    print(f"  perf-lines plots: {stats.perf_case_lines}")
     print(f"  qaoa-pruning:     {stats.qaoa_pruning}")
     print(f"  qaoa-qiskit:      {stats.qaoa_qiskit}")
     print(f"  qft-demo:         {stats.qft_demo}")

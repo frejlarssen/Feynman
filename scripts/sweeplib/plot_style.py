@@ -8,7 +8,7 @@ PLOT_TICK_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_TICK_FONTSIZE_DELTA"
 PLOT_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_TITLE_FONTSIZE_DELTA"
 PLOT_FIGURE_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_FIGURE_TITLE_FONTSIZE_DELTA"
 PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA"
-DEFAULT_LABEL_FONTSIZE = 18.0
+DEFAULT_LABEL_FONTSIZE = 20.0
 DEFAULT_TICK_FONTSIZE_DELTA = -1.0
 DEFAULT_TITLE_FONTSIZE_DELTA = 1.0
 DEFAULT_FIGURE_TITLE_FONTSIZE_DELTA = 2.0
@@ -63,6 +63,17 @@ def resolve_subplot_title_fontsize(label_fontsize: float | None = None) -> float
     base = resolve_label_fontsize(label_fontsize)
     delta = _resolve_delta(PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA_ENV, DEFAULT_SUBPLOT_TITLE_FONTSIZE_DELTA)
     return max(1.0, base + delta)
+
+
+def format_metric_label(name: str) -> str:
+    key = str(name).strip()
+    if key == "total_full_s":
+        return r"$T_{tot}$"
+    if key == "total_artificial_sources":
+        return r"$A$"
+    if key == "fidelity_to_reference":
+        return "Fidelity"
+    return key
 
 
 def apply_plot_fontsizes(*, plt, label_fontsize: float | None = None) -> float:

@@ -55,6 +55,12 @@ def _sanitize(name: str) -> str:
     return "".join(out) or "demo"
 
 
+def _strip_timestamp_prefix(run_dir_name: str) -> str:
+    import re
+
+    return re.sub(r"^\d{8}_\d{6}_", "", run_dir_name)
+
+
 def _parse_complex_token(token: str) -> complex:
     s = token.strip()
     plus = s.find("+", 1)
@@ -580,6 +586,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     cfg, raw_cfg, config_path_str = _merge_config(args)
+    config_stem = Path(config_path_str).stem if config_path_str else _sanitize(str(cfg["experiment_name"]))
 
     repo_root = Path(cfg["repo_root"]).resolve()
 
@@ -625,7 +632,14 @@ def main(argv: list[str] | None = None) -> int:
             if not plot_pdf.is_absolute():
                 plot_pdf = (repo_root / plot_pdf).resolve()
         else:
-            plot_pdf = population_csv_path.with_name("demo_plot_from_csv.pdf")
+            summary_cfg_file = summary.get("config_file")
+            if isinstance(summary_cfg_file, str) and summary_cfg_file:
+                from_csv_stem = Path(summary_cfg_file).stem
+            elif cfg["summary_json"] is not None:
+                from_csv_stem = _strip_timestamp_prefix(Path(cfg["summary_json"]).resolve().parent.name)
+            else:
+                from_csv_stem = config_stem
+            plot_pdf = population_csv_path.with_name(f"{from_csv_stem}.pdf")
 
         for p in (population_csv_path, input_statevector_plot):
             if not p.exists():
@@ -832,7 +846,7 @@ def main(argv: list[str] | None = None) -> int:
         for rank, i in enumerate(top_idx)
     ]
 
-    plot_pdf = sweep_dir / "demo_plot.pdf"
+    plot_pdf = sweep_dir / f"{config_stem}.pdf"
     signal = _signal_meta_from_input(
         input_generated=input_generated,
         input_cfg=cfg["input_statevector"],

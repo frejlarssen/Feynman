@@ -9,12 +9,24 @@ from pathlib import Path
 
 from sweeplib.provenance import get_git_info
 from sweeplib.sweep import run_sweep
-from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
 from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
 
 from .cli import build_config
 from .project import build_metadata, build_run_points, make_run_one, resolve_paths
 from .schema import SUMMARY_FIELDS
+
+
+def _config_stem_from_metadata(metadata_path: Path, fallback: str) -> str:
+    if metadata_path.exists():
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        cfg_file = payload.get("config", {}).get("config_file")
+        if isinstance(cfg_file, str) and cfg_file:
+            return Path(cfg_file).stem
+    return fallback
 
 
 def _infer_vary_label(summary_path: Path) -> str:
@@ -29,7 +41,18 @@ def _infer_vary_label(summary_path: Path) -> str:
     return vary if isinstance(vary, str) and vary else "varied_value"
 
 
-def _plot_cases_total_full(summary_csv: Path) -> Path:
+def _short_metric_name(name: str) -> str:
+    mapping = {
+        "total_full_s": "ttot",
+        "total_artificial_sources": "a",
+        "batch_size": "batch",
+        "circuit_it": "it",
+        "varied_value": "vary",
+    }
+    return mapping.get(name, name)
+
+
+def _plot_cases_total_full(summary_csv: Path, *, config_stem: str) -> Path:
     grouped: dict[str, list[float]] = {}
     with summary_csv.open("r", newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -58,12 +81,12 @@ def _plot_cases_total_full(summary_csv: Path) -> Path:
     xs = list(range(len(case_names)))
     ax.bar(xs, means, yerr=stds, capsize=5, alpha=0.9)
     ax.set_xticks(xs, case_names)
-    ax.set_ylabel("total_full_s")
-    ax.set_xlabel("case_name")
-    ax.set_title("total_full_s by case")
+    ax.set_ylabel(format_metric_label("total_full_s"))
+    ax.set_xlabel("")
+    ax.set_title("Autotuning and Checkpoint Ablation")
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
-    output_path = summary_csv.parent / "plot_total_full_s_by_case.pdf"
+    output_path = summary_csv.parent / f"{config_stem}_ttot_by_case.pdf"
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
     return output_path
@@ -72,6 +95,7 @@ def _plot_cases_total_full(summary_csv: Path) -> Path:
 def _plot_cases_vs_x(
     summary_csv: Path,
     *,
+    config_stem: str,
     x_column: str,
     y_column: str,
     xscale: str = "linear",
@@ -134,14 +158,19 @@ def _plot_cases_vs_x(
 
     ax.set_xscale(xscale)
     ax.set_yscale(yscale)
-    ax.set_xlabel(x_column)
-    ax.set_ylabel(y_column)
-    scale_suffix = "" if (xscale == "linear" and yscale == "linear") else f" ({xscale}/{yscale})"
-    ax.set_title(f"{y_column} vs {x_column} by case{scale_suffix}")
+    display_x = format_metric_label(x_column)
+    display_y = format_metric_label(y_column)
+    ax.set_xlabel(display_x)
+    ax.set_ylabel(display_y)
+    if x_column == "total_artificial_sources" and y_column == "total_full_s":
+        ax.set_title("Time vs Number of Artificial Sources")
+    else:
+        scale_suffix = "" if (xscale == "linear" and yscale == "linear") else f" ({xscale}/{yscale})"
+        ax.set_title(f"{display_y} vs {display_x} by case{scale_suffix}")
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
-    output_path = summary_csv.parent / f"plot_{y_column}_vs_{x_column}_by_case.pdf"
+    output_path = summary_csv.parent / f"{config_stem}_{_short_metric_name(y_column)}_vs_{_short_metric_name(x_column)}_by_case.pdf"
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
     return output_path
@@ -158,7 +187,8 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
     runner_script_path = entry_script or Path(__file__).resolve()
     invocation = shlex.join(sys.argv)
 
-    def _auto_plot(_sweep_dir: Path, summary_csv: Path, _metadata_path: Path, failures: int) -> None:
+    def _auto_plot(_sweep_dir: Path, summary_csv: Path, metadata_path: Path, failures: int) -> None:
+        config_stem = _config_stem_from_metadata(metadata_path, Path(config.config).stem if config.config else "sweep")
         try:
             x_label = _infer_vary_label(summary_csv)
             xs, ys = load_xy_from_summary(
@@ -167,10 +197,13 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 y_column="total_full_s",
                 include_failures=(failures > 0),
             )
-            output_path = default_plot_output_path(
+            default_named = default_plot_output_path(
                 summary_csv,
                 x_column=x_label,
                 y_column="total_full_s",
+            )
+            output_path = summary_csv.parent / (
+                f"{config_stem}_{_short_metric_name('total_full_s')}_vs_{_short_metric_name(x_label)}.pdf"
             )
             render_sweep_plot(
                 xs=xs,
@@ -190,13 +223,14 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
             print(f"Auto-plot skipped: {exc}", file=sys.stderr)
 
         try:
-            case_plot = _plot_cases_total_full(summary_csv)
+            case_plot = _plot_cases_total_full(summary_csv, config_stem=config_stem)
             print(f"Auto-generated case plot: {case_plot}")
         except (RuntimeError, ValueError, FileNotFoundError):
             pass
         try:
             structure_case_plot = _plot_cases_vs_x(
                 summary_csv,
+                config_stem=config_stem,
                 x_column="total_artificial_sources",
                 y_column="total_full_s",
                 xscale="linear",

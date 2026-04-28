@@ -14,6 +14,7 @@ from sweeplib.plot_style import (
     LINE_COLOR_SECONDARY,
     apply_plot_fontsizes,
     configure_headless_matplotlib,
+    format_metric_label,
 )
 
 
@@ -107,7 +108,7 @@ def plot_time_fidelity(
         marker=DEFAULT_MARKER_PRIMARY,
         linewidth=DEFAULT_LINEWIDTH_PRIMARY,
         color=LINE_COLOR_PRIMARY,
-        label=f"{time_column}",
+        label=format_metric_label(time_column),
     )[0]
     fidelity_line = ax_fidelity.plot(
         thresholds,
@@ -115,7 +116,7 @@ def plot_time_fidelity(
         marker=DEFAULT_MARKER_SECONDARY,
         linewidth=DEFAULT_LINEWIDTH_SECONDARY,
         color=LINE_COLOR_SECONDARY,
-        label=f"{fidelity_column}",
+        label=format_metric_label(fidelity_column),
     )[0]
 
     if xscale == "symlog":
@@ -126,8 +127,8 @@ def plot_time_fidelity(
         ax_time.set_xscale(xscale)
 
     ax_time.set_xlabel("threshold t")
-    ax_time.set_ylabel(time_column)
-    ax_fidelity.set_ylabel(fidelity_column)
+    ax_time.set_ylabel(format_metric_label(time_column))
+    ax_fidelity.set_ylabel(format_metric_label(fidelity_column))
     ax_time.tick_params(axis="y", colors=LINE_COLOR_PRIMARY)
     ax_fidelity.tick_params(axis="y", colors=LINE_COLOR_SECONDARY)
     ax_fidelity.set_ylim(0.0, 1.02)

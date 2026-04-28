@@ -5,7 +5,7 @@ import math
 import statistics
 from pathlib import Path
 
-from .plot_style import apply_plot_fontsizes, configure_headless_matplotlib, resolve_label_fontsize
+from .plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
 
 
 def _to_float(value: str) -> float:
@@ -88,9 +88,11 @@ def render_sweep_plot(
             markersize=5,
         )
 
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(y_label)
-    ax.set_title(title or f"{y_label} vs {x_label}")
+    display_x = format_metric_label(x_label)
+    display_y = format_metric_label(y_label)
+    ax.set_xlabel(display_x)
+    ax.set_ylabel(display_y)
+    ax.set_title(title or f"{display_y} vs {display_x}")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
 
