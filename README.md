@@ -94,6 +94,15 @@ python3 scripts/run_pipeline.py plot perf-sweep \
   --mode meanstd
 ```
 
+Or use latest matching run automatically:
+
+```bash
+python3 scripts/run_pipeline.py plot perf-sweep \
+  --latest \
+  --y-column total_full_s \
+  --mode meanstd
+```
+
 Case aggregate plot:
 
 ```bash
@@ -104,6 +113,14 @@ python3 scripts/run_pipeline.py perf-sweep \
 # Then (optionally) regenerate only the case plot from summary.csv
 python3 scripts/run_pipeline.py plot perf-cases \
   --summary-csv data/outputs/experiments/<timestamp>_aa_n3_it3_mark1_checkpoint_ablation/summary.csv \
+  --y-column gate_ops_estimate
+```
+
+Or use the latest matching case run:
+
+```bash
+python3 scripts/run_pipeline.py plot perf-cases \
+  --latest \
   --y-column gate_ops_estimate
 ```
 
@@ -131,6 +148,12 @@ python3 scripts/run_pipeline.py plot qaoa-pruning \
   --summary-csv data/outputs/experiments/<timestamp>_qaoa_pruning_sweep_cycle_n8_p2/summary.csv
 ```
 
+Or use latest QAOA pruning run:
+
+```bash
+python3 scripts/run_pipeline.py plot qaoa-pruning --latest
+```
+
 In this plot, blue is `total_full_s` (left y-axis) and red is
 `fidelity_to_reference` (right y-axis).
 
@@ -151,6 +174,12 @@ Plot-only from an existing validation result:
 ```bash
 python3 scripts/run_pipeline.py plot qaoa-qiskit \
   --comparison-csv data/outputs/validation/<timestamp>_qaoa_cycle_n8_p2_qiskit_validation/comparison.csv
+```
+
+Or use latest matching validation run:
+
+```bash
+python3 scripts/run_pipeline.py plot qaoa-qiskit --latest
 ```
 
 QFT demo validation:
@@ -174,6 +203,15 @@ python3 scripts/run_pipeline.py validation qft-demo \
   --config scripts/experiments/validation/qft_demo.json \
   -- --from-csv \
   --summary-json data/outputs/validation/<run_dir>/summary.json
+```
+
+Or auto-resolve latest qft-demo run summary:
+
+```bash
+python3 scripts/run_pipeline.py validation qft-demo \
+  --config scripts/experiments/validation/qft_demo.json \
+  --latest \
+  -- --from-csv
 ```
 
 ### Outputs and Commit Policy

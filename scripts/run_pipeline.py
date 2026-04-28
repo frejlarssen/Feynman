@@ -5,6 +5,7 @@ import argparse
 import json
 import statistics
 from pathlib import Path
+from typing import Iterable
 
 def _add_common_sweep_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", required=True, help="Path to sweep config JSON.")
@@ -67,13 +68,34 @@ def build_parser() -> argparse.ArgumentParser:
     qft_val.add_argument("--config", required=True, help="Path to validation config JSON.")
     qft_val.add_argument("--output-root", default="", help="Optional output root override.")
     qft_val.add_argument("--repo-root", default="", help="Optional repo root override.")
+    qft_val.add_argument(
+        "--latest",
+        action="store_true",
+        help="With '-- --from-csv', auto-resolve latest qft-demo summary.json if not provided.",
+    )
+    qft_val.add_argument(
+        "--latest-name-contains",
+        default="qft_demo",
+        help="Substring filter for --latest qft-demo run directory matching.",
+    )
     qft_val.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
 
     plot = sub.add_parser("plot", help="Plot from existing summary/output artifacts.")
     plot_sub = plot.add_subparsers(dest="plot_kind", required=True)
 
     p_perf = plot_sub.add_parser("perf-sweep", help="Plot perf sweep summary.")
-    p_perf.add_argument("--summary-csv", required=True)
+    p_perf_input = p_perf.add_mutually_exclusive_group(required=True)
+    p_perf_input.add_argument("--summary-csv", default="")
+    p_perf_input.add_argument(
+        "--latest",
+        action="store_true",
+        help="Use newest matching experiment run directory and read summary.csv from it.",
+    )
+    p_perf.add_argument(
+        "--latest-name-contains",
+        default="",
+        help="Optional substring filter for selecting latest experiment run directory.",
+    )
     p_perf.add_argument("--y-column", default="total_full_s")
     p_perf.add_argument("--mode", choices=["scatter", "meanstd"], default="meanstd")
     p_perf.add_argument("--include-failures", action="store_true")
@@ -82,7 +104,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_perf.add_argument("--label-fontsize", type=float, default=None)
 
     p_cases = plot_sub.add_parser("perf-cases", help="Plot perf case aggregates.")
-    p_cases.add_argument("--summary-csv", required=True)
+    p_cases_input = p_cases.add_mutually_exclusive_group(required=True)
+    p_cases_input.add_argument("--summary-csv", default="")
+    p_cases_input.add_argument(
+        "--latest",
+        action="store_true",
+        help="Use newest matching experiment run directory and read summary.csv from it.",
+    )
+    p_cases.add_argument(
+        "--latest-name-contains",
+        default="",
+        help="Optional substring filter for selecting latest experiment run directory.",
+    )
     p_cases.add_argument("--y-column", default="total_full_s")
     p_cases.add_argument("--include-failures", action="store_true")
     p_cases.add_argument("--varied-value", default="")
@@ -91,7 +124,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_cases.add_argument("--label-fontsize", type=float, default=None)
 
     p_qaoa = plot_sub.add_parser("qaoa-pruning", help="Plot QAOA pruning sweep summary.")
-    p_qaoa.add_argument("--summary-csv", required=True)
+    p_qaoa_input = p_qaoa.add_mutually_exclusive_group(required=True)
+    p_qaoa_input.add_argument("--summary-csv", default="")
+    p_qaoa_input.add_argument(
+        "--latest",
+        action="store_true",
+        help="Use newest matching QAOA pruning run directory and read summary.csv from it.",
+    )
+    p_qaoa.add_argument(
+        "--latest-name-contains",
+        default="qaoa_pruning_sweep",
+        help="Substring filter for selecting latest experiment run directory.",
+    )
     p_qaoa.add_argument("--time-column", default="total_full_s")
     p_qaoa.add_argument("--fidelity-column", default="fidelity_to_reference")
     p_qaoa.add_argument("--include-failures", action="store_true")
@@ -101,7 +145,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_qaoa.add_argument("--label-fontsize", type=float, default=None)
 
     p_qaoa_val = plot_sub.add_parser("qaoa-qiskit", help="Plot QAOA validation agreement from comparison.csv.")
-    p_qaoa_val.add_argument("--comparison-csv", required=True)
+    p_qaoa_val_input = p_qaoa_val.add_mutually_exclusive_group(required=True)
+    p_qaoa_val_input.add_argument("--comparison-csv", default="")
+    p_qaoa_val_input.add_argument(
+        "--latest",
+        action="store_true",
+        help="Use newest matching validation run directory and read comparison.csv from it.",
+    )
+    p_qaoa_val.add_argument(
+        "--latest-name-contains",
+        default="qiskit_validation",
+        help="Substring filter for selecting latest validation run directory.",
+    )
     p_qaoa_val.add_argument("--output", default="")
     p_qaoa_val.add_argument("--label-fontsize", type=float, default=None)
     return parser
@@ -116,6 +171,20 @@ def _validation_argv(args: argparse.Namespace) -> list[str]:
     passthrough = list(args.extra)
     if passthrough and passthrough[0] == "--":
         passthrough = passthrough[1:]
+    if (
+        getattr(args, "validation_kind", "") == "qft-demo"
+        and getattr(args, "latest", False)
+        and "--from-csv" in passthrough
+        and "--summary-json" not in passthrough
+    ):
+        repo_root = Path(args.repo_root).resolve() if args.repo_root else Path(__file__).resolve().parents[1]
+        latest_summary = _resolve_latest_artifact(
+            repo_root=repo_root,
+            run_type="validation",
+            artifact_name="summary.json",
+            name_contains=args.latest_name_contains,
+        )
+        passthrough.extend(["--summary-json", str(latest_summary)])
     argv.extend(passthrough)
     return argv
 
@@ -132,10 +201,62 @@ def _infer_vary_label(summary_path: Path) -> str:
     return vary if isinstance(vary, str) and vary else "varied_value"
 
 
+def _iter_latest_dirs(
+    *,
+    root: Path,
+    name_contains: str,
+) -> Iterable[Path]:
+    if not root.exists():
+        return []
+    dirs = [p for p in root.iterdir() if p.is_dir()]
+    if name_contains:
+        dirs = [p for p in dirs if name_contains in p.name]
+    return sorted(dirs, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def _resolve_latest_artifact(
+    *,
+    repo_root: Path,
+    run_type: str,
+    artifact_name: str,
+    name_contains: str,
+) -> Path:
+    if run_type not in {"experiments", "validation"}:
+        raise ValueError(f"Unsupported run_type: {run_type}")
+    runs_root = (repo_root / "data" / "outputs" / run_type).resolve()
+    for run_dir in _iter_latest_dirs(root=runs_root, name_contains=name_contains):
+        candidate = run_dir / artifact_name
+        if candidate.exists():
+            return candidate
+    suffix_msg = f" containing '{name_contains}'" if name_contains else ""
+    raise FileNotFoundError(
+        f"No run directory found under {runs_root} with {artifact_name}{suffix_msg}. "
+        "Provide explicit file path instead."
+    )
+
+
+def _resolve_summary_csv_arg(
+    *,
+    args: argparse.Namespace,
+    run_type: str,
+) -> Path:
+    if args.summary_csv:
+        return Path(args.summary_csv).resolve()
+    if not args.latest:
+        raise ValueError("Provide --summary-csv or use --latest.")
+    repo_root = Path(__file__).resolve().parents[1]
+    return _resolve_latest_artifact(
+        repo_root=repo_root,
+        run_type=run_type,
+        artifact_name="summary.csv",
+        name_contains=args.latest_name_contains,
+    )
+
+
 def _plot_perf_sweep(args: argparse.Namespace) -> int:
     from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
 
-    summary_path = Path(args.summary_csv).resolve()
+    summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
     if not summary_path.exists():
         raise FileNotFoundError(f"Summary CSV not found: {summary_path}")
     x_column = "varied_value"
@@ -175,7 +296,7 @@ def _plot_perf_cases(args: argparse.Namespace) -> int:
             raise ValueError("empty")
         return float(value)
 
-    summary_path = Path(args.summary_csv).resolve()
+    summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
     if not summary_path.exists():
         raise FileNotFoundError(f"Summary CSV not found: {summary_path}")
 
@@ -233,7 +354,7 @@ def _plot_perf_cases(args: argparse.Namespace) -> int:
 def _plot_qaoa_pruning(args: argparse.Namespace) -> int:
     from qaoa_pruning_sweep.plotting import plot_time_fidelity
 
-    summary_path = Path(args.summary_csv).resolve()
+    summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
     output_path = Path(args.output).resolve() if args.output else None
     saved_path = plot_time_fidelity(
         summary_csv=summary_path,
@@ -252,7 +373,17 @@ def _plot_qaoa_pruning(args: argparse.Namespace) -> int:
 def _plot_qaoa_qiskit(args: argparse.Namespace) -> int:
     from validation.qaoa_qiskit_validation import plot_from_comparison_csv
 
-    comparison_csv = Path(args.comparison_csv).resolve()
+    if args.comparison_csv:
+        comparison_csv = Path(args.comparison_csv).resolve()
+    elif args.latest:
+        comparison_csv = _resolve_latest_artifact(
+            repo_root=Path(__file__).resolve().parents[1],
+            run_type="validation",
+            artifact_name="comparison.csv",
+            name_contains=args.latest_name_contains,
+        )
+    else:
+        raise ValueError("Provide --comparison-csv or use --latest.")
     if not comparison_csv.exists():
         raise FileNotFoundError(f"Comparison CSV not found: {comparison_csv}")
     output = Path(args.output).resolve() if args.output else None
