@@ -1,0 +1,41 @@
+{
+  "experiment_name": "qft_demo",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "circuit": {
+    "generator": "qft",
+    "n": 12,
+    "k": 12
+  },
+  "input_statevector": {
+    "generator": "two_freq",
+    "n_qubits": 12,
+    "f1": 5,
+    "f2": 2001,
+    "f2_amp": 0.5,
+    "threshold": 0.0,
+    "complex": true,
+    "full_support": true
+  },
+  "output_bitstrings": {
+    "generator": "two_intervals",
+    "size": 2,
+    "interval1": {
+      "start": 3,
+      "count": 4
+    },
+    "interval2": {
+      "start": 1999,
+      "count": 4
+    }
+  },
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "batch_size": 8,
+  "verbosity": 1,
+  "dense": false,
+  "normalize_input": true,
+  "plot_max_xticks": 8,
+  "output_root": "data/outputs/validation"
+}

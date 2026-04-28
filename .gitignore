@@ -36,9 +36,20 @@
 *.exe
 *.out
 *.app
+*.x
 
 # debug information files
 *.dwo
 
-# circuit files (for now)
-*.qasm
+# Pycache
+__pycache__/
+
+# Generated compile commands
+compile_commands.json
+build/
+build-release/
+
+data/outputs/
+
+# Generated data
+data/generated/

@@ -1,0 +1,19 @@
+{
+  "experiment_name": "qaoa_pruning_sweep_cycle_n8_p2",
+  "repo_root": ".",
+  "output_root": "data/outputs/experiments",
+  "base_config": "scripts/experiments/paper/validation/qaoa_cycle_n8_p2_qiskit_validation.json",
+  "thresholds": [
+    0.0,
+    2e-06,
+    5e-06,
+    6e-06,
+    8e-06,
+    1e-05,
+    2e-05,
+    5e-05,
+    0.0001,
+    0.0002
+  ],
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+}

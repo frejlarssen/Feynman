@@ -1,0 +1,29 @@
+{
+  "experiment_name": "qft_qiskit_validation_two_tone",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "circuit": {
+    "generator": "qft",
+    "n": 8,
+    "k": 4
+  },
+  "input_statevector": {
+    "generator": "two_tone",
+    "n_qubits": 8,
+    "f1": 7,
+    "f2": 23,
+    "rel_amp": 0.7
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 51
+  },
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "batch_size": 32,
+  "verbosity": 1,
+  "dense": false,
+  "output_root": "data/outputs/validation"
+}
