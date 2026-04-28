@@ -68,6 +68,12 @@ Perf configs default to the release binary (`build-release/sv_prefetcher_subset_
 Perf sweep outputs also log MPI/OpenMP/host core telemetry in `summary.csv` and
 `sweep_metadata.json`.
 
+Run all perf experiment configs:
+
+```bash
+python3 scripts/run_pipeline.py run-all-experiments --scope all
+```
+
 Minimal plot-only:
 
 ```bash

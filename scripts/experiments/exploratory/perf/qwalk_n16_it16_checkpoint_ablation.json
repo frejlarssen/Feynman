@@ -17,7 +17,7 @@
   },
   "input_statevector": {
     "generator": "ket0",
-    "size": 1
+    "size": 2
   },
   "output_bitstrings": {
     "generator": "one_interval",

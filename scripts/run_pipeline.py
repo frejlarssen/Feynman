@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -54,6 +56,31 @@ def build_parser() -> argparse.ArgumentParser:
     qaoa = sub.add_parser("qaoa-pruning", help="Run QAOA pruning threshold sweep.")
     _add_common_sweep_flags(qaoa)
     qaoa.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
+
+    run_all = sub.add_parser("run-all-experiments", help="Run all experiment configs under scripts/experiments.")
+    run_all.add_argument(
+        "--scope",
+        choices=["all", "paper", "exploratory"],
+        default="all",
+        help="Which config bucket(s) to run.",
+    )
+    run_all.add_argument("--dry-run", action="store_true", help="Pass --dry-run to each experiment run.")
+    run_all.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Pass --continue-on-error to each experiment run.",
+    )
+    run_all.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=None,
+        help="Pass --timeout-seconds to each experiment run.",
+    )
+    run_all.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop after first failed experiment command.",
+    )
 
     validation = sub.add_parser("validation", help="Run validation workflows.")
     validation_sub = validation.add_subparsers(dest="validation_kind", required=True)
@@ -499,6 +526,66 @@ def _plot_qaoa_qiskit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _detect_experiment_mode(config_path: Path) -> str:
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Config must be a JSON object: {config_path}")
+    # QAOA pruning configs use thresholds + base_config.
+    if "thresholds" in payload and "base_config" in payload:
+        return "qaoa-pruning"
+    return "perf-sweep"
+
+
+def _discover_experiment_configs(repo_root: Path, scope: str) -> list[Path]:
+    base = repo_root / "scripts" / "experiments"
+    buckets: list[str]
+    if scope == "all":
+        buckets = ["paper", "exploratory"]
+    else:
+        buckets = [scope]
+    out: list[Path] = []
+    for bucket in buckets:
+        out.extend(sorted((base / bucket / "perf").glob("*.json")))
+    return out
+
+
+def _run_all_experiments(args: argparse.Namespace) -> int:
+    repo_root = Path(__file__).resolve().parents[1]
+    configs = _discover_experiment_configs(repo_root, args.scope)
+    if not configs:
+        raise FileNotFoundError(
+            f"No experiment configs found for scope={args.scope!r} under scripts/experiments/*/perf."
+        )
+
+    script_path = Path(__file__).resolve()
+    failures: list[tuple[Path, int]] = []
+    for cfg in configs:
+        mode = _detect_experiment_mode(cfg)
+        cmd = [sys.executable, str(script_path), mode, "--config", str(cfg)]
+        if args.dry_run:
+            cmd.append("--dry-run")
+        if args.continue_on_error:
+            cmd.append("--continue-on-error")
+        if args.timeout_seconds is not None:
+            cmd.extend(["--timeout-seconds", str(args.timeout_seconds)])
+        print(f"[run-all-experiments] Running: {mode} :: {cfg}")
+        proc = subprocess.run(cmd, cwd=str(repo_root), check=False)
+        if proc.returncode != 0:
+            failures.append((cfg, proc.returncode))
+            if args.fail_fast:
+                break
+
+    print(
+        "[run-all-experiments] Summary: "
+        f"total={len(configs)}, succeeded={len(configs) - len(failures)}, failed={len(failures)}"
+    )
+    if failures:
+        for cfg, code in failures:
+            print(f"  - failed({code}): {cfg}")
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -514,6 +601,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_plot:
             sweep_argv.append("--no-plot")
         return qaoa_pruning_main(entry_script=Path(__file__).resolve(), argv=sweep_argv)
+    if args.command == "run-all-experiments":
+        return _run_all_experiments(args)
     if args.command == "validation":
         from validation.qaoa_qiskit_validation import main as qaoa_validation_main
         from validation.qft_demo import main as qft_demo_main
