@@ -1,6 +1,6 @@
 {
   "experiment_name": "qft_two_freq_nqubits_demo_normtest",
-  "binary": "build/sv_prefetcher_subset_mpi.x",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
   "ranks": 1,
   "circuit": {

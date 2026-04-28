@@ -20,7 +20,7 @@ Perf run telemetry now records:
 - `summary.csv`: `ranks`, `active_workers`, `omp_threads_per_worker`
 - `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
 
-Batch-run all perf configs:
+Batch-run all configs (perf + validation):
 
 ```bash
 python3 scripts/run_pipeline.py run-all-experiments --scope all

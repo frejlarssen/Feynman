@@ -57,18 +57,21 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_sweep_flags(qaoa)
     qaoa.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
 
-    run_all = sub.add_parser("run-all-experiments", help="Run all experiment configs under scripts/experiments.")
+    run_all = sub.add_parser(
+        "run-all-experiments",
+        help="Run all perf+validation configs under scripts/experiments.",
+    )
     run_all.add_argument(
         "--scope",
         choices=["all", "paper", "exploratory"],
         default="all",
         help="Which config bucket(s) to run.",
     )
-    run_all.add_argument("--dry-run", action="store_true", help="Pass --dry-run to each experiment run.")
+    run_all.add_argument("--dry-run", action="store_true", help="Pass --dry-run to each launched run.")
     run_all.add_argument(
         "--continue-on-error",
         action="store_true",
-        help="Pass --continue-on-error to each experiment run.",
+        help="Pass --continue-on-error to each launched sweep run.",
     )
     run_all.add_argument(
         "--timeout-seconds",
@@ -530,10 +533,18 @@ def _detect_experiment_mode(config_path: Path) -> str:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"Config must be a JSON object: {config_path}")
-    # QAOA pruning configs use thresholds + base_config.
-    if "thresholds" in payload and "base_config" in payload:
-        return "qaoa-pruning"
-    return "perf-sweep"
+    config_type = config_path.parent.name
+    if config_type == "perf":
+        # QAOA pruning configs use thresholds + base_config.
+        if "thresholds" in payload and "base_config" in payload:
+            return "qaoa-pruning"
+        return "perf-sweep"
+    if config_type == "validation":
+        stem = config_path.stem.lower()
+        if "qiskit_validation" in stem or "qiskit" in stem:
+            return "validation:qaoa-qiskit"
+        return "validation:qft-demo"
+    raise ValueError(f"Unsupported config location for mode detection: {config_path}")
 
 
 def _discover_experiment_configs(repo_root: Path, scope: str) -> list[Path]:
@@ -546,7 +557,20 @@ def _discover_experiment_configs(repo_root: Path, scope: str) -> list[Path]:
     out: list[Path] = []
     for bucket in buckets:
         out.extend(sorted((base / bucket / "perf").glob("*.json")))
+        out.extend(sorted((base / bucket / "validation").glob("*.json")))
     return out
+
+
+def _build_run_all_command(script_path: Path, cfg: Path, mode: str) -> list[str]:
+    if mode == "perf-sweep":
+        return [sys.executable, str(script_path), "perf-sweep", "--config", str(cfg)]
+    if mode == "qaoa-pruning":
+        return [sys.executable, str(script_path), "qaoa-pruning", "--config", str(cfg)]
+    if mode == "validation:qaoa-qiskit":
+        return [sys.executable, str(script_path), "validation", "qaoa-qiskit", "--config", str(cfg)]
+    if mode == "validation:qft-demo":
+        return [sys.executable, str(script_path), "validation", "qft-demo", "--config", str(cfg)]
+    raise ValueError(f"Unsupported run-all mode: {mode}")
 
 
 def _run_all_experiments(args: argparse.Namespace) -> int:
@@ -554,19 +578,20 @@ def _run_all_experiments(args: argparse.Namespace) -> int:
     configs = _discover_experiment_configs(repo_root, args.scope)
     if not configs:
         raise FileNotFoundError(
-            f"No experiment configs found for scope={args.scope!r} under scripts/experiments/*/perf."
+            f"No configs found for scope={args.scope!r} under scripts/experiments/{{paper,exploratory}}."
         )
 
     script_path = Path(__file__).resolve()
     failures: list[tuple[Path, int]] = []
     for cfg in configs:
         mode = _detect_experiment_mode(cfg)
-        cmd = [sys.executable, str(script_path), mode, "--config", str(cfg)]
+        cmd = _build_run_all_command(script_path, cfg, mode)
         if args.dry_run:
-            cmd.append("--dry-run")
-        if args.continue_on_error:
+            print(f"[run-all-experiments] DRY-RUN: {' '.join(cmd)}")
+            continue
+        if args.continue_on_error and mode in {"perf-sweep", "qaoa-pruning"}:
             cmd.append("--continue-on-error")
-        if args.timeout_seconds is not None:
+        if args.timeout_seconds is not None and mode in {"perf-sweep", "qaoa-pruning"}:
             cmd.extend(["--timeout-seconds", str(args.timeout_seconds)])
         print(f"[run-all-experiments] Running: {mode} :: {cfg}")
         proc = subprocess.run(cmd, cwd=str(repo_root), check=False)
