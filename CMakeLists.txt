@@ -60,7 +60,3 @@ set_target_properties(
   sv_prefetcher_mpi_subsetbitstrings_noomp
   PROPERTIES OUTPUT_NAME sv_prefetcher_subset_noomp_mpi.x
 )
-
-add_executable(sim_qft simulator_qft.cpp)
-target_compile_options(sim_qft PRIVATE)
-set_target_properties(sim_qft PROPERTIES OUTPUT_NAME sim_qft.x)

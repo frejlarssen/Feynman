@@ -8,9 +8,21 @@
   "batch_size": 32,
   "fraction": 1.0,
   "threshold": 1e-8,
-  "circuit": "data/generated/circuits/aa/aa_n3_it3_mark1.qasm",
-  "input_statevector": "data/generated/statevectors/ket0_size1.hsv",
-  "output_bitstrings": "data/generated/hexstring_sets/nrhex8_size1_from0x0_to0x8.hs",
+  "circuit": {
+    "generator": "aa",
+    "n": 3,
+    "it": 3,
+    "mark": 1
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 8
+  },
   "cases": [
     {
       "name": "no_cp",

@@ -5,9 +5,20 @@
   "values": [8, 16, 32, 64, 128],
   "repeat": 3,
   "ranks": 4,
-  "circuit": "data/generated/circuits/qft/qft_n8_k2.qasm",
-  "input_statevector": "data/generated/statevectors/ket0_size1.hsv",
-  "output_bitstrings": "data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs",
+  "circuit": {
+    "generator": "qft",
+    "n": 8,
+    "k": 2
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 10
+  },
   "p": 8,
   "r": 4,
   "output_root": "data/outputs/experiments",

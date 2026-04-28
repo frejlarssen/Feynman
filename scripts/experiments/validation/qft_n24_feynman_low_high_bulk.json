@@ -3,9 +3,31 @@
   "binary": "build/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
   "ranks": 1,
-  "circuit": "data/generated/circuits/qft/qft_n24_k2.qasm",
-  "input_statevector": "data/generated/statevectors/amplitude_signal_size3QB_f6_f4194304.0_relamp0.2_t0.99999999.hsv",
-  "output_bitstrings": "data/generated/hexstring_sets/size3_from0x0_to0x9_and_from0x3FFFFB_to0x400004.hs",
+  "circuit": {
+    "generator": "qft",
+    "n": 24,
+    "k": 2
+  },
+  "input_statevector": {
+    "generator": "two_freq",
+    "size": 3,
+    "f1": 6,
+    "f2": 4194304,
+    "f2_amp": 0.2,
+    "threshold": 0.99999999
+  },
+  "output_bitstrings": {
+    "generator": "two_intervals",
+    "size": 3,
+    "interval1": {
+      "start": 0,
+      "count": 10
+    },
+    "interval2": {
+      "start": 4194299,
+      "count": 10
+    }
+  },
   "fraction": 1.0,
   "threshold": 0.0,
   "batch_size": 32,
@@ -13,10 +35,5 @@
   "dense": false,
   "normalize_input": true,
   "plot_max_xticks": 20,
-  "output_root": "data/outputs/validation",
-  "signal": {
-    "f_low": 6,
-    "f_high": 4194304,
-    "relative_amp": 0.2
-  }
+  "output_root": "data/outputs/validation"
 }

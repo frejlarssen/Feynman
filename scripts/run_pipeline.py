@@ -2,16 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import json
+import statistics
 from pathlib import Path
-
-from plot_qaoa_pruning_sweep import main as plot_qaoa_main
-from plot_sv_prefetcher_cases import main as plot_perf_cases_main
-from plot_sv_prefetcher_sweep import main as plot_perf_main
-from qaoa_pruning_sweep.main import main as qaoa_pruning_main
-from sv_prefetcher_sweep.main import main as perf_sweep_main
-from validation.qaoa_qiskit_validation import main as qaoa_validation_main
-from validation.qft_demo import main as qft_demo_main
-
 
 def _add_common_sweep_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", required=True, help="Path to sweep config JSON.")
@@ -122,18 +115,154 @@ def _validation_argv(args: argparse.Namespace) -> list[str]:
     return argv
 
 
+def _infer_vary_label(summary_path: Path) -> str:
+    metadata_path = summary_path.parent / "sweep_metadata.json"
+    if not metadata_path.exists():
+        return "varied_value"
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "varied_value"
+    vary = payload.get("config", {}).get("vary", "")
+    return vary if isinstance(vary, str) and vary else "varied_value"
+
+
+def _plot_perf_sweep(args: argparse.Namespace) -> int:
+    from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
+
+    summary_path = Path(args.summary_csv).resolve()
+    if not summary_path.exists():
+        raise FileNotFoundError(f"Summary CSV not found: {summary_path}")
+    x_column = "varied_value"
+    x_label = _infer_vary_label(summary_path)
+    xs, ys = load_xy_from_summary(
+        summary_path=summary_path,
+        x_column=x_column,
+        y_column=args.y_column,
+        include_failures=args.include_failures,
+    )
+    output_path = (
+        Path(args.output).resolve()
+        if args.output
+        else default_plot_output_path(summary_path, x_column=x_label, y_column=args.y_column)
+    )
+    render_sweep_plot(
+        xs=xs,
+        ys=ys,
+        mode=args.mode,
+        x_label=x_label,
+        y_label=args.y_column,
+        title=args.title,
+        output_path=output_path,
+        label_fontsize=args.label_fontsize,
+    )
+    print(f"Saved plot: {output_path}")
+    return 0
+
+
+def _plot_perf_cases(args: argparse.Namespace) -> int:
+    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+
+    import csv
+
+    def _to_float(value: str) -> float:
+        if value is None or value == "":
+            raise ValueError("empty")
+        return float(value)
+
+    summary_path = Path(args.summary_csv).resolve()
+    if not summary_path.exists():
+        raise FileNotFoundError(f"Summary CSV not found: {summary_path}")
+
+    varied_value_filter = float(args.varied_value) if args.varied_value else None
+    grouped: dict[str, list[float]] = {}
+    with summary_path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if not args.include_failures and int(row.get("returncode", "1")) != 0:
+                continue
+            if varied_value_filter is not None:
+                try:
+                    vv = _to_float(row.get("varied_value", ""))
+                except ValueError:
+                    continue
+                if vv != varied_value_filter:
+                    continue
+            try:
+                y = _to_float(row.get(args.y_column, ""))
+            except ValueError:
+                continue
+            case_name = row.get("case_name", "") or "default"
+            grouped.setdefault(case_name, []).append(y)
+    if not grouped:
+        raise RuntimeError("No plottable rows found for the selected filters.")
+
+    configure_headless_matplotlib()
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    apply_plot_fontsizes(plt=plt, label_fontsize=args.label_fontsize)
+    case_names = sorted(grouped)
+    means = [statistics.mean(grouped[name]) for name in case_names]
+    stds = [statistics.stdev(grouped[name]) if len(grouped[name]) > 1 else 0.0 for name in case_names]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    xs = list(range(len(case_names)))
+    ax.bar(xs, means, yerr=stds, capsize=5, alpha=0.9)
+    ax.set_xticks(xs, case_names)
+    ax.set_ylabel(args.y_column)
+    ax.set_xlabel("case_name")
+    ax.set_title(args.title or f"{args.y_column} by case")
+    ax.grid(True, axis="y", alpha=0.3)
+    fig.tight_layout()
+    output_path = (
+        Path(args.output).resolve() if args.output else (summary_path.parent / f"plot_{args.y_column}_by_case.pdf")
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=160)
+    print(f"Saved plot: {output_path}")
+    return 0
+
+
+def _plot_qaoa_pruning(args: argparse.Namespace) -> int:
+    from qaoa_pruning_sweep.plotting import plot_time_fidelity
+
+    summary_path = Path(args.summary_csv).resolve()
+    output_path = Path(args.output).resolve() if args.output else None
+    saved_path = plot_time_fidelity(
+        summary_csv=summary_path,
+        output=output_path,
+        time_column=args.time_column,
+        fidelity_column=args.fidelity_column,
+        title=args.title,
+        xscale=args.xscale,
+        include_failures=args.include_failures,
+        label_fontsize=args.label_fontsize,
+    )
+    print(f"Saved plot: {saved_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "perf-sweep":
+        from sv_prefetcher_sweep.main import main as perf_sweep_main
+
         return perf_sweep_main(entry_script=Path(__file__).resolve(), argv=_sweep_argv(args))
     if args.command == "qaoa-pruning":
+        from qaoa_pruning_sweep.main import main as qaoa_pruning_main
+
         sweep_argv = _sweep_argv(args)
         if args.no_plot:
             sweep_argv.append("--no-plot")
         return qaoa_pruning_main(entry_script=Path(__file__).resolve(), argv=sweep_argv)
     if args.command == "validation":
+        from validation.qaoa_qiskit_validation import main as qaoa_validation_main
+        from validation.qft_demo import main as qft_demo_main
+
         val_argv = _validation_argv(args)
         if args.validation_kind == "qaoa-qiskit":
             return qaoa_validation_main(val_argv)
@@ -142,63 +271,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"Unknown validation kind: {args.validation_kind}")
     if args.command == "plot":
         if args.plot_kind == "perf-sweep":
-            return plot_perf_main(
-                [
-                    "--summary-csv",
-                    args.summary_csv,
-                    "--y-column",
-                    args.y_column,
-                    "--mode",
-                    args.mode,
-                    *(["--include-failures"] if args.include_failures else []),
-                    *(["--output", args.output] if args.output else []),
-                    *(["--title", args.title] if args.title else []),
-                    *(
-                        ["--label-fontsize", str(args.label_fontsize)]
-                        if args.label_fontsize is not None
-                        else []
-                    ),
-                ]
-            )
+            return _plot_perf_sweep(args)
         if args.plot_kind == "perf-cases":
-            return plot_perf_cases_main(
-                [
-                    "--summary-csv",
-                    args.summary_csv,
-                    "--y-column",
-                    args.y_column,
-                    *(["--include-failures"] if args.include_failures else []),
-                    *(["--varied-value", args.varied_value] if args.varied_value else []),
-                    *(["--output", args.output] if args.output else []),
-                    *(["--title", args.title] if args.title else []),
-                    *(
-                        ["--label-fontsize", str(args.label_fontsize)]
-                        if args.label_fontsize is not None
-                        else []
-                    ),
-                ]
-            )
+            return _plot_perf_cases(args)
         if args.plot_kind == "qaoa-pruning":
-            return plot_qaoa_main(
-                [
-                    "--summary-csv",
-                    args.summary_csv,
-                    "--time-column",
-                    args.time_column,
-                    "--fidelity-column",
-                    args.fidelity_column,
-                    "--xscale",
-                    args.xscale,
-                    *(["--include-failures"] if args.include_failures else []),
-                    *(["--output", args.output] if args.output else []),
-                    *(["--title", args.title] if args.title else []),
-                    *(
-                        ["--label-fontsize", str(args.label_fontsize)]
-                        if args.label_fontsize is not None
-                        else []
-                    ),
-                ]
-            )
+            return _plot_qaoa_pruning(args)
         parser.error(f"Unknown plot kind: {args.plot_kind}")
     parser.error(f"Unknown command: {args.command}")
     return 2

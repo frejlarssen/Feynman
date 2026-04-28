@@ -3,17 +3,27 @@
   "binary": "build/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
   "ranks": 1,
-  "circuit": "data/generated/circuits/qft/qft_n8_k4.qasm",
-  "output_bitstrings": "data/generated/hexstring_sets/nrhex51_size1_from0x0_to0x33.hs",
+  "circuit": {
+    "generator": "qft",
+    "n": 8,
+    "k": 4
+  },
+  "input_statevector": {
+    "generator": "two_tone",
+    "n_qubits": 8,
+    "f1": 7,
+    "f2": 23,
+    "rel_amp": 0.7
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 51
+  },
   "fraction": 1.0,
   "threshold": 0.0,
   "batch_size": 32,
   "verbosity": 1,
   "dense": false,
-  "output_root": "data/outputs/validation",
-  "two_tone": {
-    "f1": 7,
-    "f2": 23,
-    "rel_amp": 0.7
-  }
+  "output_root": "data/outputs/validation"
 }

@@ -8,9 +8,21 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from generators.circuits.aa_iter_generator import (
+    DEFAULT_OUTPUT_DIR as AA_DEFAULT_OUTPUT_DIR,
+    generate_aa,
+)
+from generators.circuits.qaoa_maxcut_generator import (
+    DEFAULT_OUTPUT_DIR as QAOA_MAXCUT_DEFAULT_OUTPUT_DIR,
+    generate_qaoa_maxcut,
+)
 from generators.circuits.qft_generator import (
     DEFAULT_OUTPUT_DIR as QFT_DEFAULT_OUTPUT_DIR,
     generate_qft,
+)
+from generators.circuits.quantum_walk_generator import (
+    DEFAULT_OUTPUT_DIR as QWALK_DEFAULT_OUTPUT_DIR,
+    generate_qwalk,
 )
 from generators.hexstrings.hexstring_set_generator import (
     DEFAULT_OUTPUT_DIR as HEXSTR_DEFAULT_OUTPUT_DIR,
@@ -106,13 +118,79 @@ def resolve_circuit_input(circuit_cfg: str | dict[str, Any], repo_root: Path) ->
         raise ValueError("circuit must be a path string or a generator object.")
 
     generator = str(circuit_cfg.get("generator", "qft")).strip().lower()
-    if generator != "qft":
-        raise ValueError(f"Unsupported circuit generator: {generator!r}")
-    n = _require_int(circuit_cfg, "n", "circuit")
-    k = _require_int(circuit_cfg, "k", "circuit")
-    out_dir = _resolve_output_dir(circuit_cfg, repo_root, QFT_DEFAULT_OUTPUT_DIR)
-    path = generate_qft(n=n, k=k, out_dir=out_dir).resolve()
-    return path, {"generator": generator, "n": n, "k": k, "output_dir": str(out_dir)}
+    if generator == "qft":
+        n = _require_int(circuit_cfg, "n", "circuit")
+        k = _require_int(circuit_cfg, "k", "circuit")
+        out_dir = _resolve_output_dir(circuit_cfg, repo_root, QFT_DEFAULT_OUTPUT_DIR)
+        path = generate_qft(n=n, k=k, out_dir=out_dir).resolve()
+        return path, {"generator": generator, "n": n, "k": k, "output_dir": str(out_dir)}
+
+    if generator in {"aa", "amplitude_amplification"}:
+        n = _require_int(circuit_cfg, "n", "circuit")
+        it = _require_int(circuit_cfg, "it", "circuit")
+        mark = _require_int(circuit_cfg, "mark", "circuit")
+        out_dir = _resolve_output_dir(circuit_cfg, repo_root, AA_DEFAULT_OUTPUT_DIR)
+        path = generate_aa(n=n, it=it, mark=mark, out_dir=out_dir).resolve()
+        return path, {
+            "generator": generator,
+            "n": n,
+            "it": it,
+            "mark": mark,
+            "output_dir": str(out_dir),
+        }
+
+    if generator in {"qwalk", "quantum_walk"}:
+        n = _require_int(circuit_cfg, "n", "circuit")
+        it = _require_int(circuit_cfg, "it", "circuit")
+        biased = _as_bool(circuit_cfg.get("biased", False))
+        coin_angle = float(circuit_cfg.get("coin_angle", 1.0471975511965976))
+        out_dir = _resolve_output_dir(circuit_cfg, repo_root, QWALK_DEFAULT_OUTPUT_DIR)
+        path = generate_qwalk(n=n, it=it, out_dir=out_dir, biased=biased, coin_angle=coin_angle).resolve()
+        return path, {
+            "generator": generator,
+            "n": n,
+            "it": it,
+            "biased": biased,
+            "coin_angle": coin_angle,
+            "output_dir": str(out_dir),
+        }
+
+    if generator in {"qaoa_maxcut", "qaoa"}:
+        n = _require_int(circuit_cfg, "n", "circuit")
+        p = _require_int(circuit_cfg, "p", "circuit")
+        graph = str(circuit_cfg.get("graph", "ring"))
+        out_dir = _resolve_output_dir(circuit_cfg, repo_root, QAOA_MAXCUT_DEFAULT_OUTPUT_DIR)
+        edges = circuit_cfg.get("edges")
+        edges_str = str(edges) if edges is not None else None
+        gammas_raw = circuit_cfg.get("gammas")
+        betas_raw = circuit_cfg.get("betas")
+        gammas = [float(v) for v in gammas_raw] if isinstance(gammas_raw, list) else None
+        betas = [float(v) for v in betas_raw] if isinstance(betas_raw, list) else None
+        name_raw = circuit_cfg.get("name")
+        name = str(name_raw) if name_raw is not None else None
+        path = generate_qaoa_maxcut(
+            n=n,
+            p=p,
+            out_dir=out_dir,
+            graph=graph,
+            edges_str=edges_str,
+            gammas=gammas,
+            betas=betas,
+            name=name,
+        ).resolve()
+        return path, {
+            "generator": generator,
+            "n": n,
+            "p": p,
+            "graph": graph,
+            "edges": edges_str,
+            "gammas": gammas,
+            "betas": betas,
+            "name": name,
+            "output_dir": str(out_dir),
+        }
+
+    raise ValueError(f"Unsupported circuit generator: {generator!r}")
 
 
 def resolve_statevector_input(

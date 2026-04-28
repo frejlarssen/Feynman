@@ -8,9 +8,20 @@
   "batch_size": 32,
   "fraction": 1.0,
   "threshold": 1e-8,
-  "circuit": "data/generated/circuits/qwalk/qwalk_n16_it16.qasm",
-  "input_statevector": "data/fixtures/ket0.hsv",
-  "output_bitstrings": "data/generated/hexstring_sets/nrhex10_size2_from0x0_to0xA.hs",
+  "circuit": {
+    "generator": "qwalk",
+    "n": 16,
+    "it": 16
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 2,
+    "count": 10
+  },
   "cases": [
     {
       "name": "no_cp",
