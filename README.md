@@ -38,7 +38,7 @@ cmake --build --preset dev -j
 
 Build one target:
 ```bash
-cmake --build build --target sv_prefetcher_mpi_subsetbitstrings -j
+cmake --build --preset dev --target sv_prefetcher_mpi_subsetbitstrings -j
 ```
 
 ## Example usage
@@ -52,9 +52,6 @@ mpirun -n 1 ./build/sv_prefetcher_subset_mpi.x \
   -b data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \
   -o data/outputs/tmp/qft_n8_k2_run.hsv \
   -t 0.0 -v 1
-
-# If interesting results
-scripts/save_output.sh data/outputs/tmp/qft_n8_k2_run.hsv qft-n8-k2-example "threshold=0.0 n=8"
 
 ```
 
@@ -102,11 +99,11 @@ Case aggregate plot:
 ```bash
 # First run a case-based perf experiment (creates the summary.csv)
 python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/qwalk_n16_it16_checkpoint_ablation.json
+  --config scripts/experiments/perf/aa_n3_it3_mark1_checkpoint_ablation.json
 
 # Then (optionally) regenerate only the case plot from summary.csv
 python3 scripts/run_pipeline.py plot perf-cases \
-  --summary-csv data/outputs/experiments/<timestamp>_qwalk_n16_it16_checkpoint_ablation/summary.csv \
+  --summary-csv data/outputs/experiments/<timestamp>_aa_n3_it3_mark1_checkpoint_ablation/summary.csv \
   --y-column gate_ops_estimate
 ```
 
@@ -188,4 +185,9 @@ python3 scripts/run_pipeline.py validation qft-demo \
 
 ## For development
 
-Add `bear --` before `make` to create file used for clangd.
+Use `bear` with the CMake build command if you need to regenerate
+`compile_commands.json` via intercepted build commands:
+
+```bash
+bear -- cmake --build build -j
+```
