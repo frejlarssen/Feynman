@@ -6,6 +6,20 @@ This file is the full command catalog for the unified pipeline in
 All runs write into `data/outputs/experiments/` or `data/outputs/validation/`.
 Experiment and validation runs generate their associated plots automatically.
 
+For perf experiments, build the release binary first:
+
+```bash
+cmake --preset release
+cmake --build --preset release --target sv_prefetcher_mpi_subsetbitstrings -j
+```
+
+Perf configs in this catalog use `build-release/sv_prefetcher_subset_mpi.x`.
+
+Perf run telemetry now records:
+
+- `summary.csv`: `ranks`, `active_workers`, `omp_threads_per_worker`
+- `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
+
 ## Perf Sweeps
 
 ### QFT Batch Sweep
@@ -67,7 +81,8 @@ Plot `total_full_s` vs `total_artificial_sources` with one line per case:
 python3 scripts/run_pipeline.py plot perf-case-lines \
   --summary-csv data/outputs/experiments/<timestamp>_qwalk_n16_iteration_checkpoint_sources/summary.csv \
   --x-column total_artificial_sources \
-  --y-column total_full_s
+  --y-column total_full_s \
+  --yscale log
 ```
 
 Case aggregate plot:

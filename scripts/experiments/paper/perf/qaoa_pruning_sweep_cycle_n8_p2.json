@@ -5,14 +5,15 @@
   "base_config": "scripts/experiments/paper/validation/qaoa_cycle_n8_p2_qiskit_validation.json",
   "thresholds": [
     0.0,
-    2e-6,
-    5e-6,
-    6e-6,
-    8e-6,
-    1e-5,
-    2e-5,
-    5e-5,
-    1e-4,
-    2e-4
-  ]
+    2e-06,
+    5e-06,
+    6e-06,
+    8e-06,
+    1e-05,
+    2e-05,
+    5e-05,
+    0.0001,
+    0.0002
+  ],
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
 }

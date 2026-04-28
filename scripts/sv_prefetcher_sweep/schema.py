@@ -53,6 +53,8 @@ METRIC_PATTERNS = {
     "autotune_best_gate_ops_estimate": re.compile(
         r"Autotuning time:.*best_gate_ops_estimate=([0-9]+)"
     ),
+    "active_workers": re.compile(r"active workers\s*=\s*(\d+)"),
+    "omp_threads_per_worker": re.compile(r"OMP_THREADS per worker\s*=\s*(\d+)"),
 }
 METRIC_FIELDS = tuple(METRIC_PATTERNS.keys()) + (
     "total_gates",

@@ -69,7 +69,14 @@ def _plot_cases_total_full(summary_csv: Path) -> Path:
     return output_path
 
 
-def _plot_cases_vs_x(summary_csv: Path, *, x_column: str, y_column: str) -> Path:
+def _plot_cases_vs_x(
+    summary_csv: Path,
+    *,
+    x_column: str,
+    y_column: str,
+    xscale: str = "linear",
+    yscale: str = "linear",
+) -> Path:
     grouped: dict[str, dict[float, list[float]]] = {}
     with summary_csv.open("r", newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -112,9 +119,25 @@ def _plot_cases_vs_x(summary_csv: Path, *, x_column: str, y_column: str) -> Path
             markersize=5,
             label=case_name,
         )
+    if xscale not in {"linear", "log", "symlog"}:
+        raise ValueError(f"Unsupported xscale: {xscale}")
+    if yscale not in {"linear", "log", "symlog"}:
+        raise ValueError(f"Unsupported yscale: {yscale}")
+    if xscale == "log":
+        all_x = [x for case_data in grouped.values() for x in case_data]
+        if any(x <= 0.0 for x in all_x):
+            raise ValueError(f"xscale=log requires all {x_column} values > 0.")
+    if yscale == "log":
+        all_y = [y for case_data in grouped.values() for ys in case_data.values() for y in ys]
+        if any(y <= 0.0 for y in all_y):
+            raise ValueError(f"yscale=log requires all {y_column} values > 0.")
+
+    ax.set_xscale(xscale)
+    ax.set_yscale(yscale)
     ax.set_xlabel(x_column)
     ax.set_ylabel(y_column)
-    ax.set_title(f"{y_column} vs {x_column} by case")
+    scale_suffix = "" if (xscale == "linear" and yscale == "linear") else f" ({xscale}/{yscale})"
+    ax.set_title(f"{y_column} vs {x_column} by case{scale_suffix}")
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -176,6 +199,8 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 summary_csv,
                 x_column="total_artificial_sources",
                 y_column="total_full_s",
+                xscale="linear",
+                yscale="log",
             )
             print(f"Auto-generated structure case plot: {structure_case_plot}")
         except (RuntimeError, ValueError, FileNotFoundError):

@@ -196,6 +196,20 @@ def _launcher_metadata(launcher_cmd: str, repo_root: Path) -> dict[str, Any]:
     }
 
 
+def _hardware_metadata(repo_root: Path) -> dict[str, Any]:
+    logical_cores = os.cpu_count()
+    nproc_proc = run_capture(["nproc"], repo_root)
+    nproc_online = None
+    if nproc_proc.returncode == 0:
+        token = nproc_proc.stdout.strip().splitlines()[0] if nproc_proc.stdout.strip() else ""
+        if token.isdigit():
+            nproc_online = int(token)
+    return {
+        "logical_cores_os_cpu_count": logical_cores,
+        "logical_cores_nproc": nproc_online,
+    }
+
+
 def build_sweep_metadata(
     *,
     created_at: dt.datetime,
@@ -238,6 +252,7 @@ def build_sweep_metadata(
             "inputs": inputs_meta,
             "runner_script": _describe_file(runner_script_path.resolve(), repo_root),
             launcher_key: _launcher_metadata(launcher_command, repo_root),
+            "hardware": _hardware_metadata(repo_root),
         },
         "notes": notes,
         "invocation": invocation,

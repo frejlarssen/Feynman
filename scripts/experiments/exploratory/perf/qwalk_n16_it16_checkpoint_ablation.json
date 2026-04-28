@@ -2,12 +2,14 @@
   "experiment_name": "qwalk_n16_it16_checkpoint_ablation",
   "repo_root": ".",
   "vary": "batch_size",
-  "values": [32],
+  "values": [
+    32
+  ],
   "repeat": 5,
   "ranks": 4,
   "batch_size": 32,
   "fraction": 1.0,
-  "threshold": 1e-8,
+  "threshold": 1e-08,
   "circuit": {
     "generator": "qwalk",
     "n": 16,
@@ -39,5 +41,6 @@
       "r": null
     }
   ],
-  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on qwalk_n16_it16."
+  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on qwalk_n16_it16.",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
 }

@@ -138,6 +138,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_case_lines.add_argument("--x-column", default="total_artificial_sources")
     p_case_lines.add_argument("--y-column", default="total_full_s")
+    p_case_lines.add_argument("--xscale", choices=["linear", "log", "symlog"], default="linear")
+    p_case_lines.add_argument("--yscale", choices=["linear", "log", "symlog"], default="log")
     p_case_lines.add_argument("--include-failures", action="store_true")
     p_case_lines.add_argument("--output", default="")
     p_case_lines.add_argument("--title", default="")
@@ -427,9 +429,21 @@ def _plot_perf_case_lines(args: argparse.Namespace) -> int:
             label=case_name,
         )
 
+    if args.xscale == "log":
+        all_x = [x for case_data in grouped.values() for x in case_data]
+        if any(x <= 0.0 for x in all_x):
+            raise ValueError(f"xscale=log requires all {args.x_column} values > 0.")
+    if args.yscale == "log":
+        all_y = [y for case_data in grouped.values() for ys in case_data.values() for y in ys]
+        if any(y <= 0.0 for y in all_y):
+            raise ValueError(f"yscale=log requires all {args.y_column} values > 0.")
+
+    ax.set_xscale(args.xscale)
+    ax.set_yscale(args.yscale)
     ax.set_xlabel(args.x_column)
     ax.set_ylabel(args.y_column)
-    ax.set_title(args.title or f"{args.y_column} vs {args.x_column} by case")
+    default_title = f"{args.y_column} vs {args.x_column} by case ({args.xscale}/{args.yscale})"
+    ax.set_title(args.title or default_title)
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()

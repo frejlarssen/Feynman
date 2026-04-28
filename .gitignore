@@ -47,6 +47,7 @@ __pycache__/
 # Generated compile commands
 compile_commands.json
 build/
+build-release/
 
 data/outputs/
 

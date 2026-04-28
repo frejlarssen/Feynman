@@ -139,6 +139,8 @@ def parse_metrics(stdout: str) -> dict[str, Any]:
         "autotune_candidates",
         "autotune_step_size",
         "autotune_best_gate_ops_estimate",
+        "active_workers",
+        "omp_threads_per_worker",
     }
     for key, pattern in METRIC_PATTERNS.items():
         match = pattern.search(stdout)

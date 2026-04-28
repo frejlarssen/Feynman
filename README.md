@@ -30,17 +30,11 @@ Generate input artifacts:
 python3 generators/generate_bulk.py
 ```
 
-Build:
+Build release for performance experiments:
 
 ```bash
-cmake --preset dev
-cmake --build --preset dev -j
-```
-
-Build one target:
-
-```bash
-cmake --build --preset dev --target sv_prefetcher_mpi_subsetbitstrings -j
+cmake --preset release
+cmake --build --preset release --target sv_prefetcher_mpi_subsetbitstrings -j
 ```
 
 ## Quickstart
@@ -69,6 +63,10 @@ Minimal perf sweep:
 python3 scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/exploratory/perf/qft_n8_batch_sweep.json
 ```
+
+Perf configs default to the release binary (`build-release/sv_prefetcher_subset_mpi.x`).
+Perf sweep outputs also log MPI/OpenMP/host core telemetry in `summary.csv` and
+`sweep_metadata.json`.
 
 Minimal plot-only:
 
@@ -100,6 +98,13 @@ want strict reproducibility.
 - Keep only small, hand-curated fixtures in `data/fixtures/`.
 
 ## Development
+
+Build for dev/debug:
+
+```bash
+cmake --preset dev
+cmake --build --preset dev -j
+```
 
 If needed, regenerate `compile_commands.json` through an intercepted build:
 
