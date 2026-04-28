@@ -148,3 +148,16 @@ python3 scripts/run_pipeline.py validation qft-demo \
 For interactive work, plot/replot commands support `--latest` to auto-select a
 recent run directory. For reproducible scripts and paper workflows, prefer
 explicit artifact paths.
+
+Bulk regeneration after style changes:
+
+```bash
+python3 scripts/regenerate_all_plots.py
+```
+
+Optional helpers:
+
+```bash
+python3 scripts/regenerate_all_plots.py --dry-run
+python3 scripts/regenerate_all_plots.py --fail-fast
+```

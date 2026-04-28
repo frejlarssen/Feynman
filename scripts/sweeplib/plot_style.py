@@ -4,7 +4,15 @@ import os
 from pathlib import Path
 
 PLOT_LABEL_FONTSIZE_ENV = "FEYNMAN_PLOT_LABEL_FONTSIZE"
+PLOT_TICK_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_TICK_FONTSIZE_DELTA"
+PLOT_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_TITLE_FONTSIZE_DELTA"
+PLOT_FIGURE_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_FIGURE_TITLE_FONTSIZE_DELTA"
+PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA"
 DEFAULT_LABEL_FONTSIZE = 18.0
+DEFAULT_TICK_FONTSIZE_DELTA = -1.0
+DEFAULT_TITLE_FONTSIZE_DELTA = 1.0
+DEFAULT_FIGURE_TITLE_FONTSIZE_DELTA = 2.0
+DEFAULT_SUBPLOT_TITLE_FONTSIZE_DELTA = -2.0
 
 LINE_COLOR_PRIMARY = "#1f77b4"
 LINE_COLOR_SECONDARY = "#d62728"
@@ -41,17 +49,40 @@ def resolve_label_fontsize(label_fontsize: float | None = None) -> float:
     return size
 
 
+def _resolve_delta(env_name: str, default: float) -> float:
+    raw = os.environ.get(env_name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{env_name} must be a float, got {raw!r}.") from exc
+
+
+def resolve_subplot_title_fontsize(label_fontsize: float | None = None) -> float:
+    base = resolve_label_fontsize(label_fontsize)
+    delta = _resolve_delta(PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA_ENV, DEFAULT_SUBPLOT_TITLE_FONTSIZE_DELTA)
+    return max(1.0, base + delta)
+
+
 def apply_plot_fontsizes(*, plt, label_fontsize: float | None = None) -> float:
     size = resolve_label_fontsize(label_fontsize)
-    tick_size = max(1.0, size - 1.0)
+    tick_delta = _resolve_delta(PLOT_TICK_FONTSIZE_DELTA_ENV, DEFAULT_TICK_FONTSIZE_DELTA)
+    title_delta = _resolve_delta(PLOT_TITLE_FONTSIZE_DELTA_ENV, DEFAULT_TITLE_FONTSIZE_DELTA)
+    figure_title_delta = _resolve_delta(
+        PLOT_FIGURE_TITLE_FONTSIZE_DELTA_ENV, DEFAULT_FIGURE_TITLE_FONTSIZE_DELTA
+    )
+    tick_size = max(1.0, size + tick_delta)
+    title_size = max(1.0, size + title_delta)
+    figure_title_size = max(1.0, size + figure_title_delta)
     plt.rcParams.update(
         {
             "axes.labelsize": size,
             "xtick.labelsize": tick_size,
             "ytick.labelsize": tick_size,
-            "axes.titlesize": size + 1.0,
+            "axes.titlesize": title_size,
             "legend.fontsize": tick_size,
-            "figure.titlesize": size + 2.0,
+            "figure.titlesize": figure_title_size,
         }
     )
     return size

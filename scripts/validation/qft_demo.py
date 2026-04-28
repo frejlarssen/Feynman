@@ -35,7 +35,10 @@ from scripts.sweeplib.materialize import (  # noqa: E402
     resolve_output_bitstrings_input,
     resolve_statevector_input,
 )
-from scripts.sweeplib.plotting import apply_plot_fontsizes, resolve_label_fontsize  # noqa: E402
+from scripts.sweeplib.plot_style import (  # noqa: E402
+    apply_plot_fontsizes,
+    resolve_subplot_title_fontsize,
+)
 
 
 def _utc_stamp() -> str:
@@ -497,7 +500,7 @@ def _render_demo_plot(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
-    subplot_title_fontsize = max(1.0, resolve_label_fontsize(label_fontsize) - 2.0)
+    subplot_title_fontsize = resolve_subplot_title_fontsize(label_fontsize)
 
     # Left panel: sparse input real part.
     in_idx = np.array(sorted(input_sparse.keys()), dtype=np.int64)

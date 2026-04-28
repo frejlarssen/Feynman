@@ -77,6 +77,12 @@ python3 scripts/run_pipeline.py plot perf-sweep --latest \
   --y-column total_full_s --mode meanstd
 ```
 
+Regenerate all existing plots after style changes:
+
+```bash
+python3 scripts/regenerate_all_plots.py
+```
+
 `--latest` can be used in plot/replot flows to auto-pick a recent run directory.
 Use explicit `--summary-csv`, `--comparison-csv`, or `--summary-json` when you
 want strict reproducibility.
@@ -100,3 +106,7 @@ If needed, regenerate `compile_commands.json` through an intercepted build:
 ```bash
 bear -- cmake --build build -j
 ```
+
+Global plotting typography/style defaults are centralized in
+`scripts/sweeplib/plot_style.py` (with optional env overrides such as
+`FEYNMAN_PLOT_LABEL_FONTSIZE`).

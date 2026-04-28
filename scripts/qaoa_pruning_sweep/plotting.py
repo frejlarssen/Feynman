@@ -87,6 +87,10 @@ def plot_time_fidelity(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    # Apply rcParams before creating axes/text objects so title/label/tick sizing
+    # consistently follows shared plot_style defaults and env overrides.
+    apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
+
     thresholds, times, fidelities = load_rows(
         summary_path,
         time_column=time_column,
@@ -131,7 +135,6 @@ def plot_time_fidelity(
     ax_time.set_title(title)
     ax_time.legend(handles=[time_line, fidelity_line], loc="best")
 
-    apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     fig.tight_layout()
 
     output_path = output.resolve() if output else default_output(summary_path)
