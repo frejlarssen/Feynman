@@ -12,7 +12,7 @@ Experiment and validation runs generate their associated plots automatically.
 
 ```bash
 python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/qft_n8_batch_sweep.json
+  --config scripts/experiments/exploratory/perf/qft_n8_batch_sweep.json
 ```
 
 Plot from explicit summary:
@@ -30,28 +30,28 @@ AA (small):
 
 ```bash
 python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/aa_n3_it3_mark1_checkpoint_ablation.json
+  --config scripts/experiments/paper/perf/aa_n3_it3_mark1_checkpoint_ablation.json
 ```
 
 AA (larger):
 
 ```bash
 python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/aa_n4_it3_mark5_checkpoint_ablation.json
+  --config scripts/experiments/exploratory/perf/aa_n4_it3_mark5_checkpoint_ablation.json
 ```
 
 QFT:
 
 ```bash
 python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/qft_n8_k2_checkpoint_ablation.json
+  --config scripts/experiments/exploratory/perf/qft_n8_k2_checkpoint_ablation.json
 ```
 
 QWalk:
 
 ```bash
 python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/qwalk_n16_it16_checkpoint_ablation.json
+  --config scripts/experiments/exploratory/perf/qwalk_n16_it16_checkpoint_ablation.json
 ```
 
 Case aggregate plot:
@@ -66,14 +66,14 @@ python3 scripts/run_pipeline.py plot perf-cases \
 
 ```bash
 python3 scripts/run_pipeline.py qaoa-pruning \
-  --config scripts/experiments/perf/qaoa_pruning_sweep_cycle_n8_p2.json
+  --config scripts/experiments/paper/perf/qaoa_pruning_sweep_cycle_n8_p2.json
 ```
 
 Optional disable auto-plot:
 
 ```bash
 python3 scripts/run_pipeline.py qaoa-pruning \
-  --config scripts/experiments/perf/qaoa_pruning_sweep_cycle_n8_p2.json \
+  --config scripts/experiments/paper/perf/qaoa_pruning_sweep_cycle_n8_p2.json \
   --no-plot
 ```
 
@@ -93,14 +93,14 @@ Plot meaning: blue is `total_full_s` (left axis), red is
 
 ```bash
 python3 scripts/run_pipeline.py validation qaoa-qiskit \
-  --config scripts/experiments/validation/qaoa_cycle_n8_p2_qiskit_validation.json
+  --config scripts/experiments/paper/validation/qaoa_cycle_n8_p2_qiskit_validation.json
 ```
 
 Alternative config:
 
 ```bash
 python3 scripts/run_pipeline.py validation qaoa-qiskit \
-  --config scripts/experiments/validation/qft_n8_k4_qiskit_validation.json
+  --config scripts/experiments/exploratory/validation/qft_n8_k4_qiskit_validation.json
 ```
 
 Plot-only:
@@ -114,31 +114,31 @@ python3 scripts/run_pipeline.py plot qaoa-qiskit \
 
 ```bash
 python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_demo.json
+  --config scripts/experiments/exploratory/validation/qft_demo.json
 ```
 
 Other available configs:
 
 ```bash
 python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_two_freq_nqubits_demo_norm.json
+  --config scripts/experiments/paper/validation/qft_two_freq_nqubits_demo_norm.json
 ```
 
 ```bash
 python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_n16_feynman_low_high_bulk.json
+  --config scripts/experiments/exploratory/validation/qft_n16_feynman_low_high_bulk.json
 ```
 
 ```bash
 python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_n24_feynman_low_high_bulk.json
+  --config scripts/experiments/exploratory/validation/qft_n24_feynman_low_high_bulk.json
 ```
 
 Replot from existing CSV (no rerun):
 
 ```bash
 python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_demo.json \
+  --config scripts/experiments/exploratory/validation/qft_demo.json \
   -- --from-csv \
   --summary-json data/outputs/validation/<run_dir>/summary.json
 ```

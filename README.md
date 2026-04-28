@@ -67,7 +67,7 @@ Minimal perf sweep:
 
 ```bash
 python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/qft_n8_batch_sweep.json
+  --config scripts/experiments/exploratory/perf/qft_n8_batch_sweep.json
 ```
 
 Minimal plot-only:
@@ -88,7 +88,7 @@ want strict reproducibility.
 
 ## Outputs and Commit Policy
 
-- Keep curated JSON configs in `scripts/experiments/perf/` and `scripts/experiments/validation/`.
+- Keep curated JSON configs in `scripts/experiments/paper/` and `scripts/experiments/exploratory/`.
 - Do not commit generated inputs/outputs (`data/generated/`, `data/outputs/` are gitignored).
 - Archive interesting run artifacts externally (re-runnable from committed configs).
 - Keep only small, hand-curated fixtures in `data/fixtures/`.
