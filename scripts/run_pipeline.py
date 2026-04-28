@@ -123,6 +123,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_cases.add_argument("--title", default="")
     p_cases.add_argument("--label-fontsize", type=float, default=None)
 
+    p_case_lines = plot_sub.add_parser("perf-case-lines", help="Plot perf line curves by case.")
+    p_case_lines_input = p_case_lines.add_mutually_exclusive_group(required=True)
+    p_case_lines_input.add_argument("--summary-csv", default="")
+    p_case_lines_input.add_argument(
+        "--latest",
+        action="store_true",
+        help="Use newest matching experiment run directory and read summary.csv from it.",
+    )
+    p_case_lines.add_argument(
+        "--latest-name-contains",
+        default="",
+        help="Optional substring filter for selecting latest experiment run directory.",
+    )
+    p_case_lines.add_argument("--x-column", default="total_artificial_sources")
+    p_case_lines.add_argument("--y-column", default="total_full_s")
+    p_case_lines.add_argument("--include-failures", action="store_true")
+    p_case_lines.add_argument("--output", default="")
+    p_case_lines.add_argument("--title", default="")
+    p_case_lines.add_argument("--label-fontsize", type=float, default=None)
+
     p_qaoa = plot_sub.add_parser("qaoa-pruning", help="Plot QAOA pruning sweep summary.")
     p_qaoa_input = p_qaoa.add_mutually_exclusive_group(required=True)
     p_qaoa_input.add_argument("--summary-csv", default="")
@@ -351,6 +371,79 @@ def _plot_perf_cases(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plot_perf_case_lines(args: argparse.Namespace) -> int:
+    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+
+    import csv
+
+    def _to_float(value: str) -> float:
+        if value is None or value == "":
+            raise ValueError("empty")
+        return float(value)
+
+    summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
+    if not summary_path.exists():
+        raise FileNotFoundError(f"Summary CSV not found: {summary_path}")
+
+    grouped: dict[str, dict[float, list[float]]] = {}
+    with summary_path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if not args.include_failures and int(row.get("returncode", "1")) != 0:
+                continue
+            try:
+                x = _to_float(row.get(args.x_column, ""))
+                y = _to_float(row.get(args.y_column, ""))
+            except ValueError:
+                continue
+            case_name = row.get("case_name", "") or "default"
+            grouped.setdefault(case_name, {}).setdefault(x, []).append(y)
+    if len(grouped) <= 1:
+        raise RuntimeError("Need at least two cases with plottable rows.")
+
+    configure_headless_matplotlib()
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    apply_plot_fontsizes(plt=plt, label_fontsize=args.label_fontsize)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for case_name in sorted(grouped):
+        x_sorted = sorted(grouped[case_name])
+        means = [statistics.mean(grouped[case_name][x]) for x in x_sorted]
+        stds = [
+            statistics.stdev(grouped[case_name][x]) if len(grouped[case_name][x]) > 1 else 0.0
+            for x in x_sorted
+        ]
+        ax.errorbar(
+            x_sorted,
+            means,
+            yerr=stds,
+            fmt="o-",
+            capsize=4,
+            linewidth=1.4,
+            markersize=5,
+            label=case_name,
+        )
+
+    ax.set_xlabel(args.x_column)
+    ax.set_ylabel(args.y_column)
+    ax.set_title(args.title or f"{args.y_column} vs {args.x_column} by case")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    output_path = (
+        Path(args.output).resolve()
+        if args.output
+        else (summary_path.parent / f"plot_{args.y_column}_vs_{args.x_column}_by_case.pdf")
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=160)
+    print(f"Saved plot: {output_path}")
+    return 0
+
+
 def _plot_qaoa_pruning(args: argparse.Namespace) -> int:
     from qaoa_pruning_sweep.plotting import plot_time_fidelity
 
@@ -422,6 +515,8 @@ def main(argv: list[str] | None = None) -> int:
             return _plot_perf_sweep(args)
         if args.plot_kind == "perf-cases":
             return _plot_perf_cases(args)
+        if args.plot_kind == "perf-case-lines":
+            return _plot_perf_case_lines(args)
         if args.plot_kind == "qaoa-pruning":
             return _plot_qaoa_pruning(args)
         if args.plot_kind == "qaoa-qiskit":

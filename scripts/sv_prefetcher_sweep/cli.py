@@ -12,6 +12,7 @@ from .schema import (
     FLOAT_SWEEP_PARAMS,
     NUMERIC_CASTS,
     REQUIRED_FIELDS,
+    SPECIAL_CHECKPOINT_POLICY_THIRDS,
     VARY_CHOICES,
     SweepConfig,
 )
@@ -143,6 +144,11 @@ def _normalize_options(options: dict[str, Any]) -> None:
         for key in CASE_OVERRIDE_FIELDS:
             if key not in case:
                 continue
+            if key in {"p", "r"} and isinstance(case[key], str):
+                token = case[key].strip().lower()
+                if token == SPECIAL_CHECKPOINT_POLICY_THIRDS:
+                    normalized_case[key] = SPECIAL_CHECKPOINT_POLICY_THIRDS
+                    continue
             if key in NUMERIC_CASTS:
                 normalized_case[key] = _to_number(f"cases[{idx}].{key}", case[key], NUMERIC_CASTS[key])
             elif key in BOOLEAN_FIELDS:
@@ -181,6 +187,11 @@ def _validate_semantics(options: dict[str, Any]) -> None:
         raise ValueError("--ranks must be >= 1")
     if int(options["batch_size"]) < 0:
         raise ValueError("--batch-size must be >= 0")
+
+    if options["vary"] == "circuit_it":
+        circuit_cfg = options.get("circuit")
+        if not isinstance(circuit_cfg, dict) or str(circuit_cfg.get("generator", "")).strip().lower() != "qwalk":
+            raise ValueError("--vary circuit_it requires circuit generator to be qwalk.")
 
     cases = options.get("cases")
     if not cases:

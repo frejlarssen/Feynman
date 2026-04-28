@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-VARY_CHOICES = ("ranks", "batch_size", "fraction", "threshold", "p", "r")
+VARY_CHOICES = ("ranks", "batch_size", "fraction", "threshold", "p", "r", "circuit_it")
 FLOAT_SWEEP_PARAMS = {"fraction", "threshold"}
 CASE_OVERRIDE_FIELDS = (
     "ranks",
@@ -81,6 +81,7 @@ SUMMARY_FIELDS = list(
         "stderr_file",
         "start_utc",
         "end_utc",
+        "circuit_file_used",
         "command",
         "commit_short",
         "branch",
@@ -136,6 +137,8 @@ NUMERIC_CASTS: dict[str, Any] = {
     "p": int,
     "r": int,
 }
+
+SPECIAL_CHECKPOINT_POLICY_THIRDS = "thirds"
 
 BOOLEAN_FIELDS = ("dense", "continue_on_error", "dry_run")
 

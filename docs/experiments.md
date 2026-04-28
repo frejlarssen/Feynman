@@ -54,6 +54,22 @@ python3 scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/exploratory/perf/qwalk_n16_it16_checkpoint_ablation.json
 ```
 
+QWalk iteration sweep with checkpoint strategy lines:
+
+```bash
+python3 scripts/run_pipeline.py perf-sweep \
+  --config scripts/experiments/exploratory/perf/qwalk_n16_iteration_checkpoint_sources.json
+```
+
+Plot `total_full_s` vs `total_artificial_sources` with one line per case:
+
+```bash
+python3 scripts/run_pipeline.py plot perf-case-lines \
+  --summary-csv data/outputs/experiments/<timestamp>_qwalk_n16_iteration_checkpoint_sources/summary.csv \
+  --x-column total_artificial_sources \
+  --y-column total_full_s
+```
+
 Case aggregate plot:
 
 ```bash

@@ -6,11 +6,7 @@ import shlex
 from pathlib import Path
 from typing import Any, Callable
 
-from sweeplib.materialize import (
-    resolve_circuit_input,
-    resolve_output_bitstrings_input,
-    resolve_statevector_input,
-)
+from sweeplib.materialize import resolve_circuit_input, resolve_output_bitstrings_input, resolve_statevector_input
 from sweeplib.provenance import build_sweep_metadata
 from sweeplib.sweep import execute_command
 from sweeplib.utils import iso_utc, resolve_path, sanitize
@@ -32,6 +28,64 @@ _ARTIFICIAL_DISTRIBUTION_PATTERN = re.compile(
     r"\n\s*Chunk 2:\s*(?P<chunk2_artificial>\d+)\s*",
     re.MULTILINE,
 )
+
+
+def _parse_declared_qubits(circuit_path: Path) -> int:
+    for raw in circuit_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if line.startswith("qreg ") or line.startswith("qubit "):
+            lb = line.find("[")
+            rb = line.find("]")
+            if lb == -1 or rb == -1 or rb <= lb:
+                raise ValueError(f"Invalid qubit declaration in circuit: {line}")
+            return int(line[lb + 1 : rb])
+    raise ValueError(f"No qreg/qubit declaration found in circuit: {circuit_path}")
+
+
+def _parse_hs_size_bytes(path: Path) -> int:
+    lines = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    if len(lines) < 2:
+        raise ValueError(f"Invalid .hs file (expected header with size bytes): {path}")
+    return int(lines[1])
+
+
+def _parse_hsv_index_bytes(path: Path) -> int:
+    max_nibbles = 0
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        idx_token, _, _ = line.partition(":")
+        idx = idx_token.strip().lower()
+        if idx.startswith("0x"):
+            idx = idx[2:]
+        if not idx:
+            continue
+        max_nibbles = max(max_nibbles, len(idx))
+    if max_nibbles == 0:
+        raise ValueError(f"Input statevector has no indices: {path}")
+    return (max_nibbles + 1) // 2
+
+
+def _preflight_validate_dimensions(circuit_path: Path, input_statevector_path: Path, output_bitstrings_path: Path) -> None:
+    declared_qubits = _parse_declared_qubits(circuit_path)
+    min_bytes = max(1, (declared_qubits + 7) // 8)
+    input_bytes = _parse_hsv_index_bytes(input_statevector_path)
+    output_bytes = _parse_hs_size_bytes(output_bitstrings_path)
+    if input_bytes < min_bytes:
+        raise ValueError(
+            "Input statevector width is too small for circuit qubits: "
+            f"input_statevector={input_bytes} byte(s), circuit requires >= {min_bytes} byte(s) "
+            f"(declared qubits={declared_qubits})."
+        )
+    if output_bytes < min_bytes:
+        raise ValueError(
+            "Output bitstring width is too small for circuit qubits: "
+            f"output_bitstrings={output_bytes} byte(s), circuit requires >= {min_bytes} byte(s) "
+            f"(declared qubits={declared_qubits})."
+        )
 
 
 def resolve_paths(config: SweepConfig, repo_root: Path) -> ProjectPaths:
@@ -138,14 +192,61 @@ def parse_structure_metrics(stdout: str) -> dict[str, Any]:
     return parsed
 
 
-def build_command(config: SweepConfig, paths: ProjectPaths, params: dict[str, Any], output_file: Path) -> list[str]:
+def _count_qasm_gate_lines(circuit_path: Path) -> int:
+    total = 0
+    for raw in circuit_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if line.startswith("OPENQASM ") or line.startswith("include "):
+            continue
+        if line.startswith("qreg ") or line.startswith("qubit "):
+            continue
+        if line.endswith(";"):
+            total += 1
+    return total
+
+
+def _resolve_dynamic_circuit_path(config: SweepConfig, repo_root: Path, varied_value: Any) -> Path:
+    if config.vary != "circuit_it":
+        circuit_path, _ = resolve_circuit_input(config.circuit, repo_root)
+        return circuit_path
+    if not isinstance(config.circuit, dict):
+        raise ValueError("vary=circuit_it requires object-valued circuit generator config.")
+    circuit_spec = dict(config.circuit)
+    circuit_spec["it"] = int(varied_value)
+    circuit_path, _ = resolve_circuit_input(circuit_spec, repo_root)
+    return circuit_path
+
+
+def _resolve_dynamic_checkpoints(params: dict[str, Any], circuit_path: Path) -> tuple[Any, Any]:
+    p_raw = params.get("p")
+    r_raw = params.get("r")
+    if p_raw is None and r_raw is None:
+        return None, None
+    if p_raw == "thirds" or r_raw == "thirds":
+        if p_raw != "thirds" or r_raw != "thirds":
+            raise ValueError("Checkpoint policy 'thirds' must be set for both p and r.")
+        total_gates = _count_qasm_gate_lines(circuit_path)
+        checkpoint = int(total_gates // 3)
+        return checkpoint, checkpoint
+    return p_raw, r_raw
+
+
+def build_command(
+    config: SweepConfig,
+    paths: ProjectPaths,
+    circuit_path: Path,
+    params: dict[str, Any],
+    output_file: Path,
+) -> list[str]:
     cmd = [
         config.mpirun,
         "-n",
         str(int(params["ranks"])),
         str(paths.binary),
         "-c",
-        str(paths.circuit),
+        str(circuit_path),
         "-i",
         str(paths.input_statevector),
         "-b",
@@ -162,7 +263,7 @@ def build_command(config: SweepConfig, paths: ProjectPaths, params: dict[str, An
         str(int(params["verbosity"])),
     ]
     if params["p"] is not None and params["r"] is not None:
-        cmd.extend(["-p", str(params["p"]), "-r", str(params["r"])])
+        cmd.extend(["-p", str(int(params["p"])), "-r", str(int(params["r"]))])
     if bool(params["dense"]):
         cmd.append("-D")
     return cmd
@@ -193,7 +294,8 @@ def make_run_one(
 
         params = base_params(config)
         params.update(case_overrides)
-        params[config.vary] = varied_value
+        if config.vary != "circuit_it":
+            params[config.vary] = varied_value
 
         run_dir = sweep_dir / _run_tag(case_name, config.vary, varied_value, run_index, rep)
         run_dir.mkdir(parents=True, exist_ok=False)
@@ -203,7 +305,12 @@ def make_run_one(
         stdout_file = run_dir / "stdout.log"
         stderr_file = run_dir / "stderr.log"
 
-        cmd = build_command(config, paths, params, output_file)
+        circuit_path = _resolve_dynamic_circuit_path(config, paths.repo_root, varied_value)
+        _preflight_validate_dimensions(circuit_path, paths.input_statevector, paths.output_bitstrings)
+        p_eff, r_eff = _resolve_dynamic_checkpoints(params, circuit_path)
+        params["p"] = p_eff
+        params["r"] = r_eff
+        cmd = build_command(config, paths, circuit_path, params, output_file)
         start = dt.datetime.now(dt.timezone.utc)
         rc, elapsed_s, stdout_text, stderr_text = execute_command(
             cmd=cmd,
@@ -262,6 +369,7 @@ def make_run_one(
             "start_utc": iso_utc(start),
             "end_utc": iso_utc(end),
             "command": shlex.join(cmd),
+            "circuit_file_used": _rel(circuit_path, paths.repo_root),
             "commit_short": git_info.get("commit_short", ""),
             "branch": git_info.get("branch", ""),
             "dirty": int(bool(git_info.get("dirty", False))),

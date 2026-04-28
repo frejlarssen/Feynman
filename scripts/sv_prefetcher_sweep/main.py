@@ -69,6 +69,61 @@ def _plot_cases_total_full(summary_csv: Path) -> Path:
     return output_path
 
 
+def _plot_cases_vs_x(summary_csv: Path, *, x_column: str, y_column: str) -> Path:
+    grouped: dict[str, dict[float, list[float]]] = {}
+    with summary_csv.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if int(row.get("returncode", "1")) != 0:
+                continue
+            x_raw = row.get(x_column, "")
+            y_raw = row.get(y_column, "")
+            if x_raw in (None, "") or y_raw in (None, ""):
+                continue
+            case_name = row.get("case_name", "") or "default"
+            x = float(x_raw)
+            y = float(y_raw)
+            grouped.setdefault(case_name, {}).setdefault(x, []).append(y)
+    if len(grouped) <= 1:
+        raise ValueError("No multiple cases available for case line plot.")
+
+    configure_headless_matplotlib()
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    apply_plot_fontsizes(plt=plt, label_fontsize=None)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for case_name in sorted(grouped):
+        x_sorted = sorted(grouped[case_name])
+        means = [statistics.mean(grouped[case_name][x]) for x in x_sorted]
+        stds = [
+            statistics.stdev(grouped[case_name][x]) if len(grouped[case_name][x]) > 1 else 0.0
+            for x in x_sorted
+        ]
+        ax.errorbar(
+            x_sorted,
+            means,
+            yerr=stds,
+            fmt="o-",
+            capsize=4,
+            linewidth=1.4,
+            markersize=5,
+            label=case_name,
+        )
+    ax.set_xlabel(x_column)
+    ax.set_ylabel(y_column)
+    ax.set_title(f"{y_column} vs {x_column} by case")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    output_path = summary_csv.parent / f"plot_{y_column}_vs_{x_column}_by_case.pdf"
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+    return output_path
+
+
 def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int:
     config = build_config(argv)
     repo_root_raw = Path(config.repo_root).expanduser()
@@ -114,6 +169,15 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
         try:
             case_plot = _plot_cases_total_full(summary_csv)
             print(f"Auto-generated case plot: {case_plot}")
+        except (RuntimeError, ValueError, FileNotFoundError):
+            pass
+        try:
+            structure_case_plot = _plot_cases_vs_x(
+                summary_csv,
+                x_column="total_artificial_sources",
+                y_column="total_full_s",
+            )
+            print(f"Auto-generated structure case plot: {structure_case_plot}")
         except (RuntimeError, ValueError, FileNotFoundError):
             pass
 

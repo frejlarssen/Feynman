@@ -1,0 +1,43 @@
+{
+  "experiment_name": "qwalk_iteration_checkpoint_sources",
+  "repo_root": ".",
+  "vary": "circuit_it",
+  "values": [16, 18, 20, 22],
+  "repeat": 1,
+  "ranks": 4,
+  "batch_size": 32,
+  "fraction": 1.0,
+  "threshold": 1e-8,
+  "circuit": {
+    "generator": "qwalk",
+    "n": 8,
+    "it": 1
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 1
+  },
+  "cases": [
+    {
+      "name": "no_cp",
+      "p": 0,
+      "r": 0
+    },
+    {
+      "name": "fixed_cp_thirds",
+      "p": "thirds",
+      "r": "thirds"
+    },
+    {
+      "name": "autotuned_cp",
+      "p": null,
+      "r": null
+    }
+  ],
+  "notes": "QWalk sweep over iterations; compare no_cp vs fixed thirds vs autotuned using artificial sources on x-axis."
+}
