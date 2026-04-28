@@ -30,7 +30,7 @@ Generate input artifacts:
 python3 generators/generate_bulk.py
 ```
 
-Build release for performance experiments:
+Build release for experiments:
 
 ```bash
 cmake --preset release
