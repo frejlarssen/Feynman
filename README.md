@@ -1,10 +1,12 @@
 # Feynman
-A Feynman simulator.
 
-## File format
+A sparse-output Feynman path simulator.
 
-Hexadecimal output states `.hs` of the format:
-```
+## Formats
+
+Hexadecimal output states `.hs`:
+
+```text
 num_hexstrings
 size_in_bytes
 ...
@@ -12,24 +14,23 @@ hexstrings
 ...
 ```
 
-## Circuit format
-Subset of QASM, with some extensions such as multi-controlled gates (eg. `ccccx`).
-The circuit size is rounded up automatically to closest multiple of 8.
+Circuit format: subset of QASM with extensions (for example `ccccx`).
+Circuit size is rounded up automatically to the closest multiple of 8.
 
-Generators produce bulks of datafiles:
+## Setup
+
+```bash
+micromamba create -n feynman -f environment.yml
+micromamba activate feynman
+```
+
+Generate input artifacts:
 
 ```bash
 python3 generators/generate_bulk.py
 ```
 
-## Setup
-
-```
-micromamba create -n feynman -f environment.yml
-micromamba activate feynman
-```
-
-### Build with CMake
+Build:
 
 ```bash
 cmake --preset dev
@@ -37,12 +38,14 @@ cmake --build --preset dev -j
 ```
 
 Build one target:
+
 ```bash
 cmake --build --preset dev --target sv_prefetcher_mpi_subsetbitstrings -j
 ```
 
-## Example usage
-Generate desired circuits and datafiles with the `generators/`.
+## Quickstart
+
+Raw binary example:
 
 ```bash
 mkdir -p data/outputs/tmp
@@ -52,179 +55,47 @@ mpirun -n 1 ./build/sv_prefetcher_subset_mpi.x \
   -b data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \
   -o data/outputs/tmp/qft_n8_k2_run.hsv \
   -t 0.0 -v 1
-
 ```
 
-## Unified Sweep + Plot Pipeline
-
-All experiment and validation entrypoints are unified under:
+Unified pipeline entrypoint:
 
 ```bash
 python3 scripts/run_pipeline.py <subcommand> ...
 ```
 
-### Perf Sweep
-
-Run a parameter sweep:
+Minimal perf sweep:
 
 ```bash
 python3 scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/perf/qft_n8_batch_sweep.json
 ```
 
-This automatically writes `summary.csv` and a default sweep plot
-(`plot_total_full_s_vs_<vary>.pdf`) in the run directory.
-For multi-case sweeps, a case aggregate plot (`plot_total_full_s_by_case.pdf`)
-is also generated automatically.
-
-Override extra mode-specific flags by passing them after `--`:
+Minimal plot-only:
 
 ```bash
-python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/qft_n8_batch_sweep.json \
-  -- --ranks 8 --repeat 5
+python3 scripts/run_pipeline.py plot perf-sweep --latest \
+  --y-column total_full_s --mode meanstd
 ```
 
-Plot-only from an existing `summary.csv`:
+`--latest` can be used in plot/replot flows to auto-pick a recent run directory.
+Use explicit `--summary-csv`, `--comparison-csv`, or `--summary-json` when you
+want strict reproducibility.
 
-```bash
-python3 scripts/run_pipeline.py plot perf-sweep \
-  --summary-csv data/outputs/experiments/<timestamp>_qft_n8_batch_sweep/summary.csv \
-  --y-column total_full_s \
-  --mode meanstd
-```
+## Documentation Map
 
-Or use latest matching run automatically:
+- Full experiment/validation catalog: `docs/experiments.md`
+- Paper-targeted reproducibility map: `docs/paper_experiments.md`
 
-```bash
-python3 scripts/run_pipeline.py plot perf-sweep \
-  --latest \
-  --y-column total_full_s \
-  --mode meanstd
-```
-
-Case aggregate plot:
-
-```bash
-# First run a case-based perf experiment (creates the summary.csv)
-python3 scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/perf/aa_n3_it3_mark1_checkpoint_ablation.json
-
-# Then (optionally) regenerate only the case plot from summary.csv
-python3 scripts/run_pipeline.py plot perf-cases \
-  --summary-csv data/outputs/experiments/<timestamp>_aa_n3_it3_mark1_checkpoint_ablation/summary.csv \
-  --y-column gate_ops_estimate
-```
-
-Or use the latest matching case run:
-
-```bash
-python3 scripts/run_pipeline.py plot perf-cases \
-  --latest \
-  --y-column gate_ops_estimate
-```
-
-### QAOA Pruning Sweep
-
-Run QAOA threshold pruning sweep (auto-plot enabled by default):
-
-```bash
-python3 scripts/run_pipeline.py qaoa-pruning \
-  --config scripts/experiments/perf/qaoa_pruning_sweep_cycle_n8_p2.json
-```
-
-Disable auto-plot for a run:
-
-```bash
-python3 scripts/run_pipeline.py qaoa-pruning \
-  --config scripts/experiments/perf/qaoa_pruning_sweep_cycle_n8_p2.json \
-  --no-plot
-```
-
-Plot-only from an existing summary:
-
-```bash
-python3 scripts/run_pipeline.py plot qaoa-pruning \
-  --summary-csv data/outputs/experiments/<timestamp>_qaoa_pruning_sweep_cycle_n8_p2/summary.csv
-```
-
-Or use latest QAOA pruning run:
-
-```bash
-python3 scripts/run_pipeline.py plot qaoa-pruning --latest
-```
-
-In this plot, blue is `total_full_s` (left y-axis) and red is
-`fidelity_to_reference` (right y-axis).
-
-### Validation
-
-QAOA vs Qiskit validation:
-
-```bash
-python3 scripts/run_pipeline.py validation qaoa-qiskit \
-  --config scripts/experiments/validation/qaoa_cycle_n8_p2_qiskit_validation.json
-```
-
-This run writes `summary.json`, `comparison.csv`, and
-`agreement_plot.pdf` automatically.
-
-Plot-only from an existing validation result:
-
-```bash
-python3 scripts/run_pipeline.py plot qaoa-qiskit \
-  --comparison-csv data/outputs/validation/<timestamp>_qaoa_cycle_n8_p2_qiskit_validation/comparison.csv
-```
-
-Or use latest matching validation run:
-
-```bash
-python3 scripts/run_pipeline.py plot qaoa-qiskit --latest
-```
-
-QFT demo validation:
-
-```bash
-python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_demo.json
-```
-
-This run writes `summary.json`, `output_population.csv`, and
-`demo_plot.pdf` automatically.
-
-`qft-demo` supports generator objects for `circuit`, `input_statevector`, and
-`output_bitstrings`, and this path/object materialization is shared with sweep
-and validation flows through `scripts/sweeplib/materialize.py`.
-
-Replot from existing CSV without rerun:
-
-```bash
-python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_demo.json \
-  -- --from-csv \
-  --summary-json data/outputs/validation/<run_dir>/summary.json
-```
-
-Or auto-resolve latest qft-demo run summary:
-
-```bash
-python3 scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/validation/qft_demo.json \
-  --latest \
-  -- --from-csv
-```
-
-### Outputs and Commit Policy
+## Outputs and Commit Policy
 
 - Keep curated JSON configs in `scripts/experiments/perf/` and `scripts/experiments/validation/`.
 - Do not commit generated inputs/outputs (`data/generated/`, `data/outputs/` are gitignored).
 - Archive interesting run artifacts externally (re-runnable from committed configs).
 - Keep only small, hand-curated fixtures in `data/fixtures/`.
 
-## For development
+## Development
 
-Use `bear` with the CMake build command if you need to regenerate
-`compile_commands.json` via intercepted build commands:
+If needed, regenerate `compile_commands.json` through an intercepted build:
 
 ```bash
 bear -- cmake --build build -j
