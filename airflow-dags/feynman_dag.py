@@ -14,15 +14,15 @@ def feynman():
     """
 
     @task()
-    def split_output_into_batches(output_bitstrings_filename: str):
+    def split_output_into_batches(output_hexstrings_filename: str):
         """
         #### Split into batches
-        Read output bitstrings and split them into batches.
+        Read output hexstrings and split them into batches.
         The batches are labeled `batch_i.hs`, where i is the number of the batch.
         """
 
         # Should we do this right here in python or have a Kubernates pod do it?
-        # Read output_bitstrings_filename
+        # Read output_hexstrings_filename
         # Write batches to the same shared filesystem
 
         num_batches = 42 #Placeholder
@@ -31,21 +31,47 @@ def feynman():
 
     @task_group
     def process_batch(batch_id: int):
-        # Maybe task group is unnecessary. The task we do expand on could be one pod.
-
-        @task()
-        def read_inputs():
-            pass
+        # Maybe task group is unnecessary. The what we expand on could be one pod.
 
         @task()
         def simulate(batch_id: int):
-            pass
+            # Kubernates container with docker image.
 
-        # Kubernates container with docker image. Include read_inputs here also?
-        return simulate(read_inputs())
+            # Reads input hexstrings
+            # Reads and parses circuit
+            # Simulates and sums over all input hexstrings
+
+            # The result is a list of (hexstring, amplitude) paris.
+            # Can this be passed as XComm?
+            # Or better to write one file per batch and then concatenate in postprocessing?
+            result : list[tuple[str, tuple[float, float]]] = []
+
+            status = True # Did it succeed or not? Reduce on these.
+            return status
+
+        return simulate(batch_id)
+    
+    @task()
+    def concatenate(status):
+        if status == True:
+            # Concatenate output files of the batches
+            return True
+        else:
+            return False
+    
+    @task()
+    def postprocessing(status):
+        if status == True:
+            # Calculate observables, generate plots, etc. Could be python or C++.
+            return True
+        else:
+            return False
 
     batch_ids = split_output_into_batches("output_hexstrings.hs")
 
-    process_batch.expand(batch_id = batch_ids)
+    status = process_batch.expand(batch_id = batch_ids) #TODO: Reduce the status to one single status.
+
+    status = concatenate(status)
+    postprocessing(status)
 
 feynman()
