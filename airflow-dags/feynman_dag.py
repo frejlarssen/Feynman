@@ -25,8 +25,9 @@ def feynman():
         # Read output_hexstrings_filename
         # Write batches to the same shared filesystem
 
-        num_batches = 42 #Placeholder
-        batch_ids = range(num_batches)
+        num_batches = 5 #Placeholder
+        batch_ids = list(range(num_batches))
+        print(f"Split resulted in {num_batches=}. Returning batch ids.")
         return batch_ids
 
     @task_group
@@ -47,31 +48,36 @@ def feynman():
             result : list[tuple[str, tuple[float, float]]] = []
 
             status = True # Did it succeed or not? Reduce on these.
+            print(f"Simulation succeeded for {batch_id=}.")
             return status
 
         return simulate(batch_id)
     
     @task()
-    def concatenate(status):
-        if status == True:
+    def concatenate(status_values):
+        if all(status_values) == True:
             # Concatenate output files of the batches
+            print("Concatenation succeeded.")
             return True
         else:
+            print("Concatenation failed.")
             return False
     
     @task()
     def postprocessing(status):
         if status == True:
             # Calculate observables, generate plots, etc. Could be python or C++.
+            print("Post-processing succeeded.")
             return True
         else:
+            print("Post-processing failed.")
             return False
 
     batch_ids = split_output_into_batches("output_hexstrings.hs")
 
-    status = process_batch.expand(batch_id = batch_ids) #TODO: Reduce the status to one single status.
+    status_values = process_batch.expand(batch_id = batch_ids)
 
-    status = concatenate(status)
+    status = concatenate(status_values)
     postprocessing(status)
 
 feynman()
