@@ -70,3 +70,12 @@ Build for dev/debug:
 cmake --preset dev
 cmake --build --preset dev -j
 ```
+
+## Cloud task
+
+To build a simpler executable without MPI, for example to be used as a cloud task:
+
+```bash
+cmake --preset release
+cmake --build --preset release --target cloud_task -j
+```

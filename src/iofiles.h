@@ -90,6 +90,27 @@ inline vector<char> read_file_to_buffer(const std::string &path) {
   return buffer;
 }
 
+inline void write_string_to_file(const std::string &path,
+                                 const std::string &str) {
+  const std::vector<char> buffer(str.begin(), str.end());
+
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  if (!file)
+    throw std::runtime_error("Bad file path: " + path);
+
+  const size_t write_size =
+      !buffer.empty() && buffer.back() == '\0' ? buffer.size() - 1 : buffer.size();
+  if (write_size > 0 &&
+      !file.write(buffer.data(), static_cast<streamsize>(write_size)))
+    throw std::runtime_error("Error writing file: " + path);
+}
+
+inline std::vector<InputBitstrings> read_input_bitstrings_from_file(const std::string &path, const bool dense) {
+  vector<char> buffer;
+  buffer = read_file_to_buffer(path);
+  return read_input_bitstrings(buffer, dense);
+}
+
 inline std::vector<InputBitstrings>
 load_input_bitvectors_from_master(const std::string &path, const bool dense,
                                   const int world_rank, MPI_Comm comm) {
@@ -242,6 +263,48 @@ inline std::vector<TypeLongInt> load_output_bitstrings_from_master_as_intvector(
   }
 
   return output_bitstrings;
+}
+
+inline std::vector<std::vector<bool>>
+load_output_bitvectors_from_file(const std::string &path) {
+  vector<char> hexstrings_buffer;
+  std::size_t buffer_size;
+
+  // Must return std::vector<TypeLongInt>
+  hexstrings_buffer = read_file_to_buffer(path);
+
+  std::vector<std::vector<bool>> bitstrings;
+
+  std::istringstream ss(hexstrings_buffer.data());
+  // First lines are
+  // num_bitstrings\n
+  // size_bitstring_in_hexchars\n
+  std::string line;
+  std::getline(ss, line);
+  const std::size_t N = std::stoull(line);
+
+  std::getline(ss, line);
+  const std::size_t size_hexchars = std::stoull(line);
+
+  bitstrings.reserve(N);
+
+  while (std::getline(ss, line)) {
+    // Line is of type 0xABCDEF...
+    if (line.size() < 2 || line[0] != '0' || line[1] != 'x') {
+      throw std::runtime_error("Hexstring line does not start with 0x: " +
+                               line);
+    }
+    line = line.substr(2); // Remove 0x
+
+    if (line.size() != size_hexchars * 2) {
+      throw std::runtime_error("Hexstring line has incorrect length: " + line);
+    }
+
+    std::vector<bool> bits = hexstring_to_bitvector(line);
+    bitstrings.push_back(bits);
+  }
+
+  return bitstrings;
 }
 
 // template <typename TypeLongInt>

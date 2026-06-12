@@ -43,6 +43,15 @@ target_compile_definitions(sv_prefetcher_mpi PRIVATE USE_OPENMP)
 target_link_libraries(sv_prefetcher_mpi PRIVATE OpenMP::OpenMP_CXX)
 set_target_properties(sv_prefetcher_mpi PROPERTIES OUTPUT_NAME sv_prefetcher_mpi.x)
 
+add_feynman_target(cloud_task apps/cloud_task.cpp)
+target_compile_definitions(
+  cloud_task PRIVATE USE_OPENMP
+)
+target_link_libraries(cloud_task PRIVATE OpenMP::OpenMP_CXX)
+set_target_properties(
+  cloud_task PROPERTIES OUTPUT_NAME cloud_task.x
+)
+
 add_feynman_target(sv_prefetcher_mpi_subsetbitstrings apps/sv_prefetcher.cpp)
 target_compile_definitions(
   sv_prefetcher_mpi_subsetbitstrings PRIVATE USE_OPENMP USE_SUBSET_OUTBITSTRINGS
