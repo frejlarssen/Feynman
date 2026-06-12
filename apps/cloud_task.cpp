@@ -22,7 +22,6 @@ struct Options {
   string output_statevector_file;
   int num_chunk1 = -1;
   int num_chunk2 = -1;
-  std::size_t batch_size = 32;
   float fraction = 1.0;
   float threshold = CLOSE_TO_ZERO;
   int verbosity = 1;
@@ -35,7 +34,7 @@ Options get_options(int argc, char *argv[]) {
   const char *helpstr =
       "Usage: ./cloud_task.x -c circuit_file -i input_statevector_file "
       "-b batch_file -o output_statevector_file -p num_chunk1 -r num_chunk2 "
-      "-f fraction_of_histories -v verbosity (-D [Dense]) -s batch_size\n";
+      "-f fraction_of_histories -v verbosity (-D [Dense])\n";
 
   if (argc < 4) {
     cout << helpstr;
@@ -76,9 +75,6 @@ Options get_options(int argc, char *argv[]) {
       break;
     case 'r':
       opts.num_chunk1 = to_int(optarg);
-      break;
-    case 's':
-      opts.batch_size = to_int(optarg);
       break;
     case 'f':
       opts.fraction = to_float(optarg);
@@ -187,14 +183,12 @@ void run(Options &opts) {
   std::string local_buf_timing;
   local_buf_timing.reserve(1 << 16);
 
-  const std::size_t batch_size = opts.batch_size;
-
   if (opts.verbosity >= 1) {
     printf(
         "Starting simulation over all input-output pairs:\n -- Total output "
         "bitstrings = %lld - OMP_THREADS per worker = "
-        "%d - batch_size = %zu --:\n",
-        total_output_bitstrings, t_omp, batch_size);
+        "%d --:\n",
+        total_output_bitstrings, t_omp);
   }
 
   duration<double> total_clocktime_simulate = zero_duration();
