@@ -91,3 +91,9 @@ mkdir -p data/outputs/tmp
   -o data/outputs/tmp/qft_n8_k2_run_cloud.hsv \
   -t 0.0 -v 1
 ```
+
+### Using docker
+
+```bash
+docker build --target build .
+```

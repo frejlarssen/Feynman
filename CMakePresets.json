@@ -25,6 +25,17 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
+    },
+    {
+      "name": "cloud",
+      "displayName": "Cloud (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-cloud",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_MPI_TARGETS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -35,6 +46,10 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "cloud",
+      "configurePreset": "cloud"
     }
   ]
 }
