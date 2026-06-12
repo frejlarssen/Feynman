@@ -79,3 +79,15 @@ To build a simpler executable without MPI, for example to be used as a cloud tas
 cmake --preset release
 cmake --build --preset release --target cloud_task -j
 ```
+
+Run for one batch:
+
+```bash
+mkdir -p data/outputs/tmp
+./build-release/cloud_task.x \
+  -c data/generated/circuits/qft/qft_n8_k2.qasm \
+  -i data/generated/statevectors/ket0_size1.hsv \
+  -b data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \
+  -o data/outputs/tmp/qft_n8_k2_run_cloud.hsv \
+  -t 0.0 -v 1
+```

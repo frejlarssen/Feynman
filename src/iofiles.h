@@ -6,9 +6,13 @@
 #include <complex>
 #include <fstream>
 #include <limits>
-#include <mpi.h>
 #include <string>
 #include <vector>
+
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
+
 
 struct InputBitstrings {
   vector<bool> index;      // basis-state index
@@ -111,6 +115,7 @@ inline std::vector<InputBitstrings> read_input_bitstrings_from_file(const std::s
   return read_input_bitstrings(buffer, dense);
 }
 
+#ifdef USE_MPI
 inline std::vector<InputBitstrings>
 load_input_bitvectors_from_master(const std::string &path, const bool dense,
                                   const int world_rank, MPI_Comm comm) {
@@ -136,6 +141,7 @@ load_input_bitvectors_from_master(const std::string &path, const bool dense,
 
   return input_bitstrings;
 }
+#endif
 
 static inline std::vector<TypeLongInt>
 read_output_bitstrings(const std::string &path) {
@@ -177,6 +183,7 @@ read_output_bitstrings(const std::string &path) {
   return output_bitstrings;
 }
 
+#ifdef USE_MPI
 inline std::vector<TypeLongInt>
 load_output_bitstrings_from_masterV0(const std::string &path,
                                      const int world_rank, MPI_Comm comm) {
@@ -210,7 +217,9 @@ load_output_bitstrings_from_masterV0(const std::string &path,
   }
   return output_bitstrings;
 }
+#endif
 
+#ifdef USEMPI
 // template <typename TypeLongInt>
 inline std::vector<TypeLongInt> load_output_bitstrings_from_master_as_intvector(
     const std::string &path, const int world_rank, MPI_Comm comm) {
@@ -264,6 +273,7 @@ inline std::vector<TypeLongInt> load_output_bitstrings_from_master_as_intvector(
 
   return output_bitstrings;
 }
+#endif
 
 inline std::vector<std::vector<bool>>
 load_output_bitvectors_from_file(const std::string &path) {
@@ -307,6 +317,7 @@ load_output_bitvectors_from_file(const std::string &path) {
   return bitstrings;
 }
 
+#ifdef USEMPI
 // template <typename TypeLongInt>
 inline std::vector<std::vector<bool>>
 load_output_bitvectors_from_master(const std::string &path,
@@ -377,7 +388,9 @@ load_output_bitvectors_from_master(const std::string &path,
 
   return bitstrings;
 }
+#endif
 
+#ifdef USEMPI
 inline int write_output_to_disk(const std::string &filename,
                                 const std::string &local_buf,
                                 const int world_rank, MPI_Comm comm) {
@@ -401,3 +414,4 @@ inline int write_output_to_disk(const std::string &filename,
   MPI_File_close(&fh);
   return rc;
 }
+#endif

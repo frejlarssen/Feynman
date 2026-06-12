@@ -13,9 +13,15 @@ endif()
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
+function(add_feynman_target_nompi target_name source_file)
+  add_executable(${target_name} ${source_file})
+  target_compile_options(${target_name} PRIVATE)
+endfunction()
+
 function(add_feynman_target target_name source_file)
   add_executable(${target_name} ${source_file})
   target_compile_options(${target_name} PRIVATE)
+  target_compile_definitions(bitstr_omp PRIVATE USE_MPI)
   target_link_libraries(${target_name} PRIVATE MPI::MPI_CXX)
 endfunction()
 
@@ -43,7 +49,7 @@ target_compile_definitions(sv_prefetcher_mpi PRIVATE USE_OPENMP)
 target_link_libraries(sv_prefetcher_mpi PRIVATE OpenMP::OpenMP_CXX)
 set_target_properties(sv_prefetcher_mpi PROPERTIES OUTPUT_NAME sv_prefetcher_mpi.x)
 
-add_feynman_target(cloud_task apps/cloud_task.cpp)
+add_feynman_target_nompi(cloud_task apps/cloud_task.cpp)
 target_compile_definitions(
   cloud_task PRIVATE USE_OPENMP
 )
