@@ -95,5 +95,14 @@ mkdir -p data/outputs/tmp
 ### Using docker
 
 ```bash
-docker build --target build .
+docker build --tag feynman:latest .
+```
+
+```bash
+docker run --mount type=bind,src=./data,dst=/data feynman:latest /cloud_task.x \
+  -c data/generated/circuits/qft/qft_n8_k2.qasm \
+  -i data/generated/statevectors/ket0_size1.hsv \
+  -b data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \
+  -o data/outputs/tmp/qft_n8_k2_run_docker.hsv \
+  -t 0.0 -v 1
 ```
