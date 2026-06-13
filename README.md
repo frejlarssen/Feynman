@@ -106,3 +106,12 @@ docker run --mount type=bind,src=./data,dst=/data feynman:latest /cloud_task.x \
   -o data/outputs/tmp/qft_n8_k2_run_docker.hsv \
   -t 0.0 -v 1
 ```
+
+### k3d
+
+```bash
+k3d cluster create feynman-cluster --volume "$PWD/data:/data@all"
+k3d image import feynman:latest -c feynman-cluster
+kubectl apply -f job.yaml
+```
+

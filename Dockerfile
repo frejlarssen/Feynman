@@ -27,3 +27,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy the binary from the build stage
 COPY --from=build /build-cloud/cloud_task.x /cloud_task.x
+
+ENTRYPOINT ["/cloud_task.x"]
