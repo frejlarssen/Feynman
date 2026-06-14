@@ -11,6 +11,7 @@ namespace fs = std::filesystem;
 struct Options {
   std::string hexstrings_file;
   std::string output_dir;
+  std::string xcom_output_file;
   std::size_t batch_size = 0;
   std::string output_prefix = "batch_";
   std::string output_suffix = ".hs";
@@ -22,7 +23,8 @@ Options get_options(int argc, char *argv[]) {
 
   const char *helpstr =
       "Usage: ./cloud_split_batches.x -h hexstrings_file -o output_dir "
-      "-n batch_size [-p output_prefix] [-s output_suffix] [-v verbosity]\n";
+      "-n batch_size [-x xcom_output_file] [-p output_prefix] "
+      "[-s output_suffix] [-v verbosity]\n";
 
   if (argc < 2) {
     std::cout << helpstr;
@@ -30,7 +32,7 @@ Options get_options(int argc, char *argv[]) {
   }
 
   int k;
-  while ((k = getopt(argc, argv, "h:o:n:p:s:v:")) != -1) {
+  while ((k = getopt(argc, argv, "h:o:n:x:p:s:v:")) != -1) {
     switch (k) {
     case 'h':
       opts.hexstrings_file = optarg;
@@ -40,6 +42,9 @@ Options get_options(int argc, char *argv[]) {
       break;
     case 'n':
       opts.batch_size = static_cast<std::size_t>(std::stoull(optarg));
+      break;
+    case 'x':
+      opts.xcom_output_file = optarg;
       break;
     case 'p':
       opts.output_prefix = optarg;
@@ -105,7 +110,20 @@ ParsedHexstringFile parse_hexstring_file(const std::string &path) {
   return parsed;
 }
 
-void split_batches(const Options &opts) {
+void write_xcom_num_batches(const Options &opts, std::size_t num_batches) {
+  if (opts.xcom_output_file.empty()) {
+    return;
+  }
+
+  const fs::path xcom_path(opts.xcom_output_file);
+  if (xcom_path.has_parent_path()) {
+    fs::create_directories(xcom_path.parent_path());
+  }
+
+  write_string_to_file(opts.xcom_output_file, std::to_string(num_batches) + "\n");
+}
+
+std::size_t split_batches(const Options &opts) {
   const ParsedHexstringFile parsed = parse_hexstring_file(opts.hexstrings_file);
   fs::create_directories(opts.output_dir);
 
@@ -139,13 +157,20 @@ void split_batches(const Options &opts) {
                 << " bitstrings\n";
     }
   }
+
+  write_xcom_num_batches(opts, num_batches);
+  return num_batches;
 }
 
 int main(int argc, char *argv[]) {
   const Options opts = get_options(argc, argv);
 
   try {
-    split_batches(opts);
+    const std::size_t num_batches = split_batches(opts);
+    if (opts.verbosity >= 1 && !opts.xcom_output_file.empty()) {
+      std::cout << "Reported " << num_batches << " batches via XCom file "
+                << opts.xcom_output_file << '\n';
+    }
   } catch (const std::exception &e) {
     std::cerr << "Exception in split_batches(): " << e.what() << '\n';
     return 1;

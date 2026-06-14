@@ -15,6 +15,7 @@ struct Options {
   std::string output_file;
   std::string input_prefix = "qft_n8_k2_batch_";
   std::string input_suffix = ".hsv";
+  std::size_t expected_num_batches = 0;
   int verbosity = 1;
 };
 
@@ -23,7 +24,8 @@ Options get_options(int argc, char *argv[]) {
 
   const char *helpstr =
       "Usage: ./cloud_concat_batches.x -i input_dir -o output_file "
-      "[-p input_prefix] [-s input_suffix] [-v verbosity]\n";
+      "[-p input_prefix] [-s input_suffix] [-n expected_num_batches] "
+      "[-v verbosity]\n";
 
   if (argc < 2) {
     std::cout << helpstr;
@@ -31,7 +33,7 @@ Options get_options(int argc, char *argv[]) {
   }
 
   int k;
-  while ((k = getopt(argc, argv, "i:o:p:s:v:")) != -1) {
+  while ((k = getopt(argc, argv, "i:o:p:s:n:v:")) != -1) {
     switch (k) {
     case 'i':
       opts.input_dir = optarg;
@@ -44,6 +46,9 @@ Options get_options(int argc, char *argv[]) {
       break;
     case 's':
       opts.input_suffix = optarg;
+      break;
+    case 'n':
+      opts.expected_num_batches = static_cast<std::size_t>(std::stoull(optarg));
       break;
     case 'v':
       opts.verbosity = std::stoi(optarg);
@@ -70,6 +75,22 @@ struct BatchFile {
 std::vector<BatchFile> find_batch_files(const Options &opts) {
   if (!fs::exists(opts.input_dir)) {
     throw std::runtime_error("Input directory does not exist: " + opts.input_dir);
+  }
+
+  if (opts.expected_num_batches > 0) {
+    std::vector<BatchFile> batch_files;
+    batch_files.reserve(opts.expected_num_batches);
+    for (std::size_t index = 0; index < opts.expected_num_batches; ++index) {
+      const fs::path batch_path =
+          fs::path(opts.input_dir) /
+          (opts.input_prefix + std::to_string(index) + opts.input_suffix);
+      if (!fs::exists(batch_path)) {
+        throw std::runtime_error("Missing expected batch result file: " +
+                                 batch_path.string());
+      }
+      batch_files.push_back({index, batch_path});
+    }
+    return batch_files;
   }
 
   const std::regex pattern(

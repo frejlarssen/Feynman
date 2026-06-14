@@ -14,7 +14,7 @@ HEXSTRINGS_FILE = (
 SPLIT_IMAGE = "feynman-split:latest"
 SIMULATE_IMAGE = "feynman-simulate:latest"
 CONCAT_IMAGE = "feynman-concat:latest"
-NUM_BATCHES = 5
+MAX_HEXSTRINGS_PER_BATCH = 100
 
 DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
     name="feynman-data",
@@ -79,6 +79,7 @@ def feynman():
         image=SPLIT_IMAGE,
         image_pull_policy="Never",
         config_file=KUBECONFIG,
+        do_xcom_push=True,
         get_logs=True,
         on_finish_action="delete_pod",
         volume_mounts=[DATA_VOLUME_MOUNT],
@@ -89,13 +90,15 @@ def feynman():
             "-o",
             f"{DATA_MOUNT_PATH}/generated/batches",
             "-n",
-            "2",
+            str(MAX_HEXSTRINGS_PER_BATCH),
+            "-x",
+            "/airflow/xcom/return.json",
             "-v",
             "1",
         ],
     )
 
-    batch_arguments = build_batch_arguments(NUM_BATCHES)
+    batch_arguments = build_batch_arguments(split_hexstrings.output)
 
     simulate_batches = KubernetesPodOperator.partial(
         task_id="simulate_batch",
@@ -124,6 +127,8 @@ def feynman():
             f"{DATA_MOUNT_PATH}/outputs/tmp",
             "-o",
             f"{DATA_MOUNT_PATH}/outputs/tmp/qft_n8_k2_all_batches.hsv",
+            "-n",
+            "{{ ti.xcom_pull(task_ids='split_hexstrings') }}",
             "-v",
             "1",
         ],
