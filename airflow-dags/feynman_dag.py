@@ -8,6 +8,13 @@ from airflow.sdk import dag, task
 KUBECONFIG = "/home/frej/.kube/config"
 DATA_MOUNT_PATH = "/data"
 DATA_PVC_NAME = "feynman-data-pvc"
+HEXSTRINGS_FILE = (
+    f"{DATA_MOUNT_PATH}/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs"
+)
+SPLIT_IMAGE = "feynman-split:latest"
+SIMULATE_IMAGE = "feynman-simulate:latest"
+CONCAT_IMAGE = "feynman-concat:latest"
+NUM_BATCHES = 5
 
 DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
     name="feynman-data",
@@ -31,24 +38,19 @@ DATA_VOLUME = k8s.V1Volume(
 def feynman():
     """
     ### Feynman DAG
-    Orchestrates batch simulation with Airflow TaskFlow and one Kubernetes pod
-    per batch.
+    Orchestrates simulation over batched hexstrings with one PVC-backed pod per
+    pipeline stage.
     """
 
     @task()
-    def split_output_into_batches(output_hexstrings_filename: str) -> list[list[str]]:
-        """
-        #### Split into batches
-        Placeholder for splitting the output hexstrings file and returning one
-        simulator argument list per batch.
-        """
-
-        num_batches = 5
+    def build_batch_arguments(num_batches: int) -> list[list[str]]:
         batch_arguments = []
 
         for batch_id in range(num_batches):
-            batch_file = f"{DATA_MOUNT_PATH}/generated/batches/batch_{batch_id}.hs"
-            output_file = (
+            hexstrings_batch_file = (
+                f"{DATA_MOUNT_PATH}/generated/batches/batch_{batch_id}.hs"
+            )
+            simulator_output_file = (
                 f"{DATA_MOUNT_PATH}/outputs/tmp/qft_n8_k2_batch_{batch_id}.hsv"
             )
             batch_arguments.append(
@@ -58,9 +60,9 @@ def feynman():
                     "-i",
                     f"{DATA_MOUNT_PATH}/generated/statevectors/ket0_size1.hsv",
                     "-b",
-                    batch_file,
+                    hexstrings_batch_file,
                     "-o",
-                    output_file,
+                    simulator_output_file,
                     "-t",
                     "0.0",
                     "-v",
@@ -68,33 +70,37 @@ def feynman():
                 ]
             )
 
-        print(
-            f"Prepared {num_batches} batch pod argument lists from "
-            f"{output_hexstrings_filename}."
-        )
+        print(f"Prepared {num_batches} simulation argument lists from batch files.")
         return batch_arguments
 
-    @task()
-    def concatenate() -> str:
-        # Real implementation should concatenate the batch output files on shared storage.
-        print("Concatenation succeeded.")
-        return f"{DATA_MOUNT_PATH}/outputs/tmp/qft_n8_k2_all_batches.hsv"
-
-    @task()
-    def postprocessing(concatenated_output_file: str) -> bool:
-        # Real implementation can compute observables, plots, and summaries.
-        print(f"Post-processing succeeded for {concatenated_output_file}.")
-        return True
-
-    batch_arguments = split_output_into_batches(
-        f"{DATA_MOUNT_PATH}/generated/hexstring_sets/"
-        "nrhex10_size1_from0x0_to0xA.hs"
+    split_hexstrings = KubernetesPodOperator(
+        task_id="split_hexstrings",
+        name="split-hexstrings",
+        image=SPLIT_IMAGE,
+        image_pull_policy="Never",
+        config_file=KUBECONFIG,
+        get_logs=True,
+        on_finish_action="delete_pod",
+        volume_mounts=[DATA_VOLUME_MOUNT],
+        volumes=[DATA_VOLUME],
+        arguments=[
+            "-h",
+            HEXSTRINGS_FILE,
+            "-o",
+            f"{DATA_MOUNT_PATH}/generated/batches",
+            "-n",
+            "2",
+            "-v",
+            "1",
+        ],
     )
+
+    batch_arguments = build_batch_arguments(NUM_BATCHES)
 
     simulate_batches = KubernetesPodOperator.partial(
         task_id="simulate_batch",
         name="simulate-batch",
-        image="feynman:latest",
+        image=SIMULATE_IMAGE,
         image_pull_policy="Never",
         config_file=KUBECONFIG,
         get_logs=True,
@@ -103,10 +109,38 @@ def feynman():
         volumes=[DATA_VOLUME],
     ).expand(arguments=batch_arguments)
 
-    concatenated_output_file = concatenate()
-    simulate_batches >> concatenated_output_file
+    concatenate_batches = KubernetesPodOperator(
+        task_id="concatenate_batches",
+        name="concatenate-batches",
+        image=CONCAT_IMAGE,
+        image_pull_policy="Never",
+        config_file=KUBECONFIG,
+        get_logs=True,
+        on_finish_action="delete_pod",
+        volume_mounts=[DATA_VOLUME_MOUNT],
+        volumes=[DATA_VOLUME],
+        arguments=[
+            "-i",
+            f"{DATA_MOUNT_PATH}/outputs/tmp",
+            "-o",
+            f"{DATA_MOUNT_PATH}/outputs/tmp/qft_n8_k2_all_batches.hsv",
+            "-v",
+            "1",
+        ],
+    )
 
-    postprocessing(concatenated_output_file)
+    @task()
+    def postprocessing() -> bool:
+        merged_simulator_output_file = (
+            f"{DATA_MOUNT_PATH}/outputs/tmp/qft_n8_k2_all_batches.hsv"
+        )
+        print(f"Post-processing succeeded for {merged_simulator_output_file}.")
+        return True
+
+    split_hexstrings >> batch_arguments
+    batch_arguments >> simulate_batches
+    simulate_batches >> concatenate_batches
+    concatenate_batches >> postprocessing()
 
 
 feynman()

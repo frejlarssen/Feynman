@@ -65,6 +65,16 @@ set_target_properties(
   cloud_task PROPERTIES OUTPUT_NAME cloud_task.x
 )
 
+add_feynman_target_nompi(cloud_split_batches apps/cloud_split_batches.cpp)
+set_target_properties(
+  cloud_split_batches PROPERTIES OUTPUT_NAME cloud_split_batches.x
+)
+
+add_feynman_target_nompi(cloud_concat_batches apps/cloud_concat_batches.cpp)
+set_target_properties(
+  cloud_concat_batches PROPERTIES OUTPUT_NAME cloud_concat_batches.x
+)
+
 if(BUILD_MPI_TARGETS)
   add_feynman_target(sv_prefetcher_mpi_subsetbitstrings apps/sv_prefetcher.cpp)
   target_compile_definitions(
