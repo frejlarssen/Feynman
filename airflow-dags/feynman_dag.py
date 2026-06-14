@@ -1,6 +1,28 @@
 import pendulum
+from kubernetes.client import models as k8s
 
-from airflow.sdk import dag, task, task_group
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+from airflow.sdk import dag, task
+
+
+KUBECONFIG = "/home/frej/.kube/config"
+NAMESPACE = "default"
+DATA_MOUNT_PATH = "/data"
+
+DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
+    name="feynman-data",
+    mount_path=DATA_MOUNT_PATH,
+)
+
+DATA_VOLUME = k8s.V1Volume(
+    name="feynman-data",
+    host_path=k8s.V1HostPathVolumeSource(
+        path=DATA_MOUNT_PATH,
+        type="Directory",
+    ),
+)
+
+
 @dag(
     schedule=None,
     start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
@@ -10,74 +32,84 @@ from airflow.sdk import dag, task, task_group
 def feynman():
     """
     ### Feynman DAG
-    The DAG of the Feynman simulator
+    Orchestrates batch simulation with Airflow TaskFlow and one Kubernetes pod
+    per batch.
     """
 
     @task()
-    def split_output_into_batches(output_hexstrings_filename: str):
+    def split_output_into_batches(output_hexstrings_filename: str) -> list[list[str]]:
         """
         #### Split into batches
-        Read output hexstrings and split them into batches.
-        The batches are labeled `batch_i.hs`, where i is the number of the batch.
+        Placeholder for splitting the output hexstrings file and returning one
+        simulator argument list per batch.
         """
 
-        # Should we do this right here in python or have a Kubernates pod do it?
-        # Read output_hexstrings_filename
-        # Write batches to the same shared filesystem
+        num_batches = 5
+        batch_arguments = []
 
-        num_batches = 5 #Placeholder
-        batch_ids = list(range(num_batches))
-        print(f"Split resulted in {num_batches=}. Returning batch ids.")
-        return batch_ids
+        for batch_id in range(num_batches):
+            batch_file = f"{DATA_MOUNT_PATH}/generated/batches/batch_{batch_id}.hs"
+            output_file = (
+                f"{DATA_MOUNT_PATH}/outputs/tmp/qft_n8_k2_batch_{batch_id}.hsv"
+            )
+            batch_arguments.append(
+                [
+                    "-c",
+                    f"{DATA_MOUNT_PATH}/generated/circuits/qft/qft_n8_k2.qasm",
+                    "-i",
+                    f"{DATA_MOUNT_PATH}/generated/statevectors/ket0_size1.hsv",
+                    "-b",
+                    batch_file,
+                    "-o",
+                    output_file,
+                    "-t",
+                    "0.0",
+                    "-v",
+                    "1",
+                ]
+            )
 
-    @task_group
-    def process_batch(batch_id: int):
-        # Maybe task group is unnecessary. The what we expand on could be one pod.
+        print(
+            f"Prepared {num_batches} batch pod argument lists from "
+            f"{output_hexstrings_filename}."
+        )
+        return batch_arguments
 
-        @task()
-        def simulate(batch_id: int):
-            # Kubernates container with docker image.
-
-            # Reads input hexstrings
-            # Reads and parses circuit
-            # Simulates and sums over all input hexstrings
-
-            # The result is a list of (hexstring, amplitude) paris.
-            # Can this be passed as XComm?
-            # Or better to write one file per batch and then concatenate in postprocessing?
-            result : list[tuple[str, tuple[float, float]]] = []
-
-            status = True # Did it succeed or not? Reduce on these.
-            print(f"Simulation succeeded for {batch_id=}.")
-            return status
-
-        return simulate(batch_id)
-    
     @task()
-    def concatenate(status_values):
-        if all(status_values) == True:
-            # Concatenate output files of the batches
-            print("Concatenation succeeded.")
-            return True
-        else:
-            print("Concatenation failed.")
-            return False
-    
+    def concatenate() -> str:
+        # Real implementation should concatenate the batch output files on shared storage.
+        print("Concatenation succeeded.")
+        return f"{DATA_MOUNT_PATH}/outputs/tmp/qft_n8_k2_all_batches.hsv"
+
     @task()
-    def postprocessing(status):
-        if status == True:
-            # Calculate observables, generate plots, etc. Could be python or C++.
-            print("Post-processing succeeded.")
-            return True
-        else:
-            print("Post-processing failed.")
-            return False
+    def postprocessing(concatenated_output_file: str) -> bool:
+        # Real implementation can compute observables, plots, and summaries.
+        print(f"Post-processing succeeded for {concatenated_output_file}.")
+        return True
 
-    batch_ids = split_output_into_batches("output_hexstrings.hs")
+    batch_arguments = split_output_into_batches(
+        f"{DATA_MOUNT_PATH}/generated/hexstring_sets/"
+        "nrhex10_size1_from0x0_to0xA.hs"
+    )
 
-    status_values = process_batch.expand(batch_id = batch_ids)
+    simulate_batches = KubernetesPodOperator.partial(
+        task_id="simulate_batch",
+        name="simulate-batch",
+        namespace=NAMESPACE,
+        image="feynman:latest",
+        image_pull_policy="IfNotPresent",
+        in_cluster=False,
+        config_file=KUBECONFIG,
+        get_logs=True,
+        on_finish_action="delete_pod",
+        volume_mounts=[DATA_VOLUME_MOUNT],
+        volumes=[DATA_VOLUME],
+    ).expand(arguments=batch_arguments)
 
-    status = concatenate(status_values)
-    postprocessing(status)
+    concatenated_output_file = concatenate()
+    simulate_batches >> concatenated_output_file
+
+    postprocessing(concatenated_output_file)
+
 
 feynman()

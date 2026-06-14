@@ -325,6 +325,7 @@ int main(int argc, char *argv[]) {
     run(opts);
   } catch (const std::exception &e) {
     cerr << "Exception in run() function: " << e.what() << '\n';
+    return 1;
   }
 
   return 0;

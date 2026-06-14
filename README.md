@@ -115,3 +115,14 @@ k3d image import feynman:latest -c feynman-cluster
 kubectl apply -f job.yaml
 ```
 
+### Airflow
+
+When airflow is installed:
+
+```bash
+pip install apache-airflow-providers-cncf-kubernetes
+bash copy_dags.sh
+airflow standalone
+```
+
+Choose the `feynman_dag` and trigger it.
