@@ -6,7 +6,6 @@ from airflow.sdk import dag, task
 
 
 KUBECONFIG = "/home/frej/.kube/config"
-NAMESPACE = "default"
 DATA_MOUNT_PATH = "/data"
 
 DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
@@ -95,10 +94,8 @@ def feynman():
     simulate_batches = KubernetesPodOperator.partial(
         task_id="simulate_batch",
         name="simulate-batch",
-        namespace=NAMESPACE,
         image="feynman:latest",
-        image_pull_policy="IfNotPresent",
-        in_cluster=False,
+        image_pull_policy="Never",
         config_file=KUBECONFIG,
         get_logs=True,
         on_finish_action="delete_pod",
