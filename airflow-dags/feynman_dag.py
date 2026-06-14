@@ -7,6 +7,7 @@ from airflow.sdk import dag, task
 
 KUBECONFIG = "/home/frej/.kube/config"
 DATA_MOUNT_PATH = "/data"
+DATA_PVC_NAME = "feynman-data-pvc"
 
 DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
     name="feynman-data",
@@ -15,9 +16,8 @@ DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
 
 DATA_VOLUME = k8s.V1Volume(
     name="feynman-data",
-    host_path=k8s.V1HostPathVolumeSource(
-        path=DATA_MOUNT_PATH,
-        type="Directory",
+    persistent_volume_claim=k8s.V1PersistentVolumeClaimVolumeSource(
+        claim_name=DATA_PVC_NAME,
     ),
 )
 

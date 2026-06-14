@@ -39,7 +39,6 @@ docker run --mount type=bind,src=./data,dst=/data feynman:latest /cloud_task.x \
 ```bash
 k3d cluster create feynman-cluster --volume "$PWD/data:/data@all"
 k3d image import feynman:latest -c feynman-cluster
-kubectl apply -f job.yaml
 ```
 
 ### Airflow
@@ -49,6 +48,7 @@ When airflow is installed:
 ```bash
 pip install apache-airflow-providers-cncf-kubernetes
 bash copy_dags.sh
+kubectl apply -f storage.yaml
 airflow standalone
 ```
 
