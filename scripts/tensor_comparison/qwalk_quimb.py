@@ -96,6 +96,13 @@ def _complex_to_token(value: complex) -> str:
     return f"{value.real:.18e}+{value.imag:.18e}i"
 
 
+def _as_complex_scalar(value: Any) -> complex:
+    item = getattr(value, "item", None)
+    if callable(item):
+        value = item()
+    return complex(value)
+
+
 def _write_hsv(path: Path, values: list[int], amps: list[complex]) -> None:
     width = max(2, max((v.bit_length() + 3) // 4 for v in values) if values else 2)
     with path.open("w", encoding="utf-8") as fh:
@@ -251,7 +258,7 @@ def _compute_quimb_amplitudes(
         if rehearse:
             quimb_circ.amplitude(bitstring, rehearse=True, optimize=optimize)
         amp = quimb_circ.amplitude(bitstring, optimize=optimize)
-        amps.append(complex(amp) * input_amplitude)
+        amps.append(_as_complex_scalar(amp) * input_amplitude)
     amplitude_s = time.perf_counter() - t2
 
     meta = {
