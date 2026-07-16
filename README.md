@@ -12,7 +12,7 @@ micromamba activate feynman
 Generate input artifacts:
 
 ```bash
-python3 generators/generate_bulk.py
+python generators/generate_bulk.py
 ```
 
 Build release for experiments:
