@@ -17,4 +17,9 @@ dependencies:
   - python=3.11
   - numpy
   - matplotlib
+  - ipykernel
   - qiskit
+  - qiskit-aer
+  # Tensor-network comparison
+  - networkx
+  - quimb
