@@ -5,20 +5,20 @@ The output of the experiment is found in `outputs/experiments/`.
 Run all experiment configs (perf + validation):
 
 ```bash
-python3 scripts/run_pipeline.py run-all-experiments --scope all
+python scripts/run_pipeline.py run-all-experiments --scope all
 ```
 
 Minimal plot-only:
 
 ```bash
-python3 scripts/run_pipeline.py plot perf-sweep --latest \
+python scripts/run_pipeline.py plot perf-sweep --latest \
   --y-column total_full_s --mode meanstd
 ```
 
 Regenerate all existing plots after style changes:
 
 ```bash
-python3 scripts/regenerate_all_plots.py
+python scripts/regenerate_all_plots.py
 ```
 
 `--latest` can be used in plot/replot flows to auto-pick a recent run directory.
