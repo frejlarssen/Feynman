@@ -69,7 +69,15 @@ def _log(message: str, *, verbosity: int, level: int = 1) -> None:
 
 
 def _rss_mb() -> float:
-    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return _usage_rss_mb(resource.getrusage(resource.RUSAGE_SELF))
+
+
+def _children_rss_mb() -> float:
+    return _usage_rss_mb(resource.getrusage(resource.RUSAGE_CHILDREN))
+
+
+def _usage_rss_mb(usage: resource.struct_rusage) -> float:
+    rss = usage.ru_maxrss
     if sys.platform == "darwin":
         return rss / (1024 * 1024)
     return rss / 1024
@@ -204,7 +212,7 @@ def _run_feynman(
     input_statevector: Path,
     output_bitstrings: Path,
     output_file: Path,
-) -> tuple[float, float | None, str, str]:
+) -> tuple[float, float | None, float, str, str]:
     binary = _resolve_path(cfg["binary"], repo_root)
     if not binary.exists():
         raise FileNotFoundError(f"Feynman binary not found: {binary}")
@@ -234,9 +242,10 @@ def _run_feynman(
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
     walltime_s = time.perf_counter() - t0
+    peak_rss_mb = _children_rss_mb()
     if proc.returncode != 0:
         raise FeynmanRunError(cmd, proc.returncode, proc.stdout, proc.stderr)
-    return walltime_s, _parse_feynman_internal_runtime(proc.stdout), proc.stdout, proc.stderr
+    return walltime_s, _parse_feynman_internal_runtime(proc.stdout), peak_rss_mb, proc.stdout, proc.stderr
 
 
 def _single_input_basis_state(input_statevector: Path) -> tuple[int, complex]:
@@ -585,6 +594,46 @@ def main(argv: list[str] | None = None) -> int:
             ),
             encoding="utf-8",
         )
+        feynman_metrics: dict[str, Any] = {
+            "enabled": bool(cfg["run_feynman"]),
+            "walltime_s": None,
+            "internal_total_s": None,
+            "peak_rss_mb": None,
+        }
+        if cfg["run_feynman"]:
+            feynman_output = run_dir / "feynman_output.hsv"
+            _log("Running Feynman binary after quimb safety stop", verbosity=verbosity)
+            try:
+                wall_s, internal_s, peak_rss_mb, stdout, stderr = _run_feynman(
+                    cfg=cfg,
+                    repo_root=repo_root,
+                    circuit=circuit,
+                    input_statevector=input_statevector,
+                    output_bitstrings=output_bitstrings,
+                    output_file=feynman_output,
+                )
+            except FeynmanRunError as feynman_err:
+                (run_dir / "feynman_stdout.log").write_text(feynman_err.stdout, encoding="utf-8")
+                (run_dir / "feynman_stderr.log").write_text(feynman_err.stderr, encoding="utf-8")
+                (run_dir / "feynman_command.json").write_text(
+                    json.dumps(
+                        {"returncode": feynman_err.returncode, "cmd": feynman_err.cmd},
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                raise
+            _log(f"Feynman run done: walltime_s={wall_s:.3f}", verbosity=verbosity)
+            (run_dir / "feynman_stdout.log").write_text(stdout, encoding="utf-8")
+            (run_dir / "feynman_stderr.log").write_text(stderr, encoding="utf-8")
+            feynman_metrics.update(
+                {
+                    "walltime_s": wall_s,
+                    "internal_total_s": internal_s,
+                    "peak_rss_mb": peak_rss_mb,
+                    "output": str(feynman_output),
+                }
+            )
         summary_path = run_dir / "summary.json"
         summary = {
             "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -621,11 +670,7 @@ def main(argv: list[str] | None = None) -> int:
                 "process_start_peak_rss_mb": process_start_peak_rss_mb,
                 "quimb_phase_peak_rss_mb": _rss_mb(),
                 "process_peak_rss_mb": _rss_mb(),
-                "feynman": {
-                    "enabled": bool(cfg["run_feynman"]),
-                    "walltime_s": None,
-                    "internal_total_s": None,
-                },
+                "feynman": feynman_metrics,
             },
         }
         summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -643,12 +688,13 @@ def main(argv: list[str] | None = None) -> int:
         "enabled": bool(cfg["run_feynman"]),
         "walltime_s": None,
         "internal_total_s": None,
+        "peak_rss_mb": None,
     }
     if cfg["run_feynman"]:
         feynman_output = run_dir / "feynman_output.hsv"
         _log("Running Feynman binary", verbosity=verbosity)
         try:
-            wall_s, internal_s, stdout, stderr = _run_feynman(
+            wall_s, internal_s, peak_rss_mb, stdout, stderr = _run_feynman(
                 cfg=cfg,
                 repo_root=repo_root,
                 circuit=circuit,
@@ -672,6 +718,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "walltime_s": wall_s,
                 "internal_total_s": internal_s,
+                "peak_rss_mb": peak_rss_mb,
                 "output": str(feynman_output),
             }
         )

@@ -58,6 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_sweep_flags(qaoa)
     qaoa.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
 
+    qwalk_quimb_sweep = sub.add_parser("qwalk-quimb-sweep", help="Run QWalk Feynman vs quimb qubit sweep.")
+    _add_common_sweep_flags(qwalk_quimb_sweep)
+    qwalk_quimb_sweep.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
+
     run_all = sub.add_parser(
         "run-all-experiments",
         help="Run all perf+validation configs under scripts/experiments.",
@@ -646,6 +650,9 @@ def _detect_experiment_mode(config_path: Path) -> str:
         raise ValueError(f"Config must be a JSON object: {config_path}")
     config_type = config_path.parent.name
     if config_type == "perf":
+        stem = config_path.stem.lower()
+        if "qwalk_quimb" in stem or str(payload.get("backend", "")).lower() == "quimb":
+            return "qwalk-quimb-sweep"
         # QAOA pruning configs use thresholds + base_config.
         if "thresholds" in payload and "base_config" in payload:
             return "qaoa-pruning"
@@ -679,6 +686,8 @@ def _build_run_all_command(script_path: Path, cfg: Path, mode: str) -> list[str]
         return [sys.executable, str(script_path), "perf-sweep", "--config", str(cfg)]
     if mode == "qaoa-pruning":
         return [sys.executable, str(script_path), "qaoa-pruning", "--config", str(cfg)]
+    if mode == "qwalk-quimb-sweep":
+        return [sys.executable, str(script_path), "qwalk-quimb-sweep", "--config", str(cfg)]
     if mode == "validation:qaoa-qiskit":
         return [sys.executable, str(script_path), "validation", "qaoa-qiskit", "--config", str(cfg)]
     if mode == "validation:qwalk-quimb":
@@ -741,6 +750,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_plot:
             sweep_argv.append("--no-plot")
         return qaoa_pruning_main(entry_script=Path(__file__).resolve(), argv=sweep_argv)
+    if args.command == "qwalk-quimb-sweep":
+        from tensor_comparison.qwalk_quimb_sweep import main as qwalk_quimb_sweep_main
+
+        sweep_argv = _sweep_argv(args)
+        if args.no_plot:
+            sweep_argv.append("--no-plot")
+        return qwalk_quimb_sweep_main(sweep_argv)
     if args.command == "run-all-experiments":
         return _run_all_experiments(args)
     if args.command == "validation":

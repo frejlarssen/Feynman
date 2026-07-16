@@ -133,6 +133,18 @@ Plot meaning: blue is `total_full_s` (left axis), red is
 
 ## Validation Workflows
 
+### QWalk qubit sweep vs quimb
+
+```bash
+python scripts/run_pipeline.py qwalk-quimb-sweep \
+  --config scripts/experiments/exploratory/perf/qwalk_quimb_qubit_sweep.json
+```
+
+This benchmark runs the same fixed-iteration quantum-walk family while varying
+qubit count. Each point runs the Feynman binary and exact quimb selected
+amplitudes in a fresh subprocess, records runtime and peak RSS, and writes
+time, memory, and transpiled-op-count plots from the sweep summary.
+
 ### QWalk vs quimb
 
 ```bash

@@ -1,0 +1,40 @@
+{
+  "experiment_name": "qwalk_quimb_qubit_sweep",
+  "repo_root": ".",
+  "output_root": "data/outputs/experiments",
+  "qubits": [8, 12, 15, 16],
+  "repeat": 1,
+  "continue_on_error": true,
+  "timeout_seconds": 600,
+  "qwalk": {
+    "iterations": 4
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 8
+  },
+  "validation": {
+    "qiskit_optimization_level": 1,
+    "quimb_max_transpiled_ops": 20000,
+    "quimb_optimize": "greedy",
+    "quimb_rehearse": false,
+    "quimb_simplify_sequence": "ADCRS",
+    "quimb_simplify_atol": 1e-12,
+    "quimb_simplify_equalize_norms": false,
+    "run_feynman": true,
+    "binary": "build-release/sv_prefetcher_subset_mpi.x",
+    "mpirun": "mpirun",
+    "ranks": 1,
+    "batch_size": 32,
+    "fraction": 1.0,
+    "threshold": 0.0,
+    "verbosity": 1
+  },
+  "plotting": {
+    "title": "Quantum Walk: Feynman vs quimb"
+  },
+  "notes": "Fixed-iteration quantum walk sweep over qubit count."
+}
