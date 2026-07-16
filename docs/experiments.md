@@ -131,6 +131,33 @@ python3 scripts/run_pipeline.py plot qaoa-pruning \
 Plot meaning: blue is `total_full_s` (left axis), red is
 `fidelity_to_reference` (right axis).
 
+## PauliPropagation Comparison
+
+The PauliPropagation comparison uses a Julia project in `pauli-comparison/`.
+Julia scripts run PauliPropagation and write JSON artifacts. The existing
+Python pipeline handles orchestration, comparison with Feynman outputs, and
+plotting through matplotlib.
+
+First-time Julia package setup:
+
+```bash
+julia --project=pauli-comparison -e 'using Pkg; Pkg.instantiate()'
+```
+
+Smoke benchmark:
+
+```bash
+julia --project=pauli-comparison pauli-comparison/run_pauli_smoke.jl \
+  --nqubits 32 \
+  --pauli Z \
+  --index 16 \
+  --repeat 1000 \
+  --output data/outputs/pauli-comparison/smoke.json
+```
+
+Commit `pauli-comparison/Manifest.toml` once generated if a run should be
+exactly reproducible.
+
 ## Validation Workflows
 
 ### QAOA vs Qiskit

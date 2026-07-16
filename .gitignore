@@ -51,5 +51,8 @@ build-release/
 
 data/outputs/
 
+# Local Julia package cache for sandboxed/offline checks
+.julia-depot/
+
 # Generated data
 data/generated/
