@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import builtins
 import csv
 import datetime as dt
 import json
 import re
+import resource
 import subprocess
 import sys
 import time
@@ -66,6 +68,47 @@ def _log(message: str, *, verbosity: int, level: int = 1) -> None:
         print(f"[{stamp}] {message}", flush=True)
 
 
+def _rss_mb() -> float:
+    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        return rss / (1024 * 1024)
+    return rss / 1024
+
+
+def _tn_stats(tn: Any) -> str:
+    num_tensors = getattr(tn, "num_tensors", "?")
+    num_indices = getattr(tn, "num_indices", "?")
+    exponent = getattr(tn, "exponent", 0.0)
+    return f"tensors={num_tensors}, indices={num_indices}, exponent={exponent}, maxrss_mb={_rss_mb():.1f}"
+
+
+def _tree_stats(tree: Any) -> str:
+    parts = []
+    for label, method_name in (
+        ("width", "contraction_width"),
+        ("cost_log10", "contraction_cost"),
+    ):
+        method = getattr(tree, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            value = method()
+        except Exception:
+            continue
+        if label == "cost_log10":
+            try:
+                value = f"{max(float(value), 1.0):.3e}"
+            except (TypeError, ValueError):
+                pass
+        parts.append(f"{label}={value}")
+    return ", ".join(parts) if parts else "tree_stats=unavailable"
+
+
+def _log_elapsed(message: str, start: float, *, verbosity: int, tn: Any | None = None) -> None:
+    stats = f", {_tn_stats(tn)}" if tn is not None else f", maxrss_mb={_rss_mb():.1f}"
+    _log(f"{message}: elapsed_s={time.perf_counter() - start:.3f}{stats}", verbosity=verbosity)
+
+
 def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     raw = _load_json(args.config.resolve())
 
@@ -80,6 +123,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "input_statevector": raw.get("input_statevector"),
         "output_bitstrings": raw.get("output_bitstrings"),
         "qiskit_optimization_level": int(raw.get("qiskit_optimization_level", 1)),
+        "quimb_max_transpiled_ops": raw.get("quimb_max_transpiled_ops"),
         "quimb_optimize": str(raw.get("quimb_optimize", "greedy")),
         "quimb_rehearse": bool(raw.get("quimb_rehearse", False)),
         "quimb_simplify_sequence": raw.get("quimb_simplify_sequence", "ADCRS"),
@@ -131,6 +175,16 @@ class FeynmanRunError(RuntimeError):
         self.stdout = stdout
         self.stderr = stderr
         super().__init__(f"Feynman command failed with exit code {returncode}: {' '.join(cmd)}")
+
+
+class QuimbSafetyLimitError(RuntimeError):
+    def __init__(self, *, transpiled_ops: int, max_transpiled_ops: int):
+        self.transpiled_ops = transpiled_ops
+        self.max_transpiled_ops = max_transpiled_ops
+        super().__init__(
+            "Refusing quimb run because transpiled circuit is above the configured safety limit: "
+            f"transpiled_ops={transpiled_ops}, quimb_max_transpiled_ops={max_transpiled_ops}."
+        )
 
 
 def _run_feynman(
@@ -247,6 +301,53 @@ def _qiskit_to_quimb_circuit(qc):
     return circ
 
 
+def _profiled_quimb_amplitude(
+    quimb_circ: Any,
+    bitstring: str,
+    *,
+    optimize: str,
+    simplify_sequence: str,
+    simplify_atol: float,
+    simplify_equalize_norms: bool,
+    verbosity: int,
+) -> Any:
+    fs_opts = {
+        "seq": simplify_sequence,
+        "atol": simplify_atol,
+        "equalize_norms": simplify_equalize_norms,
+    }
+
+    start = time.perf_counter()
+    quimb_circ._maybe_init_storage()
+    _log_elapsed("  quimb storage ready", start, verbosity=verbosity)
+
+    start = time.perf_counter()
+    psi_b = quimb_circ.get_psi_simplified(**fs_opts)
+    _log_elapsed("  get_psi_simplified done", start, verbosity=verbosity, tn=psi_b)
+
+    start = time.perf_counter()
+    for site, value in enumerate(bitstring):
+        psi_b.isel_({psi_b.site_ind(site): value})
+    _log_elapsed("  bitstring projection done", start, verbosity=verbosity, tn=psi_b)
+
+    start = time.perf_counter()
+    psi_b.full_simplify_(**fs_opts)
+    _log_elapsed("  final full_simplify done", start, verbosity=verbosity, tn=psi_b)
+
+    start = time.perf_counter()
+    tree = psi_b.contraction_tree(output_inds=(), optimize=optimize)
+    _log(
+        f"  contraction tree ready: elapsed_s={time.perf_counter() - start:.3f}, "
+        f"{_tree_stats(tree)}, maxrss_mb={_rss_mb():.1f}",
+        verbosity=verbosity,
+    )
+
+    start = time.perf_counter()
+    amp = psi_b.contract(builtins.all, output_inds=(), optimize=tree)
+    _log_elapsed("  contraction done", start, verbosity=verbosity)
+    return amp
+
+
 def _compute_quimb_amplitudes(
     *,
     circuit: Path,
@@ -255,6 +356,7 @@ def _compute_quimb_amplitudes(
     input_amplitude: complex,
     optimization_level: int,
     optimize: str,
+    max_transpiled_ops: int | None,
     rehearse: bool,
     simplify_sequence: str,
     simplify_atol: float,
@@ -280,11 +382,17 @@ def _compute_quimb_amplitudes(
     tqc = transpile_for_quimb(qc, optimization_level=optimization_level)
     transpile_s = time.perf_counter() - t0
     gate_counts = dict(tqc.count_ops())
+    transpiled_ops = tqc.size()
     _log(
-        f"Transpile done: transpiled_ops={tqc.size()}, gate_counts={gate_counts}, "
+        f"Transpile done: transpiled_ops={transpiled_ops}, gate_counts={gate_counts}, "
         f"elapsed_s={transpile_s:.3f}",
         verbosity=verbosity,
     )
+    if max_transpiled_ops is not None and transpiled_ops > max_transpiled_ops:
+        raise QuimbSafetyLimitError(
+            transpiled_ops=transpiled_ops,
+            max_transpiled_ops=max_transpiled_ops,
+        )
 
     _log("Building quimb circuit from transpiled Qiskit circuit", verbosity=verbosity)
     t1 = time.perf_counter()
@@ -314,7 +422,15 @@ def _compute_quimb_amplitudes(
         )
         if rehearse:
             quimb_circ.amplitude(bitstring, rehearse=True, **amplitude_opts)
-        amp = quimb_circ.amplitude(bitstring, **amplitude_opts)
+        amp = _profiled_quimb_amplitude(
+            quimb_circ,
+            bitstring,
+            optimize=optimize,
+            simplify_sequence=simplify_sequence,
+            simplify_atol=simplify_atol,
+            simplify_equalize_norms=simplify_equalize_norms,
+            verbosity=verbosity,
+        )
         amp_value = _as_complex_scalar(amp) * input_amplitude
         amps.append(amp_value)
         _log(
@@ -329,7 +445,7 @@ def _compute_quimb_amplitudes(
         "declared_qubits": declared_n,
         "simulator_qubits": sim_n,
         "original_qiskit_ops": qc.size(),
-        "transpiled_qiskit_ops": tqc.size(),
+        "transpiled_qiskit_ops": transpiled_ops,
         "transpiled_gate_counts": gate_counts,
         "quimb_amplitude_options": amplitude_opts,
     }
@@ -425,19 +541,40 @@ def main(argv: list[str] | None = None) -> int:
         verbosity=verbosity,
     )
 
-    quimb_amps, quimb_meta, transpile_s, build_s, amplitude_s = _compute_quimb_amplitudes(
-        circuit=circuit,
-        output_indices=output_indices,
-        input_index=input_index,
-        input_amplitude=input_amplitude,
-        optimization_level=int(cfg["qiskit_optimization_level"]),
-        optimize=str(cfg["quimb_optimize"]),
-        rehearse=bool(cfg["quimb_rehearse"]),
-        simplify_sequence=str(cfg["quimb_simplify_sequence"]),
-        simplify_atol=float(cfg["quimb_simplify_atol"]),
-        simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
-        verbosity=verbosity,
-    )
+    try:
+        quimb_amps, quimb_meta, transpile_s, build_s, amplitude_s = _compute_quimb_amplitudes(
+            circuit=circuit,
+            output_indices=output_indices,
+            input_index=input_index,
+            input_amplitude=input_amplitude,
+            optimization_level=int(cfg["qiskit_optimization_level"]),
+            optimize=str(cfg["quimb_optimize"]),
+            max_transpiled_ops=(
+                None if cfg["quimb_max_transpiled_ops"] is None else int(cfg["quimb_max_transpiled_ops"])
+            ),
+            rehearse=bool(cfg["quimb_rehearse"]),
+            simplify_sequence=str(cfg["quimb_simplify_sequence"]),
+            simplify_atol=float(cfg["quimb_simplify_atol"]),
+            simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
+            verbosity=verbosity,
+        )
+    except QuimbSafetyLimitError as err:
+        safety_path = run_dir / "quimb_safety_limit.json"
+        safety_path.write_text(
+            json.dumps(
+                {
+                    "error": str(err),
+                    "transpiled_ops": err.transpiled_ops,
+                    "quimb_max_transpiled_ops": err.max_transpiled_ops,
+                    "config_file": str(args.config.resolve()),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        _log(str(err), verbosity=verbosity)
+        _log(f"Wrote safety limit report: {safety_path}", verbosity=verbosity)
+        return 2
     quimb_output = run_dir / "quimb_output.hsv"
     _write_hsv(quimb_output, output_indices, quimb_amps)
     _log(f"Wrote quimb output: {quimb_output}", verbosity=verbosity)

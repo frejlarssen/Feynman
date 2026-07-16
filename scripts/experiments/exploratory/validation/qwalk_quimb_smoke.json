@@ -4,7 +4,7 @@
   "output_root": "data/outputs/validation",
   "circuit": {
     "generator": "qwalk",
-    "n": 16,
+    "n": 15,
     "it": 4
   },
   "input_statevector": {
@@ -17,6 +17,7 @@
     "count": 8
   },
   "qiskit_optimization_level": 1,
+  "quimb_max_transpiled_ops": 20000,
   "quimb_optimize": "greedy",
   "quimb_rehearse": false,
   "quimb_simplify_sequence": "ADCRS",
