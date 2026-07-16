@@ -178,9 +178,18 @@ class FeynmanRunError(RuntimeError):
 
 
 class QuimbSafetyLimitError(RuntimeError):
-    def __init__(self, *, transpiled_ops: int, max_transpiled_ops: int):
+    def __init__(
+        self,
+        *,
+        transpiled_ops: int,
+        max_transpiled_ops: int,
+        gate_counts: dict[str, int],
+        transpile_s: float,
+    ):
         self.transpiled_ops = transpiled_ops
         self.max_transpiled_ops = max_transpiled_ops
+        self.gate_counts = gate_counts
+        self.transpile_s = transpile_s
         super().__init__(
             "Refusing quimb run because transpiled circuit is above the configured safety limit: "
             f"transpiled_ops={transpiled_ops}, quimb_max_transpiled_ops={max_transpiled_ops}."
@@ -392,6 +401,8 @@ def _compute_quimb_amplitudes(
         raise QuimbSafetyLimitError(
             transpiled_ops=transpiled_ops,
             max_transpiled_ops=max_transpiled_ops,
+            gate_counts=gate_counts,
+            transpile_s=transpile_s,
         )
 
     _log("Building quimb circuit from transpiled Qiskit circuit", verbosity=verbosity)
@@ -527,6 +538,7 @@ def main(argv: list[str] | None = None) -> int:
     output_root = _resolve_path(cfg["output_root"], repo_root).resolve()
     run_dir = output_root / f"{_utc_stamp()}_{_sanitize(str(cfg['experiment_name']))}"
     run_dir.mkdir(parents=True, exist_ok=False)
+    process_start_peak_rss_mb = _rss_mb()
     _log(f"Run directory: {run_dir}", verbosity=verbosity)
 
     _log("Materializing circuit, input statevector, and output bitstrings", verbosity=verbosity)
@@ -565,6 +577,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "error": str(err),
                     "transpiled_ops": err.transpiled_ops,
+                    "transpiled_gate_counts": err.gate_counts,
                     "quimb_max_transpiled_ops": err.max_transpiled_ops,
                     "config_file": str(args.config.resolve()),
                 },
@@ -572,12 +585,58 @@ def main(argv: list[str] | None = None) -> int:
             ),
             encoding="utf-8",
         )
+        summary_path = run_dir / "summary.json"
+        summary = {
+            "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "experiment_name": cfg["experiment_name"],
+            "notes": cfg["notes"],
+            "status": "quimb_safety_limit",
+            "config": cfg,
+            "config_file": str(args.config.resolve()),
+            "paths": {
+                "run_dir": str(run_dir),
+                "circuit": str(circuit),
+                "input_statevector": str(input_statevector),
+                "output_bitstrings": str(output_bitstrings),
+                "quimb_safety_limit": str(safety_path),
+            },
+            "generated": {
+                "circuit": circuit_generated,
+                "input_statevector": input_generated,
+                "output_bitstrings": output_generated,
+            },
+            "problem": {
+                "output_count": len(output_indices),
+                "output_size_bytes": output_size_bytes,
+                "input_index": input_index,
+                "input_amplitude": _complex_to_token(input_amplitude),
+                "transpiled_qiskit_ops": err.transpiled_ops,
+                "transpiled_gate_counts": err.gate_counts,
+            },
+            "metrics": {
+                "quimb_transpile_s": err.transpile_s,
+                "quimb_build_s": None,
+                "quimb_amplitude_s": None,
+                "quimb_total_s": err.transpile_s,
+                "process_start_peak_rss_mb": process_start_peak_rss_mb,
+                "quimb_phase_peak_rss_mb": _rss_mb(),
+                "process_peak_rss_mb": _rss_mb(),
+                "feynman": {
+                    "enabled": bool(cfg["run_feynman"]),
+                    "walltime_s": None,
+                    "internal_total_s": None,
+                },
+            },
+        }
+        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
         _log(str(err), verbosity=verbosity)
         _log(f"Wrote safety limit report: {safety_path}", verbosity=verbosity)
+        _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
         return 2
     quimb_output = run_dir / "quimb_output.hsv"
     _write_hsv(quimb_output, output_indices, quimb_amps)
     _log(f"Wrote quimb output: {quimb_output}", verbosity=verbosity)
+    quimb_phase_peak_rss_mb = _rss_mb()
 
     feynman_sparse: dict[int, complex] | None = None
     feynman_metrics: dict[str, Any] = {
@@ -657,6 +716,9 @@ def main(argv: list[str] | None = None) -> int:
             "quimb_build_s": build_s,
             "quimb_amplitude_s": amplitude_s,
             "quimb_total_s": transpile_s + build_s + amplitude_s,
+            "process_start_peak_rss_mb": process_start_peak_rss_mb,
+            "quimb_phase_peak_rss_mb": quimb_phase_peak_rss_mb,
+            "process_peak_rss_mb": _rss_mb(),
             "feynman": feynman_metrics,
             **agreement_metrics,
         },
