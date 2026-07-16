@@ -76,6 +76,9 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "qiskit_optimization_level": int(raw.get("qiskit_optimization_level", 1)),
         "quimb_optimize": str(raw.get("quimb_optimize", "greedy")),
         "quimb_rehearse": bool(raw.get("quimb_rehearse", False)),
+        "quimb_simplify_sequence": raw.get("quimb_simplify_sequence", "ADCRS"),
+        "quimb_simplify_atol": float(raw.get("quimb_simplify_atol", 1e-12)),
+        "quimb_simplify_equalize_norms": bool(raw.get("quimb_simplify_equalize_norms", False)),
         "run_feynman": bool(raw.get("run_feynman", True)),
         "binary": raw.get("binary", "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": raw.get("mpirun", "mpirun"),
@@ -115,6 +118,15 @@ def _parse_feynman_internal_runtime(stdout: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+class FeynmanRunError(RuntimeError):
+    def __init__(self, cmd: list[str], returncode: int, stdout: str, stderr: str):
+        self.cmd = cmd
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        super().__init__(f"Feynman command failed with exit code {returncode}: {' '.join(cmd)}")
+
+
 def _run_feynman(
     *,
     cfg: dict[str, Any],
@@ -151,8 +163,10 @@ def _run_feynman(
         str(int(cfg["verbosity"])),
     ]
     t0 = time.perf_counter()
-    proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=True)
+    proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
     walltime_s = time.perf_counter() - t0
+    if proc.returncode != 0:
+        raise FeynmanRunError(cmd, proc.returncode, proc.stdout, proc.stderr)
     return walltime_s, _parse_feynman_internal_runtime(proc.stdout), proc.stdout, proc.stderr
 
 
@@ -236,6 +250,9 @@ def _compute_quimb_amplitudes(
     optimization_level: int,
     optimize: str,
     rehearse: bool,
+    simplify_sequence: str,
+    simplify_atol: float,
+    simplify_equalize_norms: bool,
 ) -> tuple[list[complex], dict[str, Any], float, float, float]:
     declared_n, instructions = parse_qasm(circuit)
     sim_n = ((declared_n + 7) // 8) * 8
@@ -253,11 +270,17 @@ def _compute_quimb_amplitudes(
 
     amps: list[complex] = []
     t2 = time.perf_counter()
+    amplitude_opts = {
+        "optimize": optimize,
+        "simplify_sequence": simplify_sequence,
+        "simplify_atol": simplify_atol,
+        "simplify_equalize_norms": simplify_equalize_norms,
+    }
     for idx in output_indices:
         bitstring = _index_to_quimb_bitstring(idx, sim_n)
         if rehearse:
-            quimb_circ.amplitude(bitstring, rehearse=True, optimize=optimize)
-        amp = quimb_circ.amplitude(bitstring, optimize=optimize)
+            quimb_circ.amplitude(bitstring, rehearse=True, **amplitude_opts)
+        amp = quimb_circ.amplitude(bitstring, **amplitude_opts)
         amps.append(_as_complex_scalar(amp) * input_amplitude)
     amplitude_s = time.perf_counter() - t2
 
@@ -267,6 +290,7 @@ def _compute_quimb_amplitudes(
         "original_qiskit_ops": qc.size(),
         "transpiled_qiskit_ops": tqc.size(),
         "transpiled_gate_counts": dict(tqc.count_ops()),
+        "quimb_amplitude_options": amplitude_opts,
     }
     return amps, meta, transpile_s, build_s, amplitude_s
 
@@ -360,6 +384,9 @@ def main(argv: list[str] | None = None) -> int:
         optimization_level=int(cfg["qiskit_optimization_level"]),
         optimize=str(cfg["quimb_optimize"]),
         rehearse=bool(cfg["quimb_rehearse"]),
+        simplify_sequence=str(cfg["quimb_simplify_sequence"]),
+        simplify_atol=float(cfg["quimb_simplify_atol"]),
+        simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
     )
     quimb_output = run_dir / "quimb_output.hsv"
     _write_hsv(quimb_output, output_indices, quimb_amps)
@@ -372,14 +399,23 @@ def main(argv: list[str] | None = None) -> int:
     }
     if cfg["run_feynman"]:
         feynman_output = run_dir / "feynman_output.hsv"
-        wall_s, internal_s, stdout, stderr = _run_feynman(
-            cfg=cfg,
-            repo_root=repo_root,
-            circuit=circuit,
-            input_statevector=input_statevector,
-            output_bitstrings=output_bitstrings,
-            output_file=feynman_output,
-        )
+        try:
+            wall_s, internal_s, stdout, stderr = _run_feynman(
+                cfg=cfg,
+                repo_root=repo_root,
+                circuit=circuit,
+                input_statevector=input_statevector,
+                output_bitstrings=output_bitstrings,
+                output_file=feynman_output,
+            )
+        except FeynmanRunError as err:
+            (run_dir / "feynman_stdout.log").write_text(err.stdout, encoding="utf-8")
+            (run_dir / "feynman_stderr.log").write_text(err.stderr, encoding="utf-8")
+            (run_dir / "feynman_command.json").write_text(
+                json.dumps({"returncode": err.returncode, "cmd": err.cmd}, indent=2),
+                encoding="utf-8",
+            )
+            raise
         (run_dir / "feynman_stdout.log").write_text(stdout, encoding="utf-8")
         (run_dir / "feynman_stderr.log").write_text(stderr, encoding="utf-8")
         feynman_sparse = parse_hsv_sparse(feynman_output)
