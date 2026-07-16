@@ -54,5 +54,8 @@ data/outputs/
 # Local Julia package cache for sandboxed/offline checks
 .julia-depot/
 
+# Local notebook scratch space
+pauli-comparison/notebooks/
+
 # Generated data
 data/generated/
