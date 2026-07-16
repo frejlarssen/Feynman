@@ -60,6 +60,12 @@ def _resolve_path(path_like: str | Path, repo_root: Path) -> Path:
     return p.resolve() if p.is_absolute() else (repo_root / p).resolve()
 
 
+def _log(message: str, *, verbosity: int, level: int = 1) -> None:
+    if verbosity >= level:
+        stamp = dt.datetime.now().strftime("%H:%M:%S")
+        print(f"[{stamp}] {message}", flush=True)
+
+
 def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     raw = _load_json(args.config.resolve())
 
@@ -253,20 +259,38 @@ def _compute_quimb_amplitudes(
     simplify_sequence: str,
     simplify_atol: float,
     simplify_equalize_norms: bool,
+    verbosity: int,
 ) -> tuple[list[complex], dict[str, Any], float, float, float]:
     declared_n, instructions = parse_qasm(circuit)
     sim_n = ((declared_n + 7) // 8) * 8
     if input_index != 0:
         raise ValueError("quimb Circuit.amplitude evaluates amplitudes from |0...0> input.")
 
+    _log(
+        f"Building Qiskit circuit: declared_qubits={declared_n}, simulator_qubits={sim_n}, "
+        f"instructions={len(instructions)}",
+        verbosity=verbosity,
+    )
     t0 = time.perf_counter()
     qc = build_qiskit_circuit(sim_n, instructions)
+    _log(
+        f"Transpiling for quimb: qiskit_ops={qc.size()}, optimization_level={optimization_level}",
+        verbosity=verbosity,
+    )
     tqc = transpile_for_quimb(qc, optimization_level=optimization_level)
     transpile_s = time.perf_counter() - t0
+    gate_counts = dict(tqc.count_ops())
+    _log(
+        f"Transpile done: transpiled_ops={tqc.size()}, gate_counts={gate_counts}, "
+        f"elapsed_s={transpile_s:.3f}",
+        verbosity=verbosity,
+    )
 
+    _log("Building quimb circuit from transpiled Qiskit circuit", verbosity=verbosity)
     t1 = time.perf_counter()
     quimb_circ = _qiskit_to_quimb_circuit(tqc)
     build_s = time.perf_counter() - t1
+    _log(f"quimb circuit built: elapsed_s={build_s:.3f}", verbosity=verbosity)
 
     amps: list[complex] = []
     t2 = time.perf_counter()
@@ -276,20 +300,37 @@ def _compute_quimb_amplitudes(
         "simplify_atol": simplify_atol,
         "simplify_equalize_norms": simplify_equalize_norms,
     }
-    for idx in output_indices:
+    _log(
+        f"Computing {len(output_indices)} quimb amplitudes: optimize={optimize}, "
+        f"simplify_sequence={simplify_sequence}, equalize_norms={simplify_equalize_norms}",
+        verbosity=verbosity,
+    )
+    for amp_i, idx in enumerate(output_indices, start=1):
         bitstring = _index_to_quimb_bitstring(idx, sim_n)
+        amp_t0 = time.perf_counter()
+        _log(
+            f"quimb amplitude {amp_i}/{len(output_indices)} start: hex=0x{idx:x}, bitstring={bitstring}",
+            verbosity=verbosity,
+        )
         if rehearse:
             quimb_circ.amplitude(bitstring, rehearse=True, **amplitude_opts)
         amp = quimb_circ.amplitude(bitstring, **amplitude_opts)
-        amps.append(_as_complex_scalar(amp) * input_amplitude)
+        amp_value = _as_complex_scalar(amp) * input_amplitude
+        amps.append(amp_value)
+        _log(
+            f"quimb amplitude {amp_i}/{len(output_indices)} done: hex=0x{idx:x}, "
+            f"elapsed_s={time.perf_counter() - amp_t0:.3f}, abs={abs(amp_value):.6e}",
+            verbosity=verbosity,
+        )
     amplitude_s = time.perf_counter() - t2
+    _log(f"quimb amplitudes done: elapsed_s={amplitude_s:.3f}", verbosity=verbosity)
 
     meta = {
         "declared_qubits": declared_n,
         "simulator_qubits": sim_n,
         "original_qiskit_ops": qc.size(),
         "transpiled_qiskit_ops": tqc.size(),
-        "transpiled_gate_counts": dict(tqc.count_ops()),
+        "transpiled_gate_counts": gate_counts,
         "quimb_amplitude_options": amplitude_opts,
     }
     return amps, meta, transpile_s, build_s, amplitude_s
@@ -365,16 +406,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     cfg = _merge_config(args)
+    verbosity = int(cfg["verbosity"])
     repo_root = _resolve_path(cfg["repo_root"], Path.cwd()).resolve()
     output_root = _resolve_path(cfg["output_root"], repo_root).resolve()
     run_dir = output_root / f"{_utc_stamp()}_{_sanitize(str(cfg['experiment_name']))}"
     run_dir.mkdir(parents=True, exist_ok=False)
+    _log(f"Run directory: {run_dir}", verbosity=verbosity)
 
+    _log("Materializing circuit, input statevector, and output bitstrings", verbosity=verbosity)
     circuit, circuit_generated = resolve_circuit_input(cfg["circuit"], repo_root)
     input_statevector, input_generated = resolve_statevector_input(cfg["input_statevector"], repo_root)
     output_bitstrings, output_generated = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
     output_indices, output_size_bytes = parse_hs(output_bitstrings)
     input_index, input_amplitude = _single_input_basis_state(input_statevector)
+    _log(
+        f"Inputs ready: circuit={circuit}, input={input_statevector}, "
+        f"outputs={output_bitstrings}, output_count={len(output_indices)}",
+        verbosity=verbosity,
+    )
 
     quimb_amps, quimb_meta, transpile_s, build_s, amplitude_s = _compute_quimb_amplitudes(
         circuit=circuit,
@@ -387,9 +436,11 @@ def main(argv: list[str] | None = None) -> int:
         simplify_sequence=str(cfg["quimb_simplify_sequence"]),
         simplify_atol=float(cfg["quimb_simplify_atol"]),
         simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
+        verbosity=verbosity,
     )
     quimb_output = run_dir / "quimb_output.hsv"
     _write_hsv(quimb_output, output_indices, quimb_amps)
+    _log(f"Wrote quimb output: {quimb_output}", verbosity=verbosity)
 
     feynman_sparse: dict[int, complex] | None = None
     feynman_metrics: dict[str, Any] = {
@@ -399,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     if cfg["run_feynman"]:
         feynman_output = run_dir / "feynman_output.hsv"
+        _log("Running Feynman binary", verbosity=verbosity)
         try:
             wall_s, internal_s, stdout, stderr = _run_feynman(
                 cfg=cfg,
@@ -416,6 +468,7 @@ def main(argv: list[str] | None = None) -> int:
                 encoding="utf-8",
             )
             raise
+        _log(f"Feynman run done: walltime_s={wall_s:.3f}", verbosity=verbosity)
         (run_dir / "feynman_stdout.log").write_text(stdout, encoding="utf-8")
         (run_dir / "feynman_stderr.log").write_text(stderr, encoding="utf-8")
         feynman_sparse = parse_hsv_sparse(feynman_output)
@@ -428,6 +481,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     comparison_csv = run_dir / "comparison.csv"
+    _log(f"Writing comparison CSV: {comparison_csv}", verbosity=verbosity)
     agreement_metrics = _write_comparison_csv(
         comparison_csv,
         output_indices=output_indices,
@@ -472,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     summary_path = run_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
 
     print(f"Run directory: {run_dir}")
     print(f"Quimb total (s): {summary['metrics']['quimb_total_s']:.6f}")
