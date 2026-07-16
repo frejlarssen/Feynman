@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """QAOA validation against Qiskit with config-driven outputs in data/outputs/validation."""
 
 from __future__ import annotations

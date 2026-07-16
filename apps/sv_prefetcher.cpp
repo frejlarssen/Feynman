@@ -11,7 +11,6 @@
 #endif
 
 #define EXECUTE_RUN 1
-#define PERF_INSTRUMENT 0
 #define CLOSE_TO_ZERO 1e-8
 
 using namespace std;
@@ -101,7 +100,8 @@ Options get_options(int argc, char *argv[]) {
   return opts;
 }
 
-void run(Options &opts, const int world_rank, const int world_size) {
+void run(Options &opts, const int world_rank, const int world_size,
+         const int perf_fd = -1) {
   auto start_svcc_all = get_time();
 #ifdef USE_OPENMP
   const int t_omp = omp_get_max_threads();
@@ -282,9 +282,9 @@ void run(Options &opts, const int world_rank, const int world_size) {
     }
   };
   // prctl(PR_TASK_PERF_EVENTS_ENABLE, 0, 0, 0, 0);
-#if PERF_INSTRUMENT
-  ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);  // zero all
-  ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP); // begin region
+#if FEYNMAN_ENABLE_LINUX_PERF
+  ioctl(perf_fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);  // zero all
+  ioctl(perf_fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP); // begin region
 #endif
 
 #if EXECUTE_RUN
@@ -308,8 +308,8 @@ void run(Options &opts, const int world_rank, const int world_size) {
     process_outputs(my_worker * batch_size, batch_size * (my_worker + 1));
   }
 #endif
-#if PERF_INSTRUMENT
-  ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+#if FEYNMAN_ENABLE_LINUX_PERF
+  ioctl(perf_fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
   // prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
 #endif
 
@@ -372,18 +372,28 @@ int main(int argc, char *argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &world_size); // total ranks
 
   // prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
-#if PERF_INSTRUMENT
-  int fd =
+#if FEYNMAN_ENABLE_LINUX_PERF
+  int perf_fd =
       open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
+  if (perf_fd == -1) {
+    perror("perf_event_open");
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+#else
+  int perf_fd = -1;
 #endif
 
   Options opts = get_options(argc, argv);
 
   try {
-    run(opts, world_rank, world_size);
+    run(opts, world_rank, world_size, perf_fd);
   } catch (const std::exception &e) {
     cerr << "Exception in run() function: " << e.what() << '\n';
   }
+
+#if FEYNMAN_ENABLE_LINUX_PERF
+  close(perf_fd);
+#endif
 
   MPI_Finalize();
 

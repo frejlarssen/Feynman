@@ -10,7 +10,7 @@ Avoid relying on `--latest` in paper scripts.
 
 - QFT validation figure (`fig:qft_validation`)
   - Run:
-    - `python3 scripts/run_pipeline.py validation qft-demo --config scripts/experiments/paper/validation/qft_two_freq_nqubits_demo_norm.json`
+    - `python scripts/run_pipeline.py validation qft-demo --config scripts/experiments/paper/validation/qft_two_freq_nqubits_demo_norm.json`
   - Expected artifacts:
     - `summary.json`
     - `output_population.csv`
@@ -18,7 +18,7 @@ Avoid relying on `--latest` in paper scripts.
 
 - Checkpointing ablation figure (`fig:checkpointing_ablation`)
   - Run:
-    - `python3 scripts/run_pipeline.py perf-sweep --config scripts/experiments/paper/perf/aa_n3_it3_mark1_checkpoint_ablation.json`
+    - `python scripts/run_pipeline.py perf-sweep --config scripts/experiments/paper/perf/aa_n3_it3_mark1_checkpoint_ablation.json`
   - Expected artifacts:
     - `summary.csv`
     - `plot_total_full_s_vs_batch_size.pdf`
@@ -26,7 +26,7 @@ Avoid relying on `--latest` in paper scripts.
 
 - QAOA pruning figure (`fig:qaoa_pruning_sweep`)
   - Run:
-    - `python3 scripts/run_pipeline.py qaoa-pruning --config scripts/experiments/paper/perf/qaoa_pruning_sweep_cycle_n8_p2.json`
+    - `python scripts/run_pipeline.py qaoa-pruning --config scripts/experiments/paper/perf/qaoa_pruning_sweep_cycle_n8_p2.json`
   - Expected artifacts:
     - `summary.csv`
     - `summary_time_fidelity.pdf`

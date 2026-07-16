@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """QFT frequency demo with optional Qiskit reference overlay.
 
 Runs sv_prefetcher and plots:

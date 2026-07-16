@@ -7,18 +7,27 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
-#include <linux/perf_event.h>
-#include <linux/prctl.h>
 #include <string>
-#include <sys/ioctl.h>
-#include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <vector>
 
+#ifndef FEYNMAN_ENABLE_LINUX_PERF
+#define FEYNMAN_ENABLE_LINUX_PERF 0
+#endif
+
+#if FEYNMAN_ENABLE_LINUX_PERF
+#if !defined(__linux__)
+#error "FEYNMAN_ENABLE_LINUX_PERF requires Linux perf_event support."
+#endif
+#include <linux/perf_event.h>
+#include <sys/ioctl.h>
+#endif
+
 using namespace std;
 using namespace std::chrono;
 
+#if FEYNMAN_ENABLE_LINUX_PERF
 static long int open_leader(pid_t pid, int cpu, uint64_t type,
                             uint64_t config) {
   struct perf_event_attr attr;
@@ -32,6 +41,7 @@ static long int open_leader(pid_t pid, int cpu, uint64_t type,
 
   return syscall(__NR_perf_event_open, &attr, pid, cpu, -1, 0);
 }
+#endif
 
 std::string replace_filename(const std::string &path_str,
                              const std::string &new_filename) {
