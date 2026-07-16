@@ -133,6 +133,18 @@ Plot meaning: blue is `total_full_s` (left axis), red is
 
 ## Validation Workflows
 
+### QWalk vs quimb
+
+```bash
+python scripts/run_pipeline.py validation qwalk-quimb \
+  --config scripts/experiments/exploratory/validation/qwalk_quimb_smoke.json
+```
+
+This workflow materializes a generated quantum-walk circuit, lowers its
+multi-controlled gates through Qiskit to a quimb-compatible basis, computes
+selected amplitudes by exact tensor-network contraction, and optionally runs
+the Feynman binary for agreement and timing.
+
 ### QAOA vs Qiskit
 
 ```bash

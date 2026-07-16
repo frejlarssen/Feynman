@@ -111,6 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     qft_val.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
 
+    qwalk_quimb = validation_sub.add_parser("qwalk-quimb", help="Run quantum-walk vs quimb validation.")
+    qwalk_quimb.add_argument("--config", required=True, help="Path to validation config JSON.")
+    qwalk_quimb.add_argument("--output-root", default="", help="Optional output root override.")
+    qwalk_quimb.add_argument("--repo-root", default="", help="Optional repo root override.")
+    qwalk_quimb.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
+
     plot = sub.add_parser("plot", help="Plot from existing summary/output artifacts.")
     plot_sub = plot.add_subparsers(dest="plot_kind", required=True)
 
@@ -646,6 +652,8 @@ def _detect_experiment_mode(config_path: Path) -> str:
         return "perf-sweep"
     if config_type == "validation":
         stem = config_path.stem.lower()
+        if "quimb" in stem or str(payload.get("backend", "")).lower() == "quimb":
+            return "validation:qwalk-quimb"
         if "qiskit_validation" in stem or "qiskit" in stem:
             return "validation:qaoa-qiskit"
         return "validation:qft-demo"
@@ -673,6 +681,8 @@ def _build_run_all_command(script_path: Path, cfg: Path, mode: str) -> list[str]
         return [sys.executable, str(script_path), "qaoa-pruning", "--config", str(cfg)]
     if mode == "validation:qaoa-qiskit":
         return [sys.executable, str(script_path), "validation", "qaoa-qiskit", "--config", str(cfg)]
+    if mode == "validation:qwalk-quimb":
+        return [sys.executable, str(script_path), "validation", "qwalk-quimb", "--config", str(cfg)]
     if mode == "validation:qft-demo":
         return [sys.executable, str(script_path), "validation", "qft-demo", "--config", str(cfg)]
     raise ValueError(f"Unsupported run-all mode: {mode}")
@@ -736,10 +746,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validation":
         from validation.qaoa_qiskit_validation import main as qaoa_validation_main
         from validation.qft_demo import main as qft_demo_main
+        from tensor_comparison.qwalk_quimb import main as qwalk_quimb_main
 
         val_argv = _validation_argv(args)
         if args.validation_kind == "qaoa-qiskit":
             return qaoa_validation_main(val_argv)
+        if args.validation_kind == "qwalk-quimb":
+            return qwalk_quimb_main(val_argv)
         if args.validation_kind == "qft-demo":
             return qft_demo_main(val_argv)
         parser.error(f"Unknown validation kind: {args.validation_kind}")
