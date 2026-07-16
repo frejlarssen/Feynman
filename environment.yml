@@ -1,4 +1,4 @@
-name: newproj
+name: feynman
 channels:
   - conda-forge
 dependencies:
