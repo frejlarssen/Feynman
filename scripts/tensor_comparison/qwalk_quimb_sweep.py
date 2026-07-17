@@ -102,7 +102,6 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "dry_run": bool(raw.get("dry_run", False)),
         "timeout_seconds": raw.get("timeout_seconds"),
         "feynman_transpiled_max_n": raw.get("feynman_transpiled_max_n"),
-        "quimb_amplitudes_max_n": raw.get("quimb_amplitudes_max_n"),
         "qwalk": qwalk,
         "input_statevector": input_statevector,
         "output_bitstrings": output_bitstrings,
@@ -127,6 +126,12 @@ def _statevector_size_bytes(n_qubits: int) -> int:
     return max(1, (int(n_qubits) + 7) // 8)
 
 
+def _enabled_up_to(default: bool, max_n: Any, n_qubits: int) -> bool:
+    if max_n is None:
+        return default
+    return default and n_qubits <= int(max_n)
+
+
 def _build_validation_config(
     *,
     cfg: dict[str, Any],
@@ -138,12 +143,11 @@ def _build_validation_config(
     output_bitstrings = cfg["output_bitstrings"]
     input_statevector = cfg["input_statevector"]
     validation = cfg["validation"]
-    run_feynman_transpiled = bool(validation.get("run_feynman_transpiled", False))
-    if cfg["feynman_transpiled_max_n"] is not None and n_qubits > int(cfg["feynman_transpiled_max_n"]):
-        run_feynman_transpiled = False
-    run_quimb_amplitudes = bool(validation.get("run_quimb_amplitudes", True))
-    if cfg["quimb_amplitudes_max_n"] is not None and n_qubits > int(cfg["quimb_amplitudes_max_n"]):
-        run_quimb_amplitudes = False
+    run_feynman_transpiled = _enabled_up_to(
+        bool(validation.get("run_feynman_transpiled", False)),
+        cfg["feynman_transpiled_max_n"],
+        n_qubits,
+    )
     size_bytes = _statevector_size_bytes(n_qubits)
     payload = {
         "experiment_name": f"{cfg['experiment_name']}_n{n_qubits}",
@@ -166,7 +170,6 @@ def _build_validation_config(
             **{k: v for k, v in output_bitstrings.items() if k not in {"generator", "size", "count"}},
         },
         **validation,
-        "run_quimb_amplitudes": run_quimb_amplitudes,
         "run_feynman_transpiled": run_feynman_transpiled,
     }
     return payload
