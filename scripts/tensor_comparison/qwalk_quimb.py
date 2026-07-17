@@ -137,6 +137,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "quimb_simplify_sequence": raw.get("quimb_simplify_sequence", "ADCRS"),
         "quimb_simplify_atol": float(raw.get("quimb_simplify_atol", 1e-12)),
         "quimb_simplify_equalize_norms": bool(raw.get("quimb_simplify_equalize_norms", False)),
+        "run_quimb_amplitudes": bool(raw.get("run_quimb_amplitudes", True)),
         "run_feynman": bool(raw.get("run_feynman", True)),
         "run_feynman_transpiled": bool(raw.get("run_feynman_transpiled", False)),
         "binary": raw.get("binary", "build-release/sv_prefetcher_subset_mpi.x"),
@@ -213,6 +214,22 @@ class QuimbSafetyLimitError(RuntimeError):
             "Refusing quimb run because transpiled circuit is above the configured safety limit: "
             f"transpiled_ops={transpiled_ops}, quimb_max_transpiled_ops={max_transpiled_ops}."
         )
+
+
+class QuimbTranspileOnly(RuntimeError):
+    def __init__(
+        self,
+        *,
+        meta: dict[str, Any],
+        transpile_s: float,
+    ):
+        self.meta = meta
+        self.transpiled_ops = int(meta["transpiled_qiskit_ops"])
+        self.gate_counts = dict(meta["transpiled_gate_counts"])
+        self.transpiled_qasm = Path(str(meta["transpiled_qasm"]))
+        self.global_phase = str(meta["transpiled_global_phase"])
+        self.transpile_s = transpile_s
+        super().__init__("Skipping quimb amplitude contraction after transpilation.")
 
 
 def _run_feynman(
@@ -532,6 +549,7 @@ def _compute_quimb_amplitudes(
     optimization_level: int,
     optimize: str,
     max_transpiled_ops: int | None,
+    run_amplitudes: bool,
     rehearse: bool,
     simplify_sequence: str,
     simplify_atol: float,
@@ -564,6 +582,17 @@ def _compute_quimb_amplitudes(
         f"global_phase={tqc.global_phase}, elapsed_s={transpile_s:.3f}",
         verbosity=verbosity,
     )
+    meta = {
+        "declared_qubits": declared_n,
+        "simulator_qubits": sim_n,
+        "original_qiskit_ops": qc.size(),
+        "transpiled_qiskit_ops": transpiled_ops,
+        "transpiled_gate_counts": gate_counts,
+        "transpiled_qasm": str(transpiled_qasm),
+        "transpiled_global_phase": str(tqc.global_phase),
+    }
+    if not run_amplitudes:
+        raise QuimbTranspileOnly(meta=meta, transpile_s=transpile_s)
     if max_transpiled_ops is not None and transpiled_ops > max_transpiled_ops:
         raise QuimbSafetyLimitError(
             transpiled_ops=transpiled_ops,
@@ -621,16 +650,7 @@ def _compute_quimb_amplitudes(
     amplitude_s = time.perf_counter() - t2
     _log(f"quimb amplitudes done: elapsed_s={amplitude_s:.3f}", verbosity=verbosity)
 
-    meta = {
-        "declared_qubits": declared_n,
-        "simulator_qubits": sim_n,
-        "original_qiskit_ops": qc.size(),
-        "transpiled_qiskit_ops": transpiled_ops,
-        "transpiled_gate_counts": gate_counts,
-        "transpiled_qasm": str(transpiled_qasm),
-        "transpiled_global_phase": str(tqc.global_phase),
-        "quimb_amplitude_options": amplitude_opts,
-    }
+    meta["quimb_amplitude_options"] = amplitude_opts
     return amps, meta, transpile_s, build_s, amplitude_s
 
 
@@ -737,25 +757,30 @@ def main(argv: list[str] | None = None) -> int:
             max_transpiled_ops=(
                 None if cfg["quimb_max_transpiled_ops"] is None else int(cfg["quimb_max_transpiled_ops"])
             ),
+            run_amplitudes=bool(cfg["run_quimb_amplitudes"]),
             rehearse=bool(cfg["quimb_rehearse"]),
             simplify_sequence=str(cfg["quimb_simplify_sequence"]),
             simplify_atol=float(cfg["quimb_simplify_atol"]),
             simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
             verbosity=verbosity,
         )
-    except QuimbSafetyLimitError as err:
-        safety_path = run_dir / "quimb_safety_limit.json"
-        safety_path.write_text(
+    except (QuimbSafetyLimitError, QuimbTranspileOnly) as err:
+        skipped_by_safety = isinstance(err, QuimbSafetyLimitError)
+        status = "quimb_safety_limit" if skipped_by_safety else "quimb_transpile_only"
+        report_path = run_dir / ("quimb_safety_limit.json" if skipped_by_safety else "quimb_transpile_only.json")
+        report = {
+            "error": str(err),
+            "transpiled_ops": err.transpiled_ops,
+            "transpiled_gate_counts": err.gate_counts,
+            "transpiled_qasm": str(err.transpiled_qasm),
+            "transpiled_global_phase": err.global_phase,
+            "config_file": str(args.config.resolve()),
+        }
+        if skipped_by_safety:
+            report["quimb_max_transpiled_ops"] = err.max_transpiled_ops
+        report_path.write_text(
             json.dumps(
-                {
-                    "error": str(err),
-                    "transpiled_ops": err.transpiled_ops,
-                    "transpiled_gate_counts": err.gate_counts,
-                    "transpiled_qasm": str(err.transpiled_qasm),
-                    "transpiled_global_phase": err.global_phase,
-                    "quimb_max_transpiled_ops": err.max_transpiled_ops,
-                    "config_file": str(args.config.resolve()),
-                },
+                report,
                 indent=2,
             ),
             encoding="utf-8",
@@ -774,7 +799,7 @@ def main(argv: list[str] | None = None) -> int:
             "circuit": str(transpiled_qasm),
         }
         if cfg["run_feynman"]:
-            _log("Running Feynman binary on original circuit after quimb safety stop", verbosity=verbosity)
+            _log(f"Running Feynman binary on original circuit after {status}", verbosity=verbosity)
             feynman_metrics = _run_and_record_feynman(
                 cfg=cfg,
                 repo_root=repo_root,
@@ -803,7 +828,7 @@ def main(argv: list[str] | None = None) -> int:
             "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
             "experiment_name": cfg["experiment_name"],
             "notes": cfg["notes"],
-            "status": "quimb_safety_limit",
+            "status": status,
             "config": cfg,
             "config_file": str(args.config.resolve()),
             "paths": {
@@ -811,7 +836,7 @@ def main(argv: list[str] | None = None) -> int:
                 "circuit": str(circuit),
                 "input_statevector": str(input_statevector),
                 "output_bitstrings": str(output_bitstrings),
-                "quimb_safety_limit": str(safety_path),
+                status: str(report_path),
                 "transpiled_qasm": str(transpiled_qasm),
             },
             "generated": {
@@ -843,9 +868,9 @@ def main(argv: list[str] | None = None) -> int:
         }
         summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
         _log(str(err), verbosity=verbosity)
-        _log(f"Wrote safety limit report: {safety_path}", verbosity=verbosity)
+        _log(f"Wrote quimb skip report: {report_path}", verbosity=verbosity)
         _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
-        return 2
+        return 2 if skipped_by_safety else 0
     quimb_output = run_dir / "quimb_output.hsv"
     _write_hsv(quimb_output, output_indices, quimb_amps)
     _log(f"Wrote quimb output: {quimb_output}", verbosity=verbosity)

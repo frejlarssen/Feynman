@@ -2,10 +2,12 @@
   "experiment_name": "qwalk_quimb_qubit_sweep",
   "repo_root": ".",
   "output_root": "data/outputs/experiments",
-  "qubits": [3,4,5],
+  "qubits": [3, 4, 5, 6, 8, 10, 12, 14, 15,16,17, 18, 19],
   "repeat": 1,
   "continue_on_error": true,
   "timeout_seconds": 600,
+  "feynman_transpiled_max_n": 5,
+  "quimb_amplitudes_max_n": 17,
   "qwalk": {
     "iterations": 4
   },

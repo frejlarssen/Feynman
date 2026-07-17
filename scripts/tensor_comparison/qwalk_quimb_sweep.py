@@ -101,6 +101,8 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "continue_on_error": bool(raw.get("continue_on_error", True)),
         "dry_run": bool(raw.get("dry_run", False)),
         "timeout_seconds": raw.get("timeout_seconds"),
+        "feynman_transpiled_max_n": raw.get("feynman_transpiled_max_n"),
+        "quimb_amplitudes_max_n": raw.get("quimb_amplitudes_max_n"),
         "qwalk": qwalk,
         "input_statevector": input_statevector,
         "output_bitstrings": output_bitstrings,
@@ -136,6 +138,12 @@ def _build_validation_config(
     output_bitstrings = cfg["output_bitstrings"]
     input_statevector = cfg["input_statevector"]
     validation = cfg["validation"]
+    run_feynman_transpiled = bool(validation.get("run_feynman_transpiled", False))
+    if cfg["feynman_transpiled_max_n"] is not None and n_qubits > int(cfg["feynman_transpiled_max_n"]):
+        run_feynman_transpiled = False
+    run_quimb_amplitudes = bool(validation.get("run_quimb_amplitudes", True))
+    if cfg["quimb_amplitudes_max_n"] is not None and n_qubits > int(cfg["quimb_amplitudes_max_n"]):
+        run_quimb_amplitudes = False
     size_bytes = _statevector_size_bytes(n_qubits)
     payload = {
         "experiment_name": f"{cfg['experiment_name']}_n{n_qubits}",
@@ -158,6 +166,8 @@ def _build_validation_config(
             **{k: v for k, v in output_bitstrings.items() if k not in {"generator", "size", "count"}},
         },
         **validation,
+        "run_quimb_amplitudes": run_quimb_amplitudes,
+        "run_feynman_transpiled": run_feynman_transpiled,
     }
     return payload
 
@@ -282,7 +292,8 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_ok = [row for row in rows_all if row.get("status") == "ok"]
-    safety_ns = sorted({int(row["n"]) for row in rows_all if row.get("status") == "quimb_safety_limit"})
+    quimb_missing_statuses = {"quimb_safety_limit", "quimb_transpile_only"}
+    quimb_missing_ns = sorted({int(row["n"]) for row in rows_all if row.get("status") in quimb_missing_statuses})
 
     outputs: list[Path] = []
     time_series = {
@@ -301,10 +312,10 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         "transpiled Qiskit ops": _mean_by_n(rows_all, "transpiled_qiskit_ops"),
     }
 
-    for filename, ylabel, series in (
-        ("qwalk_quimb_time.pdf", "Time (s)", time_series),
-        ("qwalk_quimb_memory.pdf", "Peak RSS (MB)", memory_series),
-        ("qwalk_quimb_transpiled_ops.pdf", "Transpiled Qiskit ops", ops_series),
+    for filename, ylabel, series, mark_missing_quimb in (
+        ("qwalk_quimb_time.pdf", "Time (s)", time_series, True),
+        ("qwalk_quimb_memory.pdf", "Peak RSS (MB)", memory_series, True),
+        ("qwalk_quimb_transpiled_ops.pdf", "Transpiled Qiskit ops", ops_series, False),
     ):
         fig, ax = plt.subplots(figsize=(8, 5))
         plotted = False
@@ -315,28 +326,16 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             ys = [values[x] for x in xs]
             ax.plot(xs, ys, marker="o", linewidth=1.6, label=label)
             plotted = True
-        marker_y = _failure_marker_y(series)
-        for n in safety_ns:
-            ax.axvline(n, color="0.7", linestyle="--", linewidth=1.0)
-            ax.scatter(
-                [n],
-                [marker_y],
-                marker="x",
-                s=70,
-                color="black",
-                linewidths=1.8,
-                label="quimb safety limit" if n == safety_ns[0] else None,
-                zorder=5,
-            )
-            ax.text(
-                n,
-                marker_y,
-                " quimb limit",
-                rotation=90,
-                va="bottom",
-                ha="left",
-                fontsize=max(8, int((label_fontsize or 12) * 0.65)),
-            )
+        if mark_missing_quimb and quimb_missing_ns:
+            for i, n in enumerate(quimb_missing_ns):
+                ax.axvline(
+                    n,
+                    color="0.7",
+                    linestyle=":",
+                    linewidth=1.1,
+                    label="quimb not measured" if i == 0 else None,
+                    zorder=0,
+                )
         ax.set_xlabel("Qubits")
         ax.set_ylabel(ylabel)
         ax.set_yscale("log")
