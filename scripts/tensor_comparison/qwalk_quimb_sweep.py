@@ -39,6 +39,11 @@ SUMMARY_FIELDS = [
     "feynman_walltime_s",
     "feynman_internal_total_s",
     "feynman_peak_rss_mb",
+    "feynman_transpiled_walltime_s",
+    "feynman_transpiled_internal_total_s",
+    "feynman_transpiled_peak_rss_mb",
+    "feynman_transpiled_status",
+    "feynman_transpiled_error",
     "quimb_total_s",
     "quimb_transpile_s",
     "quimb_build_s",
@@ -194,6 +199,9 @@ def _row_from_run(
     metrics = summary.get("metrics", {})
     problem = summary.get("problem", {})
     feynman = metrics.get("feynman", {}) if isinstance(metrics.get("feynman", {}), dict) else {}
+    feynman_transpiled = (
+        metrics.get("feynman_transpiled", {}) if isinstance(metrics.get("feynman_transpiled", {}), dict) else {}
+    )
     status = summary.get("status")
     if not status:
         status = "ok" if returncode == 0 else "failed"
@@ -214,6 +222,15 @@ def _row_from_run(
         "feynman_walltime_s": _float_or_empty(feynman.get("walltime_s")),
         "feynman_internal_total_s": _float_or_empty(feynman.get("internal_total_s")),
         "feynman_peak_rss_mb": _float_or_empty(feynman.get("peak_rss_mb")),
+        "feynman_transpiled_walltime_s": _float_or_empty(feynman_transpiled.get("walltime_s")),
+        "feynman_transpiled_internal_total_s": _float_or_empty(feynman_transpiled.get("internal_total_s")),
+        "feynman_transpiled_peak_rss_mb": _float_or_empty(feynman_transpiled.get("peak_rss_mb")),
+        "feynman_transpiled_status": (
+            "failed"
+            if feynman_transpiled.get("failed")
+            else ("ok" if feynman_transpiled.get("enabled") and feynman_transpiled.get("walltime_s") else "")
+        ),
+        "feynman_transpiled_error": feynman_transpiled.get("error", ""),
         "quimb_total_s": _float_or_empty(metrics.get("quimb_total_s")),
         "quimb_transpile_s": _float_or_empty(metrics.get("quimb_transpile_s")),
         "quimb_build_s": _float_or_empty(metrics.get("quimb_build_s")),
@@ -269,12 +286,15 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
 
     outputs: list[Path] = []
     time_series = {
-        "Feynman wall": _mean_by_n(rows_ok, "feynman_walltime_s"),
-        "Feynman internal": _mean_by_n(rows_ok, "feynman_internal_total_s"),
+        "Feynman original wall": _mean_by_n(rows_all, "feynman_walltime_s"),
+        "Feynman original internal": _mean_by_n(rows_all, "feynman_internal_total_s"),
+        "Feynman transpiled wall": _mean_by_n(rows_all, "feynman_transpiled_walltime_s"),
+        "Feynman transpiled internal": _mean_by_n(rows_all, "feynman_transpiled_internal_total_s"),
         "quimb": _mean_by_n(rows_ok, "quimb_total_s"),
     }
     memory_series = {
-        "Feynman": _mean_by_n(rows_ok, "feynman_peak_rss_mb"),
+        "Feynman original": _mean_by_n(rows_all, "feynman_peak_rss_mb"),
+        "Feynman transpiled": _mean_by_n(rows_all, "feynman_transpiled_peak_rss_mb"),
         "quimb": _mean_by_n(rows_ok, "quimb_peak_rss_mb"),
     }
     ops_series = {

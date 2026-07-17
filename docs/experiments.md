@@ -141,9 +141,10 @@ python scripts/run_pipeline.py qwalk-quimb-sweep \
 ```
 
 This benchmark runs the same fixed-iteration quantum-walk family while varying
-qubit count. Each point runs the Feynman binary and exact quimb selected
-amplitudes in a fresh subprocess, records runtime and peak RSS, and writes
-time, memory, and transpiled-op-count plots from the sweep summary.
+qubit count. Each point runs exact quimb selected amplitudes, Feynman on the
+original multi-controlled-gate circuit, and Feynman on the same Qiskit-lowered
+circuit used by quimb. The sweep records runtime, peak RSS, and lowered
+operation counts, then writes time, memory, and operation-count plots.
 
 ### QWalk vs quimb
 
@@ -155,7 +156,7 @@ python scripts/run_pipeline.py validation qwalk-quimb \
 This workflow materializes a generated quantum-walk circuit, lowers its
 multi-controlled gates through Qiskit to a quimb-compatible basis, computes
 selected amplitudes by exact tensor-network contraction, and optionally runs
-the Feynman binary for agreement and timing.
+Feynman on the original and quimb-lowered circuits for agreement and timing.
 
 ### QAOA vs Qiskit
 
