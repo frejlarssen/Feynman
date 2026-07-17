@@ -59,6 +59,9 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
     const auto wire_right_value =
         gate.qubits.at(num_ctrl)->wire_right->get_val(thread);
     const float inv_over_sqrt2 = 1.0f / sqrt(2.0f);
+    const auto exp_i = [](float theta) {
+      return std::exp(complex<float>(0.0f, theta));
+    };
     // Activate gate
     switch (gate.type) {
     case HADAMARD:
@@ -70,7 +73,17 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
       break;
     case PHASE:
       if (wire_left_value) {
-        contribution *= std::exp(complex<float>(0.0, gate.params.at(0)));
+        contribution *= exp_i(gate.params.at(0));
+      }
+      break;
+    case T:
+      if (wire_left_value) {
+        contribution *= exp_i(static_cast<float>(PI) / 4.0f);
+      }
+      break;
+    case TDG:
+      if (wire_left_value) {
+        contribution *= exp_i(-static_cast<float>(PI) / 4.0f);
       }
       break;
     case PAULIZ:
@@ -99,6 +112,37 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
         contribution *= sin_half;
       } else {
         contribution *= -sin_half;
+      }
+      break;
+    }
+    case U2: {
+      const float phi = gate.params.at(0);
+      const float lambda = gate.params.at(1);
+      if (!wire_left_value && !wire_right_value) {
+        contribution *= inv_over_sqrt2;
+      } else if (wire_left_value && !wire_right_value) {
+        contribution *= -exp_i(lambda) * inv_over_sqrt2;
+      } else if (!wire_left_value && wire_right_value) {
+        contribution *= exp_i(phi) * inv_over_sqrt2;
+      } else {
+        contribution *= exp_i(phi + lambda) * inv_over_sqrt2;
+      }
+      break;
+    }
+    case U3: {
+      const float theta = gate.params.at(0);
+      const float phi = gate.params.at(1);
+      const float lambda = gate.params.at(2);
+      const float cos_half = std::cos(theta * 0.5f);
+      const float sin_half = std::sin(theta * 0.5f);
+      if (!wire_left_value && !wire_right_value) {
+        contribution *= cos_half;
+      } else if (wire_left_value && !wire_right_value) {
+        contribution *= -exp_i(lambda) * sin_half;
+      } else if (!wire_left_value && wire_right_value) {
+        contribution *= exp_i(phi) * sin_half;
+      } else {
+        contribution *= exp_i(phi + lambda) * cos_half;
       }
       break;
     }
