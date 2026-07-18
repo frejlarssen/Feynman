@@ -8,6 +8,7 @@ import builtins
 import csv
 import datetime as dt
 import json
+import os
 import re
 import resource
 import subprocess
@@ -172,6 +173,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "run_feynman_transpiled": bool(raw.get("run_feynman_transpiled", False)),
         "binary": raw.get("binary", "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": raw.get("mpirun", "mpirun"),
+        "feynman_env": dict(raw.get("feynman_env", {})),
         "ranks": int(raw.get("ranks", 1)),
         "batch_size": int(raw.get("batch_size", 32)),
         "fraction": float(raw.get("fraction", 1.0)),
@@ -278,8 +280,10 @@ def _run_feynman(
         "-v",
         str(int(cfg["verbosity"])),
     ]
+    env = os.environ.copy()
+    env.update({str(k): str(v) for k, v in dict(cfg.get("feynman_env", {})).items()})
     t0 = time.perf_counter()
-    proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
+    proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False, env=env)
     walltime_s = time.perf_counter() - t0
     peak_rss_mb = _children_rss_mb()
     if proc.returncode != 0:
@@ -314,7 +318,14 @@ def _run_and_record_feynman(
         (run_dir / f"{label}_stdout.log").write_text(err.stdout, encoding="utf-8")
         (run_dir / f"{label}_stderr.log").write_text(err.stderr, encoding="utf-8")
         (run_dir / f"{label}_command.json").write_text(
-            json.dumps({"returncode": err.returncode, "cmd": err.cmd}, indent=2),
+            json.dumps(
+                {
+                    "returncode": err.returncode,
+                    "cmd": err.cmd,
+                    "feynman_env": dict(cfg.get("feynman_env", {})),
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
         raise
@@ -322,7 +333,14 @@ def _run_and_record_feynman(
     (run_dir / f"{label}_stderr.log").write_text(stderr, encoding="utf-8")
     if not output_file.exists():
         (run_dir / f"{label}_command.json").write_text(
-            json.dumps({"returncode": 0, "output_missing": str(output_file)}, indent=2),
+            json.dumps(
+                {
+                    "returncode": 0,
+                    "output_missing": str(output_file),
+                    "feynman_env": dict(cfg.get("feynman_env", {})),
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
         raise FeynmanOutputMissing(output_file)
@@ -335,6 +353,7 @@ def _run_and_record_feynman(
         "peak_rss_mb": peak_rss_mb,
         "output": str(output_file),
         "circuit": str(circuit),
+        "env": dict(cfg.get("feynman_env", {})),
     }
 
 
