@@ -8,6 +8,7 @@ import csv
 import datetime as dt
 import json
 import math
+import re
 import subprocess
 import sys
 import time
@@ -27,12 +28,12 @@ SUMMARY_FIELDS = [
     "run_index",
     "n",
     "repeat_index",
-    "status",
+    "overall_status",
+    "quimb_status",
+    "feynman_status",
+    "feynman_transpiled_status",
     "returncode",
-    "run_dir",
-    "summary_json",
-    "stdout_file",
-    "stderr_file",
+    "sweep_elapsed_s",
     "qwalk_iterations",
     "output_count",
     "transpiled_qiskit_ops",
@@ -42,7 +43,6 @@ SUMMARY_FIELDS = [
     "feynman_transpiled_walltime_s",
     "feynman_transpiled_internal_total_s",
     "feynman_transpiled_peak_rss_mb",
-    "feynman_transpiled_status",
     "feynman_transpiled_error",
     "quimb_total_s",
     "quimb_transpile_s",
@@ -51,6 +51,10 @@ SUMMARY_FIELDS = [
     "quimb_peak_rss_mb",
     "max_abs_amp_error",
     "max_abs_population_error",
+    "run_dir",
+    "summary_json",
+    "stdout_file",
+    "stderr_file",
 ]
 
 
@@ -190,10 +194,72 @@ def _float_or_empty(value: Any) -> str:
     return f"{float(value):.18e}"
 
 
+def _parse_first_float(pattern: str, text: str) -> float | None:
+    match = re.search(pattern, text)
+    return None if match is None else float(match.group(1))
+
+
+def _parse_first_int(pattern: str, text: str) -> int | None:
+    match = re.search(pattern, text)
+    return None if match is None else int(match.group(1))
+
+
+def _partial_problem_from_stdout(stdout: str) -> dict[str, Any]:
+    problem: dict[str, Any] = {}
+    output_count = _parse_first_int(r"output_count=(\d+)", stdout)
+    transpiled_ops = _parse_first_int(r"Transpile done: transpiled_ops=(\d+)", stdout)
+    if output_count is not None:
+        problem["output_count"] = output_count
+    if transpiled_ops is not None:
+        problem["transpiled_qiskit_ops"] = transpiled_ops
+    return problem
+
+
+def _partial_metrics_from_stdout(stdout: str) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    transpile_s = _parse_first_float(r"Transpile done: .*elapsed_s=([0-9eE+.\-]+)", stdout)
+    build_s = _parse_first_float(r"quimb circuit built: elapsed_s=([0-9eE+.\-]+)", stdout)
+    feynman_wall_s = _parse_first_float(r"Feynman run done \(feynman\): walltime_s=([0-9eE+.\-]+)", stdout)
+    feynman_internal_s = _parse_first_float(r"Feynman internal total \(s\): ([0-9eE+.\-]+)", stdout)
+    if transpile_s is not None:
+        metrics["quimb_transpile_s"] = transpile_s
+    if build_s is not None:
+        metrics["quimb_build_s"] = build_s
+    if feynman_wall_s is not None or feynman_internal_s is not None:
+        metrics["feynman"] = {
+            "enabled": True,
+            "walltime_s": feynman_wall_s,
+            "internal_total_s": feynman_internal_s,
+            "peak_rss_mb": None,
+        }
+    return metrics
+
+
+def _timed_out_in_quimb(stdout: str) -> bool:
+    return (
+        "Building quimb circuit" in stdout
+        or "Computing " in stdout
+        or "quimb amplitude " in stdout
+        or "get_psi_simplified" in stdout
+        or "full_simplify" in stdout
+        or "contraction tree" in stdout
+    )
+
+
 def _load_summary(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_transpile_metadata(validation_run_dir: Path | None) -> dict[str, Any]:
+    if validation_run_dir is None:
+        return {}
+    path = validation_run_dir / "quimb_transpile_metadata.json"
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {}
 
 
 def _row_from_run(
@@ -207,28 +273,70 @@ def _row_from_run(
     stderr_file: Path,
     validation_run_dir: Path | None,
     summary: dict[str, Any],
+    stdout: str,
     qwalk_iterations: int,
 ) -> dict[str, Any]:
-    metrics = summary.get("metrics", {})
-    problem = summary.get("problem", {})
+    metrics = dict(summary.get("metrics", {}))
+    problem = dict(summary.get("problem", {}))
+    for key, value in _load_transpile_metadata(validation_run_dir).items():
+        problem.setdefault(key, value)
+    for key, value in _partial_problem_from_stdout(stdout).items():
+        problem.setdefault(key, value)
+    if not metrics:
+        metrics.update(_partial_metrics_from_stdout(stdout))
     feynman = metrics.get("feynman", {}) if isinstance(metrics.get("feynman", {}), dict) else {}
     feynman_transpiled = (
         metrics.get("feynman_transpiled", {}) if isinstance(metrics.get("feynman_transpiled", {}), dict) else {}
     )
-    status = summary.get("status")
-    if not status:
-        status = "ok" if returncode == 0 else "failed"
-    quimb_peak_rss_mb = metrics.get("quimb_phase_peak_rss_mb") if status in {"ok", "quimb_failed"} else None
+    summary_status = summary.get("status")
+    timed_out = returncode == 124
+    if summary_status == "ok":
+        overall_status = "ok"
+        quimb_status = "ok"
+    elif summary_status == "quimb_failed":
+        overall_status = "quimb_failed"
+        quimb_status = "failed"
+    elif "quimb failed during " in stdout:
+        overall_status = "quimb_failed"
+        quimb_status = "failed"
+    elif timed_out and _timed_out_in_quimb(stdout):
+        overall_status = "quimb_timeout"
+        quimb_status = "timeout"
+    elif timed_out:
+        overall_status = "timeout"
+        quimb_status = "unknown"
+    elif returncode == 0:
+        overall_status = summary_status or "ok"
+        quimb_status = "ok"
+    else:
+        overall_status = summary_status or "failed"
+        quimb_status = "unknown"
+
+    feynman_status = (
+        "ok"
+        if feynman.get("walltime_s") is not None or feynman.get("internal_total_s") is not None
+        else ("not_run" if feynman.get("enabled", True) else "disabled")
+    )
+    feynman_transpiled_status = (
+        "failed"
+        if feynman_transpiled.get("failed")
+        else (
+            "ok"
+            if feynman_transpiled.get("enabled") and feynman_transpiled.get("walltime_s") is not None
+            else ("disabled" if not feynman_transpiled.get("enabled") else "not_run")
+        )
+    )
+    quimb_peak_rss_mb = metrics.get("quimb_phase_peak_rss_mb") if quimb_status in {"ok", "failed"} else None
     return {
         "run_index": run_index,
         "n": n_qubits,
         "repeat_index": repeat_index,
-        "status": status,
+        "overall_status": overall_status,
+        "quimb_status": quimb_status,
+        "feynman_status": feynman_status,
+        "feynman_transpiled_status": feynman_transpiled_status,
         "returncode": returncode,
-        "run_dir": "" if validation_run_dir is None else str(validation_run_dir),
-        "summary_json": "" if validation_run_dir is None else str(validation_run_dir / "summary.json"),
-        "stdout_file": str(stdout_file),
-        "stderr_file": str(stderr_file),
+        "sweep_elapsed_s": _float_or_empty(elapsed_s),
         "qwalk_iterations": qwalk_iterations,
         "output_count": problem.get("output_count", ""),
         "transpiled_qiskit_ops": problem.get("transpiled_qiskit_ops", ""),
@@ -238,11 +346,6 @@ def _row_from_run(
         "feynman_transpiled_walltime_s": _float_or_empty(feynman_transpiled.get("walltime_s")),
         "feynman_transpiled_internal_total_s": _float_or_empty(feynman_transpiled.get("internal_total_s")),
         "feynman_transpiled_peak_rss_mb": _float_or_empty(feynman_transpiled.get("peak_rss_mb")),
-        "feynman_transpiled_status": (
-            "failed"
-            if feynman_transpiled.get("failed")
-            else ("ok" if feynman_transpiled.get("enabled") and feynman_transpiled.get("walltime_s") else "")
-        ),
         "feynman_transpiled_error": feynman_transpiled.get("error", ""),
         "quimb_total_s": _float_or_empty(metrics.get("quimb_total_s")),
         "quimb_transpile_s": _float_or_empty(metrics.get("quimb_transpile_s")),
@@ -251,6 +354,10 @@ def _row_from_run(
         "quimb_peak_rss_mb": _float_or_empty(quimb_peak_rss_mb),
         "max_abs_amp_error": _float_or_empty(metrics.get("max_abs_amp_error")),
         "max_abs_population_error": _float_or_empty(metrics.get("max_abs_population_error")),
+        "run_dir": "" if validation_run_dir is None else str(validation_run_dir),
+        "summary_json": "" if validation_run_dir is None else str(validation_run_dir / "summary.json"),
+        "stdout_file": str(stdout_file),
+        "stderr_file": str(stderr_file),
     }
 
 
@@ -259,7 +366,7 @@ def _read_rows(summary_csv: Path, *, include_failures: bool) -> list[dict[str, A
     with summary_csv.open("r", newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
-            if not include_failures and row.get("status") != "ok":
+            if not include_failures and row.get("overall_status") != "ok":
                 continue
             rows.append(row)
     return rows
@@ -294,9 +401,10 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
 
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     rows_all = _read_rows(summary_csv, include_failures=True)
-    rows_ok = [row for row in rows_all if row.get("status") == "ok"]
-    quimb_missing_statuses = {"quimb_failed"}
-    quimb_missing_ns = sorted({int(row["n"]) for row in rows_all if row.get("status") in quimb_missing_statuses})
+    rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
+    quimb_missing_ns = sorted(
+        {int(row["n"]) for row in rows_all if row.get("quimb_status") in {"failed", "timeout"}}
+    )
 
     outputs: list[Path] = []
     time_series = {
@@ -304,12 +412,12 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         "Feynman original internal": _mean_by_n(rows_all, "feynman_internal_total_s"),
         "Feynman transpiled wall": _mean_by_n(rows_all, "feynman_transpiled_walltime_s"),
         "Feynman transpiled internal": _mean_by_n(rows_all, "feynman_transpiled_internal_total_s"),
-        "quimb": _mean_by_n(rows_ok, "quimb_total_s"),
+        "quimb": _mean_by_n(rows_quimb_ok, "quimb_total_s"),
     }
     memory_series = {
         "Feynman original": _mean_by_n(rows_all, "feynman_peak_rss_mb"),
         "Feynman transpiled": _mean_by_n(rows_all, "feynman_transpiled_peak_rss_mb"),
-        "quimb": _mean_by_n(rows_ok, "quimb_peak_rss_mb"),
+        "quimb": _mean_by_n(rows_quimb_ok, "quimb_peak_rss_mb"),
     }
     ops_series = {
         "transpiled Qiskit ops": _mean_by_n(rows_all, "transpiled_qiskit_ops"),
@@ -458,11 +566,12 @@ def main(argv: list[str] | None = None) -> int:
                     stderr_file=stderr_file,
                     validation_run_dir=validation_run_dir,
                     summary=summary,
+                    stdout=stdout,
                     qwalk_iterations=int(cfg["qwalk"].get("iterations", 4)),
                 )
                 writer.writerow(row)
                 handle.flush()
-                if returncode != 0 and row.get("status") != "quimb_failed":
+                if returncode != 0 and row.get("quimb_status") not in {"failed", "timeout"}:
                     failures += 1
                     print(
                         f"[qwalk-quimb-sweep] n={n_qubits} failed with rc={returncode}; "

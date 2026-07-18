@@ -615,6 +615,10 @@ def _compute_quimb_amplitudes(
         "transpiled_qasm": str(transpiled_qasm),
         "transpiled_global_phase": str(tqc.global_phase),
     }
+    (transpiled_qasm.parent / "quimb_transpile_metadata.json").write_text(
+        json.dumps(meta, indent=2),
+        encoding="utf-8",
+    )
     _log("Building quimb circuit from transpiled Qiskit circuit", verbosity=verbosity)
     t1 = time.perf_counter()
     try:
