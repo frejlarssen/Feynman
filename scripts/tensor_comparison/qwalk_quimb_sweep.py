@@ -213,9 +213,21 @@ def _build_validation_config(
             **{k: v for k, v in output_bitstrings.items() if k not in {"generator", "size", "count"}},
         },
         **validation,
+        "timeout_seconds": cfg["timeout_seconds"],
         "run_feynman_transpiled": run_feynman_transpiled,
     }
     return payload
+
+
+def _validation_process_timeout(validation_cfg: dict[str, Any], per_simulator_timeout: Any) -> float | None:
+    if per_simulator_timeout is None:
+        return None
+    phases = 1  # quimb
+    if validation_cfg.get("run_feynman", True):
+        phases += 1
+    if validation_cfg.get("run_feynman_transpiled", False):
+        phases += 1
+    return float(per_simulator_timeout) * phases + 120.0
 
 
 def _find_run_dir_from_stdout(stdout: str) -> Path | None:
@@ -464,6 +476,9 @@ def _row_from_run(
     if summary_status == "ok":
         overall_status = "ok"
         quimb_status = "ok"
+    elif summary_status == "quimb_timeout":
+        overall_status = "quimb_timeout"
+        quimb_status = "timeout"
     elif summary_status == "quimb_failed":
         overall_status = "quimb_failed"
         quimb_status = "failed"
@@ -483,13 +498,18 @@ def _row_from_run(
         overall_status = summary_status or "failed"
         quimb_status = "unknown"
 
-    feynman_status = (
-        "ok"
-        if feynman.get("walltime_s") is not None or feynman.get("internal_total_s") is not None
-        else ("not_run" if feynman.get("enabled", True) else "disabled")
-    )
+    if feynman.get("timeout"):
+        feynman_status = "timeout"
+    elif feynman.get("failed"):
+        feynman_status = "failed"
+    elif feynman.get("walltime_s") is not None or feynman.get("internal_total_s") is not None:
+        feynman_status = "ok"
+    else:
+        feynman_status = "not_run" if feynman.get("enabled", True) else "disabled"
     feynman_transpiled_status = (
-        "failed"
+        "timeout"
+        if feynman_transpiled.get("timeout")
+        else "failed"
         if feynman_transpiled.get("failed")
         else (
             "ok"
@@ -497,6 +517,11 @@ def _row_from_run(
             else ("disabled" if not feynman_transpiled.get("enabled") else "not_run")
         )
     )
+    if overall_status == "ok":
+        if feynman_status == "timeout":
+            overall_status = "feynman_timeout"
+        elif feynman_status == "failed":
+            overall_status = "feynman_failed"
     quimb_peak_rss_mb = metrics.get("quimb_phase_peak_rss_mb")
     if quimb_peak_rss_mb is None:
         quimb_peak_rss_mb = quimb_progress.get("quimb_peak_rss_mb")
@@ -713,6 +738,7 @@ def main(argv: list[str] | None = None) -> int:
                     str(validation_cfg_path),
                 ]
                 print(f"[qwalk-quimb-sweep] n={n_qubits} repeat={repeat_index}: {' '.join(cmd)}", flush=True)
+                process_timeout_s = _validation_process_timeout(validation_cfg, cfg["timeout_seconds"])
                 if cfg["dry_run"]:
                     elapsed_s = 0.0
                     stdout = f"[dry-run] {' '.join(cmd)}\n"
@@ -726,7 +752,7 @@ def main(argv: list[str] | None = None) -> int:
                         cwd=repo_root,
                         stdout_file=stdout_file,
                         stderr_file=stderr_file,
-                        timeout_s=None if cfg["timeout_seconds"] is None else float(cfg["timeout_seconds"]),
+                        timeout_s=process_timeout_s,
                     )
                 validation_run_dir = _find_run_dir_from_stdout(stdout)
                 summary_path = None if validation_run_dir is None else validation_run_dir / "summary.json"

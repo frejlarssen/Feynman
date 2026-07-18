@@ -12,9 +12,11 @@ import json
 import os
 import re
 import resource
+import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -198,6 +200,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "quimb_simplify_sequence": raw.get("quimb_simplify_sequence", "ADCRS"),
         "quimb_simplify_atol": float(raw.get("quimb_simplify_atol", 1e-12)),
         "quimb_simplify_equalize_norms": bool(raw.get("quimb_simplify_equalize_norms", False)),
+        "timeout_seconds": raw.get("timeout_seconds"),
         "run_feynman": bool(raw.get("run_feynman", True)),
         "run_feynman_transpiled": bool(raw.get("run_feynman_transpiled", False)),
         "binary": raw.get("binary", "build-release/sv_prefetcher_subset_mpi.x"),
@@ -248,6 +251,15 @@ class FeynmanRunError(RuntimeError):
         super().__init__(f"Feynman command failed with exit code {returncode}: {' '.join(cmd)}")
 
 
+class FeynmanTimeoutError(TimeoutError):
+    def __init__(self, cmd: list[str], timeout_s: float, stdout: str, stderr: str):
+        self.cmd = cmd
+        self.timeout_s = timeout_s
+        self.stdout = stdout
+        self.stderr = stderr
+        super().__init__(f"Feynman command timed out after {timeout_s} seconds: {' '.join(cmd)}")
+
+
 class FeynmanOutputMissing(RuntimeError):
     def __init__(self, output_file: Path):
         self.output_file = output_file
@@ -272,6 +284,34 @@ class QuimbRunError(RuntimeError):
         self.amplitude_s = amplitude_s
         self.original_error = original_error
         super().__init__(f"quimb failed during {stage}: {type(original_error).__name__}: {original_error}")
+
+
+class QuimbTimeoutError(TimeoutError):
+    def __init__(self, timeout_s: float):
+        self.timeout_s = timeout_s
+        super().__init__(f"quimb timed out after {timeout_s} seconds")
+
+
+@contextmanager
+def _wall_clock_timeout(timeout_s: float | None, make_error: Any):
+    if timeout_s is None:
+        yield
+        return
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, 0.0)
+
+    def handle_timeout(signum: int, frame: Any) -> None:
+        raise make_error(float(timeout_s))
+
+    signal.signal(signal.SIGALRM, handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, float(timeout_s))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0.0:
+            signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
 
 
 def _run_feynman(
@@ -312,7 +352,21 @@ def _run_feynman(
     env = os.environ.copy()
     env.update({str(k): str(v) for k, v in dict(cfg.get("feynman_env", {})).items()})
     t0 = time.perf_counter()
-    proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False, env=env)
+    timeout_s = cfg.get("timeout_seconds")
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=None if timeout_s is None else float(timeout_s),
+        )
+    except subprocess.TimeoutExpired as err:
+        stdout = err.stdout.decode("utf-8", errors="replace") if isinstance(err.stdout, bytes) else (err.stdout or "")
+        stderr = err.stderr.decode("utf-8", errors="replace") if isinstance(err.stderr, bytes) else (err.stderr or "")
+        raise FeynmanTimeoutError(cmd, float(timeout_s), stdout, stderr) from err
     walltime_s = time.perf_counter() - t0
     peak_rss_mb = _children_rss_mb()
     if proc.returncode != 0:
@@ -343,14 +397,15 @@ def _run_and_record_feynman(
             output_bitstrings=output_bitstrings,
             output_file=output_file,
         )
-    except FeynmanRunError as err:
+    except (FeynmanRunError, FeynmanTimeoutError) as err:
         (run_dir / f"{label}_stdout.log").write_text(err.stdout, encoding="utf-8")
         (run_dir / f"{label}_stderr.log").write_text(err.stderr, encoding="utf-8")
         (run_dir / f"{label}_command.json").write_text(
             json.dumps(
                 {
-                    "returncode": err.returncode,
+                    "returncode": getattr(err, "returncode", 124),
                     "cmd": err.cmd,
+                    "timeout_seconds": getattr(err, "timeout_s", None),
                     "feynman_env": dict(cfg.get("feynman_env", {})),
                 },
                 indent=2,
@@ -406,6 +461,11 @@ def _failed_feynman_metrics(
     if isinstance(err, FeynmanRunError):
         metrics["returncode"] = err.returncode
         metrics["cmd"] = err.cmd
+    if isinstance(err, FeynmanTimeoutError):
+        metrics["timeout"] = True
+        metrics["returncode"] = 124
+        metrics["cmd"] = err.cmd
+        metrics["timeout_seconds"] = err.timeout_s
     return metrics
 
 
@@ -433,7 +493,7 @@ def _run_optional_feynman(
             output_name=output_name,
             verbosity=verbosity,
         )
-    except (FeynmanRunError, FeynmanOutputMissing) as err:
+    except (FeynmanRunError, FeynmanTimeoutError, FeynmanOutputMissing) as err:
         _log(f"Feynman run failed ({label}): {err}", verbosity=verbosity)
         return _failed_feynman_metrics(
             err=err,
@@ -847,29 +907,52 @@ def main(argv: list[str] | None = None) -> int:
     )
     transpiled_qasm = run_dir / "quimb_transpiled.qasm"
 
-    try:
-        quimb_amps, quimb_meta, transpile_s, build_s, amplitude_s = _compute_quimb_amplitudes(
+    feynman_sparse: dict[int, complex] | None = None
+    feynman_metrics: dict[str, Any] = {
+        "enabled": bool(cfg["run_feynman"]),
+        "walltime_s": None,
+        "internal_total_s": None,
+        "peak_rss_mb": None,
+    }
+    if cfg["run_feynman"]:
+        feynman_metrics = _run_optional_feynman(
+            cfg=cfg,
+            repo_root=repo_root,
+            run_dir=run_dir,
             circuit=circuit,
-            transpiled_qasm=transpiled_qasm,
-            output_indices=output_indices,
-            input_index=input_index,
-            input_amplitude=input_amplitude,
-            optimization_level=int(cfg["qiskit_optimization_level"]),
-            optimize=str(cfg["quimb_optimize"]),
-            max_contraction_bytes=(
-                None
-                if cfg["quimb_max_contraction_bytes"] is None
-                else int(cfg["quimb_max_contraction_bytes"])
-            ),
-            rehearse=bool(cfg["quimb_rehearse"]),
-            simplify_sequence=str(cfg["quimb_simplify_sequence"]),
-            simplify_atol=float(cfg["quimb_simplify_atol"]),
-            simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
+            input_statevector=input_statevector,
+            output_bitstrings=output_bitstrings,
+            label="feynman",
+            output_name="feynman_output.hsv",
             verbosity=verbosity,
         )
+        if not feynman_metrics.get("failed"):
+            feynman_sparse = parse_hsv_sparse(Path(str(feynman_metrics["output"])))
+
+    try:
+        with _wall_clock_timeout(cfg["timeout_seconds"], QuimbTimeoutError):
+            quimb_amps, quimb_meta, transpile_s, build_s, amplitude_s = _compute_quimb_amplitudes(
+                circuit=circuit,
+                transpiled_qasm=transpiled_qasm,
+                output_indices=output_indices,
+                input_index=input_index,
+                input_amplitude=input_amplitude,
+                optimization_level=int(cfg["qiskit_optimization_level"]),
+                optimize=str(cfg["quimb_optimize"]),
+                max_contraction_bytes=(
+                    None
+                    if cfg["quimb_max_contraction_bytes"] is None
+                    else int(cfg["quimb_max_contraction_bytes"])
+                ),
+                rehearse=bool(cfg["quimb_rehearse"]),
+                simplify_sequence=str(cfg["quimb_simplify_sequence"]),
+                simplify_atol=float(cfg["quimb_simplify_atol"]),
+                simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
+                verbosity=verbosity,
+            )
     except QuimbRunError as err:
-        status = "quimb_failed"
-        report_path = run_dir / "quimb_failed.json"
+        status = "quimb_timeout" if isinstance(err.original_error, QuimbTimeoutError) else "quimb_failed"
+        report_path = run_dir / f"{status}.json"
         report = {
             "status": status,
             "stage": err.stage,
@@ -879,12 +962,6 @@ def main(argv: list[str] | None = None) -> int:
             **err.meta,
         }
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-        feynman_metrics: dict[str, Any] = {
-            "enabled": bool(cfg["run_feynman"]),
-            "walltime_s": None,
-            "internal_total_s": None,
-            "peak_rss_mb": None,
-        }
         feynman_transpiled_metrics: dict[str, Any] = {
             "enabled": bool(cfg["run_feynman_transpiled"]),
             "walltime_s": None,
@@ -892,19 +969,6 @@ def main(argv: list[str] | None = None) -> int:
             "peak_rss_mb": None,
             "circuit": str(transpiled_qasm),
         }
-        if cfg["run_feynman"]:
-            _log(f"Running Feynman binary on original circuit after {status}", verbosity=verbosity)
-            feynman_metrics = _run_and_record_feynman(
-                cfg=cfg,
-                repo_root=repo_root,
-                run_dir=run_dir,
-                circuit=circuit,
-                input_statevector=input_statevector,
-                output_bitstrings=output_bitstrings,
-                label="feynman",
-                output_name="feynman_output.hsv",
-                verbosity=verbosity,
-            )
         if cfg["run_feynman_transpiled"]:
             feynman_transpiled_metrics = _run_optional_feynman(
                 cfg=cfg,
@@ -966,19 +1030,79 @@ def main(argv: list[str] | None = None) -> int:
         _log(str(err), verbosity=verbosity)
         _log(f"Wrote quimb failure report: {report_path}", verbosity=verbosity)
         _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
-        return 3
+        return 4 if status == "quimb_timeout" else 3
+    except QuimbTimeoutError as err:
+        status = "quimb_timeout"
+        report_path = run_dir / f"{status}.json"
+        report = {
+            "status": status,
+            "stage": "pre_amplitude",
+            "error_type": type(err).__name__,
+            "error": str(err),
+            "config_file": str(args.config.resolve()),
+        }
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        feynman_transpiled_metrics: dict[str, Any] = {
+            "enabled": bool(cfg["run_feynman_transpiled"]),
+            "walltime_s": None,
+            "internal_total_s": None,
+            "peak_rss_mb": None,
+            "circuit": str(transpiled_qasm),
+        }
+        summary_path = run_dir / "summary.json"
+        summary = {
+            "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "experiment_name": cfg["experiment_name"],
+            "notes": cfg["notes"],
+            "status": status,
+            "config": cfg,
+            "config_file": str(args.config.resolve()),
+            "environment": recorded_environment,
+            "software": software_versions,
+            "paths": {
+                "run_dir": str(run_dir),
+                "circuit": str(circuit),
+                "input_statevector": str(input_statevector),
+                "output_bitstrings": str(output_bitstrings),
+                status: str(report_path),
+                "transpiled_qasm": str(transpiled_qasm),
+            },
+            "generated": {
+                "circuit": circuit_generated,
+                "input_statevector": input_generated,
+                "output_bitstrings": output_generated,
+            },
+            "problem": {
+                "output_count": len(output_indices),
+                "output_size_bytes": output_size_bytes,
+                "input_index": input_index,
+                "input_amplitude": _complex_to_token(input_amplitude),
+            },
+            "metrics": {
+                "quimb_transpile_s": None,
+                "quimb_build_s": None,
+                "quimb_amplitude_s": None,
+                "quimb_total_s": None,
+                "process_start_peak_rss_mb": process_start_peak_rss_mb,
+                "quimb_phase_peak_rss_mb": _rss_mb(),
+                "process_peak_rss_mb": _rss_mb(),
+                "quimb_failure_stage": "pre_amplitude",
+                "quimb_error_type": type(err).__name__,
+                "quimb_error": str(err),
+                "feynman": feynman_metrics,
+                "feynman_transpiled": feynman_transpiled_metrics,
+            },
+        }
+        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        _log(str(err), verbosity=verbosity)
+        _log(f"Wrote quimb timeout report: {report_path}", verbosity=verbosity)
+        _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
+        return 4
     quimb_output = run_dir / "quimb_output.hsv"
     _write_hsv(quimb_output, output_indices, quimb_amps)
     _log(f"Wrote quimb output: {quimb_output}", verbosity=verbosity)
     quimb_phase_peak_rss_mb = _rss_mb()
 
-    feynman_sparse: dict[int, complex] | None = None
-    feynman_metrics: dict[str, Any] = {
-        "enabled": bool(cfg["run_feynman"]),
-        "walltime_s": None,
-        "internal_total_s": None,
-        "peak_rss_mb": None,
-    }
     feynman_transpiled_sparse: dict[int, complex] | None = None
     feynman_transpiled_metrics: dict[str, Any] = {
         "enabled": bool(cfg["run_feynman_transpiled"]),
@@ -987,19 +1111,6 @@ def main(argv: list[str] | None = None) -> int:
         "peak_rss_mb": None,
         "circuit": str(transpiled_qasm),
     }
-    if cfg["run_feynman"]:
-        feynman_metrics = _run_and_record_feynman(
-            cfg=cfg,
-            repo_root=repo_root,
-            run_dir=run_dir,
-            circuit=circuit,
-            input_statevector=input_statevector,
-            output_bitstrings=output_bitstrings,
-            label="feynman",
-            output_name="feynman_output.hsv",
-            verbosity=verbosity,
-        )
-        feynman_sparse = parse_hsv_sparse(Path(str(feynman_metrics["output"])))
     if cfg["run_feynman_transpiled"]:
         feynman_transpiled_metrics = _run_optional_feynman(
             cfg=cfg,
