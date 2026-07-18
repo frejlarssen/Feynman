@@ -758,8 +758,31 @@ def main(argv: list[str] | None = None) -> int:
         writer = csv.DictWriter(handle, fieldnames=SUMMARY_FIELDS)
         writer.writeheader()
         for n_qubits in [int(n) for n in cfg["qubits"]]:
+            skip_remaining_repeats_for_n = False
             for repeat_index in range(1, int(cfg["repeat"]) + 1):
                 run_index += 1
+                if skip_remaining_repeats_for_n:
+                    row = {field: "" for field in SUMMARY_FIELDS}
+                    row.update(
+                        {
+                            "run_index": run_index,
+                            "n": n_qubits,
+                            "repeat_index": repeat_index,
+                            "overall_status": "skipped_after_quimb_terminal",
+                            "quimb_status": "skipped",
+                            "feynman_status": "skipped",
+                            "feynman_transpiled_status": "skipped",
+                            "qwalk_iterations": int(cfg["qwalk"].get("iterations", 4)),
+                        }
+                    )
+                    writer.writerow(row)
+                    handle.flush()
+                    print(
+                        f"[qwalk-quimb-sweep] n={n_qubits} repeat={repeat_index}: "
+                        "skipped after earlier quimb timeout/failure for this n",
+                        flush=True,
+                    )
+                    continue
                 validation_cfg = _build_validation_config(
                     cfg=cfg,
                     n_qubits=n_qubits,
@@ -813,6 +836,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 writer.writerow(row)
                 handle.flush()
+                if row.get("quimb_status") in {"failed", "timeout"}:
+                    skip_remaining_repeats_for_n = True
                 if returncode != 0 and row.get("quimb_status") not in {"failed", "timeout"}:
                     failures += 1
                     print(
