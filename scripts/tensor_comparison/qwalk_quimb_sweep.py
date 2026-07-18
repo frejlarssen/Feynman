@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import importlib.metadata
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -23,6 +25,15 @@ for path in (SCRIPT_REPO_ROOT, SCRIPT_DIR):
         sys.path.insert(0, str(path))
 
 from scripts.sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+
+
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
 
 
 SUMMARY_FIELDS = [
@@ -86,6 +97,25 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"Config must be a JSON object: {path}")
     return payload
+
+
+def _recorded_environment() -> dict[str, Any]:
+    return {
+        "python": sys.executable,
+        "thread_env": {name: os.environ.get(name) for name in THREAD_ENV_VARS if os.environ.get(name) is not None},
+    }
+
+
+def _software_versions() -> dict[str, str]:
+    versions = {
+        "python": sys.version.split()[0],
+    }
+    for package in ("qiskit", "quimb", "numpy", "matplotlib"):
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = "not-installed"
+    return versions
 
 
 def _resolve_path(path_like: str | Path, repo_root: Path) -> Path:
@@ -637,6 +667,11 @@ def main(argv: list[str] | None = None) -> int:
     logs_dir = sweep_dir / "logs"
     configs_dir.mkdir()
     logs_dir.mkdir()
+    recorded_environment = _recorded_environment()
+    software_versions = _software_versions()
+    if recorded_environment["thread_env"]:
+        print(f"[qwalk-quimb-sweep] thread environment: {recorded_environment['thread_env']}", flush=True)
+    print(f"[qwalk-quimb-sweep] software versions: {software_versions}", flush=True)
 
     metadata = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -645,6 +680,8 @@ def main(argv: list[str] | None = None) -> int:
         "config_file": str(args.config.resolve()),
         "sweep_dir": str(sweep_dir),
         "runner": str(Path(__file__).resolve()),
+        "environment": recorded_environment,
+        "software": software_versions,
     }
     (sweep_dir / "sweep_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 

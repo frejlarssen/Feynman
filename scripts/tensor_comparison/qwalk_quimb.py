@@ -7,6 +7,7 @@ import argparse
 import builtins
 import csv
 import datetime as dt
+import importlib.metadata
 import json
 import os
 import re
@@ -34,6 +35,15 @@ from scripts.validation.qaoa_qiskit_validation import (  # noqa: E402
     parse_hs,
     parse_hsv_sparse,
     parse_qasm,
+)
+
+
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
 )
 
 
@@ -82,6 +92,25 @@ def _usage_rss_mb(usage: resource.struct_rusage) -> float:
     if sys.platform == "darwin":
         return rss / (1024 * 1024)
     return rss / 1024
+
+
+def _recorded_environment() -> dict[str, Any]:
+    return {
+        "python": sys.executable,
+        "thread_env": {name: os.environ.get(name) for name in THREAD_ENV_VARS if os.environ.get(name) is not None},
+    }
+
+
+def _software_versions() -> dict[str, str]:
+    versions = {
+        "python": sys.version.split()[0],
+    }
+    for package in ("qiskit", "quimb", "numpy", "matplotlib"):
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = "not-installed"
+    return versions
 
 
 def _tn_stats(tn: Any) -> str:
@@ -798,7 +827,12 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = output_root / f"{_utc_stamp()}_{_sanitize(str(cfg['experiment_name']))}"
     run_dir.mkdir(parents=True, exist_ok=False)
     process_start_peak_rss_mb = _rss_mb()
+    recorded_environment = _recorded_environment()
+    software_versions = _software_versions()
     _log(f"Run directory: {run_dir}", verbosity=verbosity)
+    if recorded_environment["thread_env"]:
+        _log(f"Thread environment: {recorded_environment['thread_env']}", verbosity=verbosity)
+    _log(f"Software versions: {software_versions}", verbosity=verbosity, level=2)
 
     _log("Materializing circuit, input statevector, and output bitstrings", verbosity=verbosity)
     circuit, circuit_generated = resolve_circuit_input(cfg["circuit"], repo_root)
@@ -891,6 +925,8 @@ def main(argv: list[str] | None = None) -> int:
             "status": status,
             "config": cfg,
             "config_file": str(args.config.resolve()),
+            "environment": recorded_environment,
+            "software": software_versions,
             "paths": {
                 "run_dir": str(run_dir),
                 "circuit": str(circuit),
@@ -994,6 +1030,8 @@ def main(argv: list[str] | None = None) -> int:
         "notes": cfg["notes"],
         "config": cfg,
         "config_file": str(args.config.resolve()),
+        "environment": recorded_environment,
+        "software": software_versions,
         "paths": {
             "run_dir": str(run_dir),
             "circuit": str(circuit),
