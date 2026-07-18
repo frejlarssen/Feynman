@@ -95,6 +95,8 @@ def _tree_stats(tree: Any) -> str:
     for label, method_name in (
         ("width", "contraction_width"),
         ("cost_log10", "contraction_cost"),
+        ("max_size", "max_size"),
+        ("peak_size", "peak_size"),
     ):
         method = getattr(tree, method_name, None)
         if not callable(method):
@@ -110,6 +112,35 @@ def _tree_stats(tree: Any) -> str:
                 pass
         parts.append(f"{label}={value}")
     return ", ".join(parts) if parts else "tree_stats=unavailable"
+
+
+def _tree_size(tree: Any, method_name: str) -> int | None:
+    method = getattr(tree, method_name, None)
+    if not callable(method):
+        return None
+    try:
+        return int(method())
+    except Exception:
+        return None
+
+
+class QuimbContractionSizeError(MemoryError):
+    def __init__(
+        self,
+        *,
+        estimated_bytes: int,
+        max_bytes: int,
+        max_size: int | None,
+        peak_size: int | None,
+    ):
+        self.estimated_bytes = estimated_bytes
+        self.max_bytes = max_bytes
+        self.max_size = max_size
+        self.peak_size = peak_size
+        super().__init__(
+            "Refusing quimb contraction because the contraction tree exceeds the configured memory guard: "
+            f"estimated_bytes={estimated_bytes}, quimb_max_contraction_bytes={max_bytes}."
+        )
 
 
 def _log_elapsed(message: str, start: float, *, verbosity: int, tn: Any | None = None) -> None:
@@ -131,13 +162,12 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "input_statevector": raw.get("input_statevector"),
         "output_bitstrings": raw.get("output_bitstrings"),
         "qiskit_optimization_level": int(raw.get("qiskit_optimization_level", 1)),
-        "quimb_max_transpiled_ops": raw.get("quimb_max_transpiled_ops"),
+        "quimb_max_contraction_bytes": raw.get("quimb_max_contraction_bytes"),
         "quimb_optimize": str(raw.get("quimb_optimize", "greedy")),
         "quimb_rehearse": bool(raw.get("quimb_rehearse", False)),
         "quimb_simplify_sequence": raw.get("quimb_simplify_sequence", "ADCRS"),
         "quimb_simplify_atol": float(raw.get("quimb_simplify_atol", 1e-12)),
         "quimb_simplify_equalize_norms": bool(raw.get("quimb_simplify_equalize_norms", False)),
-        "run_quimb_amplitudes": bool(raw.get("run_quimb_amplitudes", True)),
         "run_feynman": bool(raw.get("run_feynman", True)),
         "run_feynman_transpiled": bool(raw.get("run_feynman_transpiled", False)),
         "binary": raw.get("binary", "build-release/sv_prefetcher_subset_mpi.x"),
@@ -191,29 +221,6 @@ class FeynmanOutputMissing(RuntimeError):
     def __init__(self, output_file: Path):
         self.output_file = output_file
         super().__init__(f"Feynman command returned successfully but did not write output: {output_file}")
-
-
-class QuimbSafetyLimitError(RuntimeError):
-    def __init__(
-        self,
-        *,
-        transpiled_ops: int,
-        max_transpiled_ops: int,
-        gate_counts: dict[str, int],
-        transpiled_qasm: Path,
-        global_phase: str,
-        transpile_s: float,
-    ):
-        self.transpiled_ops = transpiled_ops
-        self.max_transpiled_ops = max_transpiled_ops
-        self.gate_counts = gate_counts
-        self.transpiled_qasm = transpiled_qasm
-        self.global_phase = global_phase
-        self.transpile_s = transpile_s
-        super().__init__(
-            "Refusing quimb run because transpiled circuit is above the configured safety limit: "
-            f"transpiled_ops={transpiled_ops}, quimb_max_transpiled_ops={max_transpiled_ops}."
-        )
 
 
 class QuimbRunError(RuntimeError):
@@ -501,6 +508,7 @@ def _profiled_quimb_amplitude(
     bitstring: str,
     *,
     optimize: str,
+    max_contraction_bytes: int | None,
     simplify_sequence: str,
     simplify_atol: float,
     simplify_equalize_norms: bool,
@@ -536,6 +544,19 @@ def _profiled_quimb_amplitude(
         f"{_tree_stats(tree)}, maxrss_mb={_rss_mb():.1f}",
         verbosity=verbosity,
     )
+    if max_contraction_bytes is not None:
+        max_size = _tree_size(tree, "max_size")
+        peak_size = _tree_size(tree, "peak_size")
+        sizes = [size for size in (max_size, peak_size) if size is not None]
+        if sizes:
+            estimated_bytes = max(sizes) * 16
+            if estimated_bytes > max_contraction_bytes:
+                raise QuimbContractionSizeError(
+                    estimated_bytes=estimated_bytes,
+                    max_bytes=max_contraction_bytes,
+                    max_size=max_size,
+                    peak_size=peak_size,
+                )
 
     start = time.perf_counter()
     amp = psi_b.contract(builtins.all, output_inds=(), optimize=tree)
@@ -552,8 +573,7 @@ def _compute_quimb_amplitudes(
     input_amplitude: complex,
     optimization_level: int,
     optimize: str,
-    max_transpiled_ops: int | None,
-    run_amplitudes: bool,
+    max_contraction_bytes: int | None,
     rehearse: bool,
     simplify_sequence: str,
     simplify_atol: float,
@@ -595,19 +615,6 @@ def _compute_quimb_amplitudes(
         "transpiled_qasm": str(transpiled_qasm),
         "transpiled_global_phase": str(tqc.global_phase),
     }
-    if not run_amplitudes:
-        _log("Skipping quimb amplitude contraction after transpilation", verbosity=verbosity)
-        return None, meta, transpile_s, None, None
-    if max_transpiled_ops is not None and transpiled_ops > max_transpiled_ops:
-        raise QuimbSafetyLimitError(
-            transpiled_ops=transpiled_ops,
-            max_transpiled_ops=max_transpiled_ops,
-            gate_counts=gate_counts,
-            transpiled_qasm=transpiled_qasm,
-            global_phase=str(tqc.global_phase),
-            transpile_s=transpile_s,
-        )
-
     _log("Building quimb circuit from transpiled Qiskit circuit", verbosity=verbosity)
     t1 = time.perf_counter()
     try:
@@ -653,6 +660,7 @@ def _compute_quimb_amplitudes(
                 quimb_circ,
                 bitstring,
                 optimize=optimize,
+                max_contraction_bytes=max_contraction_bytes,
                 simplify_sequence=simplify_sequence,
                 simplify_atol=simplify_atol,
                 simplify_equalize_norms=simplify_equalize_norms,
@@ -669,6 +677,13 @@ def _compute_quimb_amplitudes(
         meta["quimb_amplitude_options"] = amplitude_opts
         meta["quimb_completed_amplitudes"] = len(amps)
         meta["quimb_failed_amplitude"] = current_amp
+        if isinstance(err, QuimbContractionSizeError):
+            meta["quimb_contraction_estimate"] = {
+                "estimated_bytes": err.estimated_bytes,
+                "max_bytes": err.max_bytes,
+                "max_size": err.max_size,
+                "peak_size": err.peak_size,
+            }
         raise QuimbRunError(
             stage="amplitude",
             meta=meta,
@@ -784,121 +799,17 @@ def main(argv: list[str] | None = None) -> int:
             input_amplitude=input_amplitude,
             optimization_level=int(cfg["qiskit_optimization_level"]),
             optimize=str(cfg["quimb_optimize"]),
-            max_transpiled_ops=(
-                None if cfg["quimb_max_transpiled_ops"] is None else int(cfg["quimb_max_transpiled_ops"])
+            max_contraction_bytes=(
+                None
+                if cfg["quimb_max_contraction_bytes"] is None
+                else int(cfg["quimb_max_contraction_bytes"])
             ),
-            run_amplitudes=bool(cfg["run_quimb_amplitudes"]),
             rehearse=bool(cfg["quimb_rehearse"]),
             simplify_sequence=str(cfg["quimb_simplify_sequence"]),
             simplify_atol=float(cfg["quimb_simplify_atol"]),
             simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
             verbosity=verbosity,
         )
-    except QuimbSafetyLimitError as err:
-        status = "quimb_safety_limit"
-        report_path = run_dir / "quimb_safety_limit.json"
-        report = {
-            "error": str(err),
-            "transpiled_ops": err.transpiled_ops,
-            "transpiled_gate_counts": err.gate_counts,
-            "transpiled_qasm": str(err.transpiled_qasm),
-            "transpiled_global_phase": err.global_phase,
-            "config_file": str(args.config.resolve()),
-        }
-        report["quimb_max_transpiled_ops"] = err.max_transpiled_ops
-        report_path.write_text(
-            json.dumps(
-                report,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        feynman_metrics: dict[str, Any] = {
-            "enabled": bool(cfg["run_feynman"]),
-            "walltime_s": None,
-            "internal_total_s": None,
-            "peak_rss_mb": None,
-        }
-        feynman_transpiled_metrics: dict[str, Any] = {
-            "enabled": bool(cfg["run_feynman_transpiled"]),
-            "walltime_s": None,
-            "internal_total_s": None,
-            "peak_rss_mb": None,
-            "circuit": str(transpiled_qasm),
-        }
-        if cfg["run_feynman"]:
-            _log(f"Running Feynman binary on original circuit after {status}", verbosity=verbosity)
-            feynman_metrics = _run_and_record_feynman(
-                cfg=cfg,
-                repo_root=repo_root,
-                run_dir=run_dir,
-                circuit=circuit,
-                input_statevector=input_statevector,
-                output_bitstrings=output_bitstrings,
-                label="feynman",
-                output_name="feynman_output.hsv",
-                verbosity=verbosity,
-            )
-        if cfg["run_feynman_transpiled"]:
-            feynman_transpiled_metrics = _run_optional_feynman(
-                cfg=cfg,
-                repo_root=repo_root,
-                run_dir=run_dir,
-                circuit=transpiled_qasm,
-                input_statevector=input_statevector,
-                output_bitstrings=output_bitstrings,
-                label="feynman_transpiled",
-                output_name="feynman_transpiled_output.hsv",
-                verbosity=verbosity,
-            )
-        summary_path = run_dir / "summary.json"
-        summary = {
-            "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "experiment_name": cfg["experiment_name"],
-            "notes": cfg["notes"],
-            "status": status,
-            "config": cfg,
-            "config_file": str(args.config.resolve()),
-            "paths": {
-                "run_dir": str(run_dir),
-                "circuit": str(circuit),
-                "input_statevector": str(input_statevector),
-                "output_bitstrings": str(output_bitstrings),
-                status: str(report_path),
-                "transpiled_qasm": str(transpiled_qasm),
-            },
-            "generated": {
-                "circuit": circuit_generated,
-                "input_statevector": input_generated,
-                "output_bitstrings": output_generated,
-            },
-            "problem": {
-                "output_count": len(output_indices),
-                "output_size_bytes": output_size_bytes,
-                "input_index": input_index,
-                "input_amplitude": _complex_to_token(input_amplitude),
-                "transpiled_qiskit_ops": err.transpiled_ops,
-                "transpiled_gate_counts": err.gate_counts,
-                "transpiled_qasm": str(transpiled_qasm),
-                "transpiled_global_phase": err.global_phase,
-            },
-            "metrics": {
-                "quimb_transpile_s": err.transpile_s,
-                "quimb_build_s": None,
-                "quimb_amplitude_s": None,
-                "quimb_total_s": err.transpile_s,
-                "process_start_peak_rss_mb": process_start_peak_rss_mb,
-                "quimb_phase_peak_rss_mb": _rss_mb(),
-                "process_peak_rss_mb": _rss_mb(),
-                "feynman": feynman_metrics,
-                "feynman_transpiled": feynman_transpiled_metrics,
-            },
-        }
-        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        _log(str(err), verbosity=verbosity)
-        _log(f"Wrote quimb skip report: {report_path}", verbosity=verbosity)
-        _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
-        return 2
     except QuimbRunError as err:
         status = "quimb_failed"
         report_path = run_dir / "quimb_failed.json"
@@ -997,105 +908,6 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"Wrote quimb failure report: {report_path}", verbosity=verbosity)
         _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
         return 3
-    if quimb_amps is None:
-        status = "quimb_transpile_only"
-        report_path = run_dir / "quimb_transpile_only.json"
-        report_path.write_text(
-            json.dumps(
-                {
-                    "status": status,
-                    "transpiled_ops": quimb_meta["transpiled_qiskit_ops"],
-                    "transpiled_gate_counts": quimb_meta["transpiled_gate_counts"],
-                    "transpiled_qasm": quimb_meta["transpiled_qasm"],
-                    "transpiled_global_phase": quimb_meta["transpiled_global_phase"],
-                    "config_file": str(args.config.resolve()),
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        feynman_metrics: dict[str, Any] = {
-            "enabled": bool(cfg["run_feynman"]),
-            "walltime_s": None,
-            "internal_total_s": None,
-            "peak_rss_mb": None,
-        }
-        feynman_transpiled_metrics: dict[str, Any] = {
-            "enabled": bool(cfg["run_feynman_transpiled"]),
-            "walltime_s": None,
-            "internal_total_s": None,
-            "peak_rss_mb": None,
-            "circuit": str(transpiled_qasm),
-        }
-        if cfg["run_feynman"]:
-            _log(f"Running Feynman binary on original circuit after {status}", verbosity=verbosity)
-            feynman_metrics = _run_and_record_feynman(
-                cfg=cfg,
-                repo_root=repo_root,
-                run_dir=run_dir,
-                circuit=circuit,
-                input_statevector=input_statevector,
-                output_bitstrings=output_bitstrings,
-                label="feynman",
-                output_name="feynman_output.hsv",
-                verbosity=verbosity,
-            )
-        if cfg["run_feynman_transpiled"]:
-            feynman_transpiled_metrics = _run_optional_feynman(
-                cfg=cfg,
-                repo_root=repo_root,
-                run_dir=run_dir,
-                circuit=transpiled_qasm,
-                input_statevector=input_statevector,
-                output_bitstrings=output_bitstrings,
-                label="feynman_transpiled",
-                output_name="feynman_transpiled_output.hsv",
-                verbosity=verbosity,
-            )
-        summary_path = run_dir / "summary.json"
-        summary = {
-            "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "experiment_name": cfg["experiment_name"],
-            "notes": cfg["notes"],
-            "status": status,
-            "config": cfg,
-            "config_file": str(args.config.resolve()),
-            "paths": {
-                "run_dir": str(run_dir),
-                "circuit": str(circuit),
-                "input_statevector": str(input_statevector),
-                "output_bitstrings": str(output_bitstrings),
-                status: str(report_path),
-                "transpiled_qasm": str(transpiled_qasm),
-            },
-            "generated": {
-                "circuit": circuit_generated,
-                "input_statevector": input_generated,
-                "output_bitstrings": output_generated,
-            },
-            "problem": {
-                "output_count": len(output_indices),
-                "output_size_bytes": output_size_bytes,
-                "input_index": input_index,
-                "input_amplitude": _complex_to_token(input_amplitude),
-                **quimb_meta,
-            },
-            "metrics": {
-                "quimb_transpile_s": transpile_s,
-                "quimb_build_s": None,
-                "quimb_amplitude_s": None,
-                "quimb_total_s": transpile_s,
-                "process_start_peak_rss_mb": process_start_peak_rss_mb,
-                "quimb_phase_peak_rss_mb": _rss_mb(),
-                "process_peak_rss_mb": _rss_mb(),
-                "feynman": feynman_metrics,
-                "feynman_transpiled": feynman_transpiled_metrics,
-            },
-        }
-        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        _log(f"Wrote quimb transpile-only report: {report_path}", verbosity=verbosity)
-        _log(f"Wrote summary: {summary_path}", verbosity=verbosity)
-        return 0
     quimb_output = run_dir / "quimb_output.hsv"
     _write_hsv(quimb_output, output_indices, quimb_amps)
     _log(f"Wrote quimb output: {quimb_output}", verbosity=verbosity)

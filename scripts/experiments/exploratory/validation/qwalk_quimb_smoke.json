@@ -17,7 +17,6 @@
     "count": 8
   },
   "qiskit_optimization_level": 1,
-  "quimb_max_transpiled_ops": 20000,
   "quimb_optimize": "greedy",
   "quimb_rehearse": false,
   "quimb_simplify_sequence": "ADCRS",
