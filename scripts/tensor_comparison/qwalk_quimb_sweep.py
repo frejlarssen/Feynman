@@ -608,9 +608,8 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
-    quimb_missing_ns = sorted(
-        {int(row["n"]) for row in rows_all if row.get("quimb_status") in {"failed", "timeout"}}
-    )
+    quimb_not_measured_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "failed"})
+    quimb_timeout_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "timeout"})
 
     outputs: list[Path] = []
     time_series = {
@@ -643,14 +642,24 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             ys = [values[x] for x in xs]
             ax.plot(xs, ys, marker="o", linewidth=1.6, label=label)
             plotted = True
-        if mark_missing_quimb and quimb_missing_ns:
-            for i, n in enumerate(quimb_missing_ns):
+        if mark_missing_quimb and quimb_not_measured_ns:
+            for i, n in enumerate(quimb_not_measured_ns):
                 ax.axvline(
                     n,
                     color="0.7",
                     linestyle=":",
                     linewidth=1.1,
                     label="quimb not measured" if i == 0 else None,
+                    zorder=0,
+                )
+        if mark_missing_quimb and quimb_timeout_ns:
+            for i, n in enumerate(quimb_timeout_ns):
+                ax.axvline(
+                    n,
+                    color="0.45",
+                    linestyle="--",
+                    linewidth=1.1,
+                    label="quimb timeout" if i == 0 else None,
                     zorder=0,
                 )
         ax.set_xlabel("Qubits")
