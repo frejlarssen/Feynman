@@ -381,8 +381,8 @@ def _write_feynman_qasm_from_qiskit(qc: Any, path: Path) -> None:
         'include "stdgates.inc";',
         f"qreg q[{qc.num_qubits}];",
     ]
-    no_param_gates = {"h", "x", "z", "swap", "cx", "ccx", "t", "tdg"}
-    param_gates = {"p", "u1", "u2", "u3", "rx", "ry"}
+    no_param_gates = {"h", "x", "z", "swap", "cx", "ccx", "cz", "ccz", "cswap", "t", "tdg"}
+    param_gates = {"p", "u1", "u2", "u3", "rx", "ry", "cp", "crx", "cry"}
     for inst in qc.data:
         op = inst.operation
         name = op.name.lower()
