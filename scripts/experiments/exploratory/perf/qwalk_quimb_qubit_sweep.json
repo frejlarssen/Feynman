@@ -2,7 +2,7 @@
   "experiment_name": "qwalk_quimb_qubit_sweep",
   "repo_root": ".",
   "output_root": "data/outputs/experiments",
-  "qubits": [14, 15,16,17, 18, 19, 20, 22, 24, 26],
+  "qubits": [12, 16, 20, 24, 28, 32],
   "repeat": 1,
   "continue_on_error": true,
   "timeout_seconds": 600,
