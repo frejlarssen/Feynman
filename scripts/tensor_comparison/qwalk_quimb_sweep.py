@@ -11,6 +11,7 @@ import json
 import math
 import os
 import re
+import statistics
 import subprocess
 import sys
 import threading
@@ -578,7 +579,7 @@ def _read_rows(summary_csv: Path, *, include_failures: bool) -> list[dict[str, A
     return rows
 
 
-def _mean_by_n(rows: list[dict[str, Any]], column: str) -> dict[int, float]:
+def _mean_std_by_n(rows: list[dict[str, Any]], column: str) -> dict[int, tuple[float, float, int]]:
     grouped: dict[int, list[float]] = {}
     for row in rows:
         raw = row.get(column, "")
@@ -588,14 +589,14 @@ def _mean_by_n(rows: list[dict[str, Any]], column: str) -> dict[int, float]:
         if not math.isfinite(value):
             continue
         grouped.setdefault(int(row["n"]), []).append(value)
-    return {n: sum(values) / len(values) for n, values in grouped.items()}
-
-
-def _failure_marker_y(series: dict[str, dict[int, float]]) -> float:
-    values = [y for data in series.values() for y in data.values() if y > 0.0 and math.isfinite(y)]
-    if not values:
-        return 1.0
-    return max(values) * 1.25
+    return {
+        n: (
+            sum(values) / len(values),
+            statistics.stdev(values) if len(values) > 1 else 0.0,
+            len(values),
+        )
+        for n, values in grouped.items()
+    }
 
 
 def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_fontsize: float | None = None) -> list[Path]:
@@ -613,19 +614,19 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
 
     outputs: list[Path] = []
     time_series = {
-        "Feynman original wall": _mean_by_n(rows_all, "feynman_walltime_s"),
-        "Feynman original internal": _mean_by_n(rows_all, "feynman_internal_total_s"),
-        "Feynman transpiled wall": _mean_by_n(rows_all, "feynman_transpiled_walltime_s"),
-        "Feynman transpiled internal": _mean_by_n(rows_all, "feynman_transpiled_internal_total_s"),
-        "quimb": _mean_by_n(rows_quimb_ok, "quimb_total_s"),
+        "Feynman original wall": _mean_std_by_n(rows_all, "feynman_walltime_s"),
+        "Feynman original internal": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
+        "Feynman transpiled wall": _mean_std_by_n(rows_all, "feynman_transpiled_walltime_s"),
+        "Feynman transpiled internal": _mean_std_by_n(rows_all, "feynman_transpiled_internal_total_s"),
+        "quimb": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
     }
     memory_series = {
-        "Feynman original": _mean_by_n(rows_all, "feynman_peak_rss_mb"),
-        "Feynman transpiled": _mean_by_n(rows_all, "feynman_transpiled_peak_rss_mb"),
-        "quimb": _mean_by_n(rows_quimb_ok, "quimb_peak_rss_mb"),
+        "Feynman original": _mean_std_by_n(rows_all, "feynman_peak_rss_mb"),
+        "Feynman transpiled": _mean_std_by_n(rows_all, "feynman_transpiled_peak_rss_mb"),
+        "quimb": _mean_std_by_n(rows_quimb_ok, "quimb_peak_rss_mb"),
     }
     ops_series = {
-        "transpiled Qiskit ops": _mean_by_n(rows_all, "transpiled_qiskit_ops"),
+        "transpiled Qiskit ops": _mean_std_by_n(rows_all, "transpiled_qiskit_ops"),
     }
 
     for filename, ylabel, series, mark_missing_quimb in (
@@ -639,8 +640,19 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             if not values:
                 continue
             xs = sorted(values)
-            ys = [values[x] for x in xs]
-            ax.plot(xs, ys, marker="o", linewidth=1.6, label=label)
+            ys = [values[x][0] for x in xs]
+            stds = [values[x][1] for x in xs]
+            lower = [min(std, max(y * 0.999, 0.0)) for y, std in zip(ys, stds)]
+            upper = stds
+            ax.errorbar(
+                xs,
+                ys,
+                yerr=[lower, upper],
+                marker="o",
+                linewidth=1.6,
+                capsize=3,
+                label=label,
+            )
             plotted = True
         if mark_missing_quimb and quimb_not_measured_ns:
             for i, n in enumerate(quimb_not_measured_ns):
