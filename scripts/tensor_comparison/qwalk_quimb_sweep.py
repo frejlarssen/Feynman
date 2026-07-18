@@ -679,7 +679,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--experiment-name", default=None)
     parser.add_argument("--repo-root", default=None)
     parser.add_argument("--output-root", default=None)
@@ -687,11 +687,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--timeout-seconds", type=float, default=None)
     parser.add_argument("--no-plot", action="store_true")
+    parser.add_argument("--plot-only", action="store_true", help="Regenerate plots from an existing summary.csv.")
+    parser.add_argument("--summary-csv", type=Path, help="Existing qwalk-quimb sweep summary.csv for --plot-only.")
+    parser.add_argument("--plot-output-dir", type=Path, help="Directory for regenerated plots; defaults to summary.csv parent.")
     return parser.parse_args(argv)
+
+
+def _plot_title_from_metadata(summary_csv: Path) -> tuple[str, float | None]:
+    metadata_path = summary_csv.parent / "sweep_metadata.json"
+    if not metadata_path.exists():
+        return summary_csv.parent.name, None
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    config = metadata.get("config", {}) if isinstance(metadata, dict) else {}
+    plotting = config.get("plotting", {}) if isinstance(config.get("plotting", {}), dict) else {}
+    title = str(plotting.get("title", config.get("experiment_name", metadata.get("experiment_name", summary_csv.parent.name))))
+    return title, plotting.get("label_fontsize")
+
+
+def _plot_only(args: argparse.Namespace) -> int:
+    if args.summary_csv is None:
+        raise ValueError("--plot-only requires --summary-csv")
+    summary_csv = args.summary_csv.resolve()
+    if not summary_csv.exists():
+        raise FileNotFoundError(f"summary.csv not found: {summary_csv}")
+    output_dir = args.plot_output_dir.resolve() if args.plot_output_dir is not None else summary_csv.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    title, label_fontsize = _plot_title_from_metadata(summary_csv)
+    for out in _plot_summary(summary_csv, output_dir=output_dir, title=title, label_fontsize=label_fontsize):
+        print(f"Saved plot: {out}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.plot_only:
+        return _plot_only(args)
+    if args.config is None:
+        raise ValueError("--config is required unless --plot-only is used")
     cfg = _merge_config(args)
     repo_root = _resolve_path(cfg["repo_root"], Path.cwd())
     output_root = _resolve_path(cfg["output_root"], repo_root)

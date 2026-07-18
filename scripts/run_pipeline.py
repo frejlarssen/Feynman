@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-def _add_common_sweep_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", required=True, help="Path to sweep config JSON.")
+def _add_common_sweep_flags(parser: argparse.ArgumentParser, *, require_config: bool = True) -> None:
+    parser.add_argument("--config", required=require_config, help="Path to sweep config JSON.")
     parser.add_argument("--experiment-name", default="", help="Optional experiment name override.")
     parser.add_argument("--repo-root", default="", help="Optional repo root override.")
     parser.add_argument("--output-root", default="", help="Optional output root override.")
@@ -23,7 +23,9 @@ def _add_common_sweep_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def _sweep_argv(args: argparse.Namespace) -> list[str]:
-    argv = ["--config", args.config]
+    argv = []
+    if args.config:
+        argv.extend(["--config", args.config])
     if args.experiment_name:
         argv.extend(["--experiment-name", args.experiment_name])
     if args.repo_root:
@@ -59,8 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
     qaoa.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
 
     qwalk_quimb_sweep = sub.add_parser("qwalk-quimb-sweep", help="Run QWalk Feynman vs quimb qubit sweep.")
-    _add_common_sweep_flags(qwalk_quimb_sweep)
+    _add_common_sweep_flags(qwalk_quimb_sweep, require_config=False)
     qwalk_quimb_sweep.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
+    qwalk_quimb_sweep.add_argument("--plot-only", action="store_true", help="Regenerate plots from an existing summary.csv.")
+    qwalk_quimb_sweep.add_argument("--summary-csv", default="", help="Existing qwalk-quimb sweep summary.csv for --plot-only.")
+    qwalk_quimb_sweep.add_argument("--plot-output-dir", default="", help="Directory for regenerated plots.")
 
     run_all = sub.add_parser(
         "run-all-experiments",
@@ -756,6 +761,12 @@ def main(argv: list[str] | None = None) -> int:
         sweep_argv = _sweep_argv(args)
         if args.no_plot:
             sweep_argv.append("--no-plot")
+        if args.plot_only:
+            sweep_argv.append("--plot-only")
+        if args.summary_csv:
+            sweep_argv.extend(["--summary-csv", args.summary_csv])
+        if args.plot_output_dir:
+            sweep_argv.extend(["--plot-output-dir", args.plot_output_dir])
         return qwalk_quimb_sweep_main(sweep_argv)
     if args.command == "run-all-experiments":
         return _run_all_experiments(args)
