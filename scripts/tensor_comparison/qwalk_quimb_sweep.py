@@ -11,6 +11,7 @@ import math
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,14 @@ SUMMARY_FIELDS = [
     "quimb_build_s",
     "quimb_amplitude_s",
     "quimb_peak_rss_mb",
+    "quimb_last_stage",
+    "quimb_last_amplitude",
+    "quimb_last_width",
+    "quimb_last_cost_log10",
+    "quimb_last_max_size",
+    "quimb_last_peak_size",
+    "quimb_last_maxrss_mb",
+    "quimb_error",
     "max_abs_amp_error",
     "max_abs_population_error",
     "run_dir",
@@ -204,6 +213,16 @@ def _parse_first_int(pattern: str, text: str) -> int | None:
     return None if match is None else int(match.group(1))
 
 
+def _parse_last_float(pattern: str, text: str) -> float | None:
+    matches = list(re.finditer(pattern, text))
+    return None if not matches else float(matches[-1].group(1))
+
+
+def _parse_last_int(pattern: str, text: str) -> int | None:
+    matches = list(re.finditer(pattern, text))
+    return None if not matches else int(matches[-1].group(1))
+
+
 def _partial_problem_from_stdout(stdout: str) -> dict[str, Any]:
     problem: dict[str, Any] = {}
     output_count = _parse_first_int(r"output_count=(\d+)", stdout)
@@ -235,6 +254,55 @@ def _partial_metrics_from_stdout(stdout: str) -> dict[str, Any]:
     return metrics
 
 
+def _partial_quimb_progress_from_stdout(stdout: str) -> dict[str, Any]:
+    progress: dict[str, Any] = {}
+    stage_patterns = [
+        ("contraction_done", r"contraction done:"),
+        ("contraction_tree_ready", r"contraction tree ready:"),
+        ("final_full_simplify_done", r"final full_simplify done:"),
+        ("bitstring_projection_done", r"bitstring projection done:"),
+        ("get_psi_simplified_done", r"get_psi_simplified done:"),
+        ("amplitude_started", r"quimb amplitude \d+/\d+ start:"),
+        ("circuit_built", r"quimb circuit built:"),
+        ("transpile_done", r"Transpile done:"),
+    ]
+    last_stage_pos = -1
+    last_stage = None
+    for stage, pattern in stage_patterns:
+        matches = list(re.finditer(pattern, stdout))
+        if matches and matches[-1].start() > last_stage_pos:
+            last_stage_pos = matches[-1].start()
+            last_stage = stage
+    if last_stage is not None:
+        progress["quimb_last_stage"] = last_stage
+
+    amp_match = list(re.finditer(r"quimb amplitude (\d+)/(\d+) start:", stdout))
+    if amp_match:
+        progress["quimb_last_amplitude"] = f"{amp_match[-1].group(1)}/{amp_match[-1].group(2)}"
+
+    width = _parse_last_float(r"contraction tree ready: .*width=([0-9eE+.\-]+)", stdout)
+    cost = _parse_last_float(r"contraction tree ready: .*cost_log10=([0-9eE+.\-]+)", stdout)
+    max_size = _parse_last_int(r"contraction tree ready: .*max_size=(\d+)", stdout)
+    peak_size = _parse_last_int(r"contraction tree ready: .*peak_size=(\d+)", stdout)
+    maxrss = _parse_last_float(r"maxrss_mb=([0-9eE+.\-]+)", stdout)
+    if width is not None:
+        progress["quimb_last_width"] = width
+    if cost is not None:
+        progress["quimb_last_cost_log10"] = cost
+    if max_size is not None:
+        progress["quimb_last_max_size"] = max_size
+    if peak_size is not None:
+        progress["quimb_last_peak_size"] = peak_size
+    if maxrss is not None:
+        progress["quimb_last_maxrss_mb"] = maxrss
+        progress["quimb_peak_rss_mb"] = maxrss
+
+    failure_match = re.search(r"quimb failed during amplitude: (.+)", stdout)
+    if failure_match:
+        progress["quimb_error"] = failure_match.group(1)
+    return progress
+
+
 def _timed_out_in_quimb(stdout: str) -> bool:
     return (
         "Building quimb circuit" in stdout
@@ -262,6 +330,78 @@ def _load_transpile_metadata(validation_run_dir: Path | None) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _stream_subprocess(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    stdout_file: Path,
+    stderr_file: Path,
+    timeout_s: float | None,
+) -> tuple[int, float, str, str]:
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    t0 = time.perf_counter()
+
+    with stdout_file.open("w", encoding="utf-8") as out_handle, stderr_file.open("w", encoding="utf-8") as err_handle:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+
+        def pump(stream: Any, chunks: list[str], log_handle: Any, terminal: Any) -> None:
+            try:
+                for line in iter(stream.readline, ""):
+                    chunks.append(line)
+                    log_handle.write(line)
+                    log_handle.flush()
+                    terminal.write(line)
+                    terminal.flush()
+            finally:
+                stream.close()
+
+        stdout_thread = threading.Thread(
+            target=pump,
+            args=(proc.stdout, stdout_chunks, out_handle, sys.stdout),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=pump,
+            args=(proc.stderr, stderr_chunks, err_handle, sys.stderr),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+
+        try:
+            returncode = proc.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            timeout_line = f"\n[qwalk-quimb-sweep] timeout after {timeout_s} seconds\n"
+            stderr_chunks.append(timeout_line)
+            err_handle.write(timeout_line)
+            err_handle.flush()
+            sys.stderr.write(timeout_line)
+            sys.stderr.flush()
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            returncode = 124
+
+        stdout_thread.join(timeout=5)
+        stderr_thread.join(timeout=5)
+
+    elapsed_s = time.perf_counter() - t0
+    return returncode, elapsed_s, "".join(stdout_chunks), "".join(stderr_chunks)
+
+
 def _row_from_run(
     *,
     run_index: int,
@@ -284,6 +424,7 @@ def _row_from_run(
         problem.setdefault(key, value)
     if not metrics:
         metrics.update(_partial_metrics_from_stdout(stdout))
+    quimb_progress = _partial_quimb_progress_from_stdout(stdout)
     feynman = metrics.get("feynman", {}) if isinstance(metrics.get("feynman", {}), dict) else {}
     feynman_transpiled = (
         metrics.get("feynman_transpiled", {}) if isinstance(metrics.get("feynman_transpiled", {}), dict) else {}
@@ -326,7 +467,9 @@ def _row_from_run(
             else ("disabled" if not feynman_transpiled.get("enabled") else "not_run")
         )
     )
-    quimb_peak_rss_mb = metrics.get("quimb_phase_peak_rss_mb") if quimb_status in {"ok", "failed"} else None
+    quimb_peak_rss_mb = metrics.get("quimb_phase_peak_rss_mb")
+    if quimb_peak_rss_mb is None:
+        quimb_peak_rss_mb = quimb_progress.get("quimb_peak_rss_mb")
     return {
         "run_index": run_index,
         "n": n_qubits,
@@ -352,6 +495,14 @@ def _row_from_run(
         "quimb_build_s": _float_or_empty(metrics.get("quimb_build_s")),
         "quimb_amplitude_s": _float_or_empty(metrics.get("quimb_amplitude_s")),
         "quimb_peak_rss_mb": _float_or_empty(quimb_peak_rss_mb),
+        "quimb_last_stage": quimb_progress.get("quimb_last_stage", ""),
+        "quimb_last_amplitude": quimb_progress.get("quimb_last_amplitude", ""),
+        "quimb_last_width": _float_or_empty(quimb_progress.get("quimb_last_width")),
+        "quimb_last_cost_log10": _float_or_empty(quimb_progress.get("quimb_last_cost_log10")),
+        "quimb_last_max_size": quimb_progress.get("quimb_last_max_size", ""),
+        "quimb_last_peak_size": quimb_progress.get("quimb_last_peak_size", ""),
+        "quimb_last_maxrss_mb": _float_or_empty(quimb_progress.get("quimb_last_maxrss_mb")),
+        "quimb_error": quimb_progress.get("quimb_error", ""),
         "max_abs_amp_error": _float_or_empty(metrics.get("max_abs_amp_error")),
         "max_abs_population_error": _float_or_empty(metrics.get("max_abs_population_error")),
         "run_dir": "" if validation_run_dir is None else str(validation_run_dir),
@@ -525,34 +676,21 @@ def main(argv: list[str] | None = None) -> int:
                     str(validation_cfg_path),
                 ]
                 print(f"[qwalk-quimb-sweep] n={n_qubits} repeat={repeat_index}: {' '.join(cmd)}", flush=True)
-                t0 = time.perf_counter()
                 if cfg["dry_run"]:
                     elapsed_s = 0.0
                     stdout = f"[dry-run] {' '.join(cmd)}\n"
                     stderr = ""
                     returncode = 0
+                    stdout_file.write_text(stdout, encoding="utf-8")
+                    stderr_file.write_text(stderr, encoding="utf-8")
                 else:
-                    try:
-                        proc = subprocess.run(
-                            cmd,
-                            cwd=repo_root,
-                            capture_output=True,
-                            text=True,
-                            check=False,
-                            timeout=None if cfg["timeout_seconds"] is None else float(cfg["timeout_seconds"]),
-                        )
-                        elapsed_s = time.perf_counter() - t0
-                        stdout = proc.stdout
-                        stderr = proc.stderr
-                        returncode = proc.returncode
-                    except subprocess.TimeoutExpired as exc:
-                        elapsed_s = time.perf_counter() - t0
-                        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-                        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-                        stderr += f"\n[qwalk-quimb-sweep] timeout after {cfg['timeout_seconds']} seconds\n"
-                        returncode = 124
-                stdout_file.write_text(stdout, encoding="utf-8")
-                stderr_file.write_text(stderr, encoding="utf-8")
+                    returncode, elapsed_s, stdout, stderr = _stream_subprocess(
+                        cmd,
+                        cwd=repo_root,
+                        stdout_file=stdout_file,
+                        stderr_file=stderr_file,
+                        timeout_s=None if cfg["timeout_seconds"] is None else float(cfg["timeout_seconds"]),
+                    )
                 validation_run_dir = _find_run_dir_from_stdout(stdout)
                 summary_path = None if validation_run_dir is None else validation_run_dir / "summary.json"
                 summary = _load_summary(summary_path)
