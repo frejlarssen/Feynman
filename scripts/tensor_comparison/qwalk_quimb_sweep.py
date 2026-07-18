@@ -218,7 +218,7 @@ def _row_from_run(
     status = summary.get("status")
     if not status:
         status = "ok" if returncode == 0 else "failed"
-    quimb_peak_rss_mb = metrics.get("quimb_phase_peak_rss_mb") if status == "ok" else None
+    quimb_peak_rss_mb = metrics.get("quimb_phase_peak_rss_mb") if status in {"ok", "quimb_failed"} else None
     return {
         "run_index": run_index,
         "n": n_qubits,
@@ -295,7 +295,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_ok = [row for row in rows_all if row.get("status") == "ok"]
-    quimb_missing_statuses = {"quimb_safety_limit", "quimb_transpile_only"}
+    quimb_missing_statuses = {"quimb_safety_limit", "quimb_transpile_only", "quimb_failed"}
     quimb_missing_ns = sorted({int(row["n"]) for row in rows_all if row.get("status") in quimb_missing_statuses})
 
     outputs: list[Path] = []
@@ -462,7 +462,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 writer.writerow(row)
                 handle.flush()
-                if returncode != 0 and row.get("status") != "quimb_safety_limit":
+                if returncode != 0 and row.get("status") not in {"quimb_safety_limit", "quimb_failed"}:
                     failures += 1
                     print(
                         f"[qwalk-quimb-sweep] n={n_qubits} failed with rc={returncode}; "
