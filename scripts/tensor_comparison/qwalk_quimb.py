@@ -201,6 +201,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "quimb_simplify_atol": float(raw.get("quimb_simplify_atol", 1e-12)),
         "quimb_simplify_equalize_norms": bool(raw.get("quimb_simplify_equalize_norms", False)),
         "quimb_amplitude_method": str(raw.get("quimb_amplitude_method", "profiled")),
+        "quimb_gate_contract": raw.get("quimb_gate_contract", "auto-split-gate"),
         "timeout_seconds": raw.get("timeout_seconds"),
         "run_feynman": bool(raw.get("run_feynman", True)),
         "run_feynman_transpiled": bool(raw.get("run_feynman_transpiled", False)),
@@ -594,10 +595,10 @@ _QISKIT_TO_QUIMB_GATE = {
 }
 
 
-def _qiskit_to_quimb_circuit(qc):
+def _qiskit_to_quimb_circuit(qc, *, gate_contract: Any):
     import quimb.tensor as qtn
 
-    circ = qtn.Circuit(qc.num_qubits)
+    circ = qtn.Circuit(qc.num_qubits, gate_contract=gate_contract)
     for inst in qc.data:
         op = inst.operation
         name = op.name.lower()
@@ -710,6 +711,7 @@ def _compute_quimb_amplitudes(
     simplify_atol: float,
     simplify_equalize_norms: bool,
     amplitude_method: str,
+    gate_contract: Any,
     verbosity: int,
 ) -> tuple[list[complex] | None, dict[str, Any], float, float | None, float | None]:
     if amplitude_method not in {"profiled", "builtin"}:
@@ -748,6 +750,7 @@ def _compute_quimb_amplitudes(
         "transpiled_gate_counts": gate_counts,
         "transpiled_qasm": str(transpiled_qasm),
         "transpiled_global_phase": str(tqc.global_phase),
+        "quimb_gate_contract": gate_contract,
     }
     (transpiled_qasm.parent / "quimb_transpile_metadata.json").write_text(
         json.dumps(meta, indent=2),
@@ -756,7 +759,7 @@ def _compute_quimb_amplitudes(
     _log("Building quimb circuit from transpiled Qiskit circuit", verbosity=verbosity)
     t1 = time.perf_counter()
     try:
-        quimb_circ = _qiskit_to_quimb_circuit(tqc)
+        quimb_circ = _qiskit_to_quimb_circuit(tqc, gate_contract=gate_contract)
     except Exception as err:
         raise QuimbRunError(
             stage="build",
@@ -994,6 +997,7 @@ def main(argv: list[str] | None = None) -> int:
                 simplify_atol=float(cfg["quimb_simplify_atol"]),
                 simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
                 amplitude_method=str(cfg["quimb_amplitude_method"]),
+                gate_contract=cfg["quimb_gate_contract"],
                 verbosity=verbosity,
             )
     except QuimbRunError as err:

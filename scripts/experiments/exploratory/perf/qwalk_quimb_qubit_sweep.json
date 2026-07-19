@@ -23,6 +23,7 @@
     "quimb_optimize": "greedy",
     "quimb_rehearse": false,
     "quimb_amplitude_method": "builtin",
+    "quimb_gate_contract": "auto-split-gate",
     "quimb_simplify_sequence": "ADCRS",
     "quimb_simplify_atol": 1e-12,
     "quimb_simplify_equalize_norms": false,
