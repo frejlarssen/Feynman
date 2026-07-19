@@ -26,6 +26,7 @@ for path in (SCRIPT_REPO_ROOT, SCRIPT_DIR):
         sys.path.insert(0, str(path))
 
 from scripts.sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+from scripts.sweeplib.provenance import build_sweep_metadata, get_git_info
 
 
 THREAD_ENV_VARS = (
@@ -117,6 +118,54 @@ def _software_versions() -> dict[str, str]:
         except importlib.metadata.PackageNotFoundError:
             versions[package] = "not-installed"
     return versions
+
+
+def _build_provenance_metadata(
+    *,
+    args: argparse.Namespace,
+    cfg: dict[str, Any],
+    repo_root: Path,
+    sweep_dir: Path,
+    created_at: dt.datetime,
+) -> dict[str, Any]:
+    validation = cfg["validation"]
+    binary = _resolve_path(validation.get("binary", "build-release/sv_prefetcher_subset_mpi.x"), repo_root)
+    launcher = str(validation.get("mpirun", "mpirun"))
+    scope_paths = [
+        "CMakeLists.txt",
+        "requirements.txt",
+        "src",
+        "apps",
+        "scripts/run_pipeline.py",
+        "scripts/sweeplib",
+        "scripts/tensor_comparison",
+        "scripts/experiments/paper/perf/qwalk_quimb_qubit_sweep.json",
+    ]
+    try:
+        return build_sweep_metadata(
+            created_at=created_at,
+            repo_root=repo_root,
+            sweep_dir=sweep_dir,
+            git_scope_paths=scope_paths,
+            git_scope_filename="git_qwalk_quimb_scope.patch",
+            git_scope_key="qwalk_quimb_scope",
+            notes=str(cfg.get("notes", "")),
+            invocation=" ".join(sys.argv),
+            dry_run=bool(cfg.get("dry_run", False)),
+            git_info=get_git_info(repo_root),
+            binary_path=binary,
+            input_files={"config": args.config.resolve()},
+            runner_script_path=Path(__file__).resolve(),
+            launcher_command=launcher,
+            launcher_key="mpirun",
+            config_snapshot=cfg,
+        )
+    except Exception as err:
+        return {
+            "provenance_error_type": type(err).__name__,
+            "provenance_error": str(err),
+            "git": get_git_info(repo_root),
+        }
 
 
 def _resolve_path(path_like: str | Path, repo_root: Path) -> Path:
@@ -802,8 +851,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[qwalk-quimb-sweep] thread environment: {recorded_environment['thread_env']}", flush=True)
     print(f"[qwalk-quimb-sweep] software versions: {software_versions}", flush=True)
 
+    created_at = dt.datetime.now(dt.timezone.utc)
     metadata = {
-        "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        **_build_provenance_metadata(
+            args=args,
+            cfg=cfg,
+            repo_root=repo_root,
+            sweep_dir=sweep_dir,
+            created_at=created_at,
+        ),
+        "created_utc": created_at.isoformat(),
         "experiment_name": cfg["experiment_name"],
         "config": cfg,
         "config_file": str(args.config.resolve()),
