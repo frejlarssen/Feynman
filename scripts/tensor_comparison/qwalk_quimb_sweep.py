@@ -300,6 +300,7 @@ def _partial_metrics_from_stdout(stdout: str) -> dict[str, Any]:
 def _partial_quimb_progress_from_stdout(stdout: str) -> dict[str, Any]:
     progress: dict[str, Any] = {}
     stage_patterns = [
+        ("builtin_amplitude_done", r"builtin amplitude done:"),
         ("contraction_done", r"contraction done:"),
         ("contraction_tree_ready", r"contraction tree ready:"),
         ("final_full_simplify_done", r"final full_simplify done:"),

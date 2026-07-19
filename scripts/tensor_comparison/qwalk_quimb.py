@@ -200,6 +200,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "quimb_simplify_sequence": raw.get("quimb_simplify_sequence", "ADCRS"),
         "quimb_simplify_atol": float(raw.get("quimb_simplify_atol", 1e-12)),
         "quimb_simplify_equalize_norms": bool(raw.get("quimb_simplify_equalize_norms", False)),
+        "quimb_amplitude_method": str(raw.get("quimb_amplitude_method", "profiled")),
         "timeout_seconds": raw.get("timeout_seconds"),
         "run_feynman": bool(raw.get("run_feynman", True)),
         "run_feynman_transpiled": bool(raw.get("run_feynman_transpiled", False)),
@@ -672,6 +673,28 @@ def _profiled_quimb_amplitude(
     return amp
 
 
+def _builtin_quimb_amplitude(
+    quimb_circ: Any,
+    bitstring: str,
+    *,
+    optimize: str,
+    simplify_sequence: str,
+    simplify_atol: float,
+    simplify_equalize_norms: bool,
+    verbosity: int,
+) -> Any:
+    start = time.perf_counter()
+    amp = quimb_circ.amplitude(
+        bitstring,
+        optimize=optimize,
+        simplify_sequence=simplify_sequence,
+        simplify_atol=simplify_atol,
+        simplify_equalize_norms=simplify_equalize_norms,
+    )
+    _log_elapsed("  builtin amplitude done", start, verbosity=verbosity)
+    return amp
+
+
 def _compute_quimb_amplitudes(
     *,
     circuit: Path,
@@ -686,8 +709,11 @@ def _compute_quimb_amplitudes(
     simplify_sequence: str,
     simplify_atol: float,
     simplify_equalize_norms: bool,
+    amplitude_method: str,
     verbosity: int,
 ) -> tuple[list[complex] | None, dict[str, Any], float, float | None, float | None]:
+    if amplitude_method not in {"profiled", "builtin"}:
+        raise ValueError(f"Unknown quimb_amplitude_method: {amplitude_method!r}")
     declared_n, instructions = parse_qasm(circuit)
     sim_n = ((declared_n + 7) // 8) * 8
     if input_index != 0:
@@ -750,9 +776,10 @@ def _compute_quimb_amplitudes(
         "simplify_sequence": simplify_sequence,
         "simplify_atol": simplify_atol,
         "simplify_equalize_norms": simplify_equalize_norms,
+        "amplitude_method": amplitude_method,
     }
     _log(
-        f"Computing {len(output_indices)} quimb amplitudes: optimize={optimize}, "
+        f"Computing {len(output_indices)} quimb amplitudes: method={amplitude_method}, optimize={optimize}, "
         f"simplify_sequence={simplify_sequence}, equalize_norms={simplify_equalize_norms}",
         verbosity=verbosity,
     )
@@ -767,17 +794,35 @@ def _compute_quimb_amplitudes(
                 verbosity=verbosity,
             )
             if rehearse:
-                quimb_circ.amplitude(bitstring, rehearse=True, **amplitude_opts)
-            amp = _profiled_quimb_amplitude(
-                quimb_circ,
-                bitstring,
-                optimize=optimize,
-                max_contraction_bytes=max_contraction_bytes,
-                simplify_sequence=simplify_sequence,
-                simplify_atol=simplify_atol,
-                simplify_equalize_norms=simplify_equalize_norms,
-                verbosity=verbosity,
-            )
+                quimb_circ.amplitude(
+                    bitstring,
+                    rehearse=True,
+                    optimize=optimize,
+                    simplify_sequence=simplify_sequence,
+                    simplify_atol=simplify_atol,
+                    simplify_equalize_norms=simplify_equalize_norms,
+                )
+            if amplitude_method == "builtin":
+                amp = _builtin_quimb_amplitude(
+                    quimb_circ,
+                    bitstring,
+                    optimize=optimize,
+                    simplify_sequence=simplify_sequence,
+                    simplify_atol=simplify_atol,
+                    simplify_equalize_norms=simplify_equalize_norms,
+                    verbosity=verbosity,
+                )
+            else:
+                amp = _profiled_quimb_amplitude(
+                    quimb_circ,
+                    bitstring,
+                    optimize=optimize,
+                    max_contraction_bytes=max_contraction_bytes,
+                    simplify_sequence=simplify_sequence,
+                    simplify_atol=simplify_atol,
+                    simplify_equalize_norms=simplify_equalize_norms,
+                    verbosity=verbosity,
+                )
             amp_value = _as_complex_scalar(amp) * input_amplitude
             amps.append(amp_value)
             _log(
@@ -948,6 +993,7 @@ def main(argv: list[str] | None = None) -> int:
                 simplify_sequence=str(cfg["quimb_simplify_sequence"]),
                 simplify_atol=float(cfg["quimb_simplify_atol"]),
                 simplify_equalize_norms=bool(cfg["quimb_simplify_equalize_norms"]),
+                amplitude_method=str(cfg["quimb_amplitude_method"]),
                 verbosity=verbosity,
             )
     except QuimbRunError as err:
