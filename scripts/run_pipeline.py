@@ -67,6 +67,21 @@ def build_parser() -> argparse.ArgumentParser:
     qwalk_quimb_sweep.add_argument("--summary-csv", default="", help="Existing qwalk-quimb sweep summary.csv for --plot-only.")
     qwalk_quimb_sweep.add_argument("--plot-output-dir", default="", help="Directory for regenerated plots.")
 
+    qwalk_quimb_gate_contract = sub.add_parser(
+        "qwalk-quimb-gate-contract-sweep",
+        help="Run qwalk-quimb sweeps for quimb gate contraction modes.",
+    )
+    qwalk_quimb_gate_contract.add_argument("--config", required=True, help="Path to base qwalk-quimb sweep config JSON.")
+    qwalk_quimb_gate_contract.add_argument("--repo-root", default="", help="Optional repo root override.")
+    qwalk_quimb_gate_contract.add_argument("--output-root", default="", help="Optional outer output root.")
+    qwalk_quimb_gate_contract.add_argument("--continue-on-error", action="store_true")
+    qwalk_quimb_gate_contract.add_argument("--dry-run", action="store_true")
+    qwalk_quimb_gate_contract.add_argument(
+        "--contract-values",
+        nargs="*",
+        help="Specific contract values to test. Defaults to all documented quimb modes.",
+    )
+
     run_all = sub.add_parser(
         "run-all-experiments",
         help="Run all perf+validation configs under scripts/experiments.",
@@ -768,6 +783,22 @@ def main(argv: list[str] | None = None) -> int:
         if args.plot_output_dir:
             sweep_argv.extend(["--plot-output-dir", args.plot_output_dir])
         return qwalk_quimb_sweep_main(sweep_argv)
+    if args.command == "qwalk-quimb-gate-contract-sweep":
+        from tensor_comparison.qwalk_quimb_gate_contract_sweep import main as gate_contract_sweep_main
+
+        sweep_argv = ["--config", args.config]
+        if args.repo_root:
+            sweep_argv.extend(["--repo-root", args.repo_root])
+        if args.output_root:
+            sweep_argv.extend(["--output-root", args.output_root])
+        if args.continue_on_error:
+            sweep_argv.append("--continue-on-error")
+        if args.dry_run:
+            sweep_argv.append("--dry-run")
+        if args.contract_values:
+            sweep_argv.append("--contract-values")
+            sweep_argv.extend(args.contract_values)
+        return gate_contract_sweep_main(sweep_argv)
     if args.command == "run-all-experiments":
         return _run_all_experiments(args)
     if args.command == "validation":
