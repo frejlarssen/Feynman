@@ -600,6 +600,52 @@ def _mean_std_by_n(rows: list[dict[str, Any]], column: str) -> dict[int, tuple[f
     }
 
 
+def _write_aggregate_summary(summary_csv: Path, *, output_dir: Path) -> Path:
+    rows_all = _read_rows(summary_csv, include_failures=True)
+    rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
+    series = {
+        "feynman_walltime_s": _mean_std_by_n(rows_all, "feynman_walltime_s"),
+        "feynman_internal_total_s": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
+        "feynman_peak_rss_mb": _mean_std_by_n(rows_all, "feynman_peak_rss_mb"),
+        "quimb_total_s": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
+        "quimb_amplitude_s": _mean_std_by_n(rows_quimb_ok, "quimb_amplitude_s"),
+        "quimb_peak_rss_mb": _mean_std_by_n(rows_quimb_ok, "quimb_peak_rss_mb"),
+        "transpiled_qiskit_ops": _mean_std_by_n(rows_all, "transpiled_qiskit_ops"),
+    }
+    quimb_status_by_n: dict[int, list[str]] = {}
+    feynman_status_by_n: dict[int, list[str]] = {}
+    for row in rows_all:
+        n = int(row["n"])
+        quimb_status_by_n.setdefault(n, []).append(str(row.get("quimb_status", "")))
+        feynman_status_by_n.setdefault(n, []).append(str(row.get("feynman_status", "")))
+
+    fields = [
+        "n",
+        "quimb_statuses",
+        "feynman_statuses",
+    ]
+    for name in series:
+        fields.extend([f"{name}_mean", f"{name}_std", f"{name}_count"])
+
+    out = output_dir / "summary_by_n.csv"
+    with out.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for n in sorted({int(row["n"]) for row in rows_all}):
+            row: dict[str, Any] = {
+                "n": n,
+                "quimb_statuses": ";".join(quimb_status_by_n.get(n, [])),
+                "feynman_statuses": ";".join(feynman_status_by_n.get(n, [])),
+            }
+            for name, values in series.items():
+                mean, std, count = values.get(n, ("", "", ""))
+                row[f"{name}_mean"] = _float_or_empty(mean)
+                row[f"{name}_std"] = _float_or_empty(std)
+                row[f"{name}_count"] = count
+            writer.writerow(row)
+    return out
+
+
 def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_fontsize: float | None = None) -> list[Path]:
     configure_headless_matplotlib()
     import matplotlib
@@ -651,7 +697,9 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
                 yerr=[lower, upper],
                 marker="o",
                 linewidth=1.6,
-                capsize=3,
+                elinewidth=1.3,
+                capsize=5,
+                capthick=1.3,
                 label=label,
             )
             plotted = True
@@ -726,6 +774,8 @@ def _plot_only(args: argparse.Namespace) -> int:
     output_dir = args.plot_output_dir.resolve() if args.plot_output_dir is not None else summary_csv.parent
     output_dir.mkdir(parents=True, exist_ok=True)
     title, label_fontsize = _plot_title_from_metadata(summary_csv)
+    aggregate = _write_aggregate_summary(summary_csv, output_dir=output_dir)
+    print(f"Saved aggregate summary: {aggregate}")
     for out in _plot_summary(summary_csv, output_dir=output_dir, title=title, label_fontsize=label_fontsize):
         print(f"Saved plot: {out}")
     return 0
@@ -867,6 +917,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Sweep directory: {sweep_dir}")
     print(f"Summary CSV: {summary_csv}")
     if not args.no_plot and not cfg["dry_run"]:
+        aggregate = _write_aggregate_summary(summary_csv, output_dir=sweep_dir)
+        print(f"Saved aggregate summary: {aggregate}")
         for out in _plot_summary(
             summary_csv,
             output_dir=sweep_dir,
