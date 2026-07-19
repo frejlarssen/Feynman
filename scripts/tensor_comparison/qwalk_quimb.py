@@ -598,7 +598,7 @@ _QISKIT_TO_QUIMB_GATE = {
 def _qiskit_to_quimb_circuit(qc, *, gate_contract: Any):
     import quimb.tensor as qtn
 
-    circ = qtn.Circuit(qc.num_qubits, gate_contract=gate_contract)
+    circ = qtn.Circuit(qc.num_qubits)
     for inst in qc.data:
         op = inst.operation
         name = op.name.lower()
@@ -609,7 +609,7 @@ def _qiskit_to_quimb_circuit(qc, *, gate_contract: Any):
             raise ValueError(f"Unsupported transpiled Qiskit gate for quimb: {op.name}")
         qubits = [qc.find_bit(q).index for q in inst.qubits]
         params = [float(p) for p in op.params]
-        circ.apply_gate(gate, *params, *qubits)
+        circ.apply_gate(gate, *params, *qubits, contract=gate_contract)
     return circ
 
 
