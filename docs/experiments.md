@@ -131,20 +131,20 @@ python scripts/run_pipeline.py plot qaoa-pruning \
 Plot meaning: blue is `total_full_s` (left axis), red is
 `fidelity_to_reference` (right axis).
 
-## Validation Workflows
-
 ### QWalk qubit sweep vs quimb
 
 ```bash
 python scripts/run_pipeline.py qwalk-quimb-sweep \
-  --config scripts/experiments/exploratory/perf/qwalk_quimb_qubit_sweep.json
+  --config scripts/experiments/paper/perf/qwalk_quimb_qubit_sweep.json
 ```
 
-This benchmark runs the same fixed-iteration quantum-walk family while varying
+This performance benchmark runs the same fixed-iteration quantum-walk family while varying
 qubit count. Each point runs exact quimb selected amplitudes, Feynman on the
 original multi-controlled-gate circuit, and Feynman on the same Qiskit-lowered
 circuit used by quimb. The sweep records runtime, peak RSS, and lowered
 operation counts, then writes time, memory, and operation-count plots.
+
+## Validation Workflows
 
 ### QWalk vs quimb
 
