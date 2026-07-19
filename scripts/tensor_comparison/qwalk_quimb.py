@@ -316,6 +316,20 @@ def _wall_clock_timeout(timeout_s: float | None, make_error: Any):
             signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
 
 
+def _signal_from_returncode(returncode: int) -> dict[str, Any]:
+    if returncode <= 128:
+        return {}
+    signal_number = returncode - 128
+    try:
+        signal_name = signal.Signals(signal_number).name
+    except ValueError:
+        signal_name = f"SIG{signal_number}"
+    return {
+        "signal_number": signal_number,
+        "signal_name": signal_name,
+    }
+
+
 def _run_feynman(
     *,
     cfg: dict[str, Any],
@@ -406,6 +420,7 @@ def _run_and_record_feynman(
             json.dumps(
                 {
                     "returncode": getattr(err, "returncode", 124),
+                    **_signal_from_returncode(getattr(err, "returncode", 124)),
                     "cmd": err.cmd,
                     "timeout_seconds": getattr(err, "timeout_s", None),
                     "feynman_env": dict(cfg.get("feynman_env", {})),
@@ -462,6 +477,7 @@ def _failed_feynman_metrics(
     }
     if isinstance(err, FeynmanRunError):
         metrics["returncode"] = err.returncode
+        metrics.update(_signal_from_returncode(err.returncode))
         metrics["cmd"] = err.cmd
     if isinstance(err, FeynmanTimeoutError):
         metrics["timeout"] = True
@@ -1235,7 +1251,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Quimb total (s): {summary['metrics']['quimb_total_s']:.6f}")
     print(f"Quimb amplitudes only (s): {amplitude_s:.6f}")
     if cfg["run_feynman"]:
-        print(f"Feynman walltime (s): {feynman_metrics['walltime_s']:.6f}")
+        if feynman_metrics["walltime_s"] is not None:
+            print(f"Feynman walltime (s): {feynman_metrics['walltime_s']:.6f}")
+        elif feynman_metrics.get("failed"):
+            print(f"Feynman failed: {feynman_metrics.get('error_type', 'error')}")
+        elif feynman_metrics.get("timeout"):
+            print("Feynman timed out")
         if feynman_metrics["internal_total_s"] is not None:
             print(f"Feynman internal total (s): {feynman_metrics['internal_total_s']:.6f}")
         if agreement_metrics["max_abs_amp_error"] is not None:
