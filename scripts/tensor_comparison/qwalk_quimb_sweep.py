@@ -710,10 +710,8 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
 
     outputs: list[Path] = []
     time_series = {
-        "Feynman original wall": _mean_std_by_n(rows_all, "feynman_walltime_s"),
-        "Feynman original internal": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
-        "Feynman transpiled wall": _mean_std_by_n(rows_all, "feynman_transpiled_walltime_s"),
-        "Feynman transpiled internal": _mean_std_by_n(rows_all, "feynman_transpiled_internal_total_s"),
+        "Feynman original": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
+        "Feynman transpiled": _mean_std_by_n(rows_all, "feynman_transpiled_internal_total_s"),
         "quimb": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
     }
     memory_series = {
@@ -725,12 +723,15 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         "transpiled Qiskit ops": _mean_std_by_n(rows_all, "transpiled_qiskit_ops"),
     }
 
-    for filename, ylabel, series, mark_missing_quimb in (
-        ("qwalk_quimb_time.pdf", "Time (s)", time_series, True),
-        ("qwalk_quimb_memory.pdf", "Peak RSS (MB)", memory_series, True),
-        ("qwalk_quimb_transpiled_ops.pdf", "Transpiled Qiskit ops", ops_series, False),
-    ):
-        fig, ax = plt.subplots(figsize=(8, 5))
+    def plot_series(
+        ax: Any,
+        *,
+        ylabel: str,
+        series: dict[str, dict[int, tuple[float, float, int]]],
+        mark_missing_quimb: bool,
+        legend: bool = True,
+        legend_loc: str = "best",
+    ) -> bool:
         plotted = False
         for label, values in series.items():
             if not values:
@@ -756,9 +757,9 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             for i, n in enumerate(quimb_not_measured_ns):
                 ax.axvline(
                     n,
-                    color="0.7",
+                    color="#c44e52",
                     linestyle=":",
-                    linewidth=1.1,
+                    linewidth=1.7,
                     label="quimb not measured" if i == 0 else None,
                     zorder=0,
                 )
@@ -766,19 +767,66 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             for i, n in enumerate(quimb_timeout_ns):
                 ax.axvline(
                     n,
-                    color="0.45",
+                    color="#8c1d40",
                     linestyle="--",
-                    linewidth=1.1,
+                    linewidth=1.7,
                     label="quimb timeout" if i == 0 else None,
                     zorder=0,
                 )
-        ax.set_xlabel("Qubits")
         ax.set_ylabel(ylabel)
         ax.set_yscale("log")
-        ax.set_title(title)
         ax.grid(True, alpha=0.3)
+        if plotted and legend:
+            legend_fontsize = max(8.0, label_fontsize * 0.55) if label_fontsize is not None else "small"
+            ax.legend(loc=legend_loc, fontsize=legend_fontsize)
+        return plotted
+
+    fig, (ax_time, ax_ops) = plt.subplots(
+        nrows=2,
+        ncols=1,
+        figsize=(8, 6),
+        sharex=True,
+        constrained_layout=True,
+        gridspec_kw={"height_ratios": [3, 1.35], "hspace": 0.08},
+    )
+    plot_series(
+        ax_time,
+        ylabel="Time (s)",
+        series=time_series,
+        mark_missing_quimb=True,
+        legend_loc="center left",
+    )
+    plot_series(
+        ax_ops,
+        ylabel="Qiskit ops",
+        series=ops_series,
+        mark_missing_quimb=False,
+        legend=False,
+    )
+    ax_time.set_title(title)
+    ax_ops.set_xlabel("Qubits")
+    out = output_dir / "qwalk_quimb_time.pdf"
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    outputs.append(out)
+
+    for filename, ylabel, series, mark_missing_quimb in (
+        ("qwalk_quimb_memory.pdf", "Peak RSS (MB)", memory_series, True),
+        ("qwalk_quimb_transpiled_ops.pdf", "Transpiled Qiskit ops", ops_series, False),
+    ):
+        fig, ax = plt.subplots(figsize=(8, 5))
+        plotted = plot_series(
+            ax,
+            ylabel=ylabel,
+            series=series,
+            mark_missing_quimb=mark_missing_quimb,
+            legend=False,
+        )
+        ax.set_xlabel("Qubits")
+        ax.set_title(title)
         if plotted:
-            ax.legend()
+            legend_fontsize = max(8.0, label_fontsize * 0.55) if label_fontsize is not None else "small"
+            ax.legend(fontsize=legend_fontsize)
         fig.tight_layout()
         out = output_dir / filename
         fig.savefig(out, dpi=160)
