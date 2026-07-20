@@ -523,7 +523,7 @@ def _render_demo_plot(
     x_out = np.arange(len(output_bins))
     dec_labels = [str(b) for b in output_bins]
 
-    fig, axes = plt.subplots(1, 2, figsize=single_column_figure_size())
+    fig, axes = plt.subplots(1, 2, figsize=single_column_figure_size(1.9))
 
     axes[0].plot(in_idx, in_real, linewidth=1.0)
     axes[0].set_title("Input signal (real part)", fontsize=subplot_title_fontsize)
