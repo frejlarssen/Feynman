@@ -124,6 +124,20 @@ resource split above. The global `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, and
     - `qwalk_quimb_memory.pdf`
     - `qwalk_quimb_transpiled_ops.pdf`
 
+## Regenerate Plots From Saved Runs
+
+After copying the paper run directories into `data/outputs/experiments/`,
+regenerate all plots without rerunning any benchmark:
+
+```bash
+python scripts/regenerate_all_plots.py --dry-run
+python scripts/regenerate_all_plots.py --fail-fast
+```
+
+The dry run should list the five paper experiment families: checkpoint
+ablation, QAOA pruning, quantum-walk artificial-source scaling, quantum-walk
+quimb comparison, and QFT validation.
+
 ## Suggested Workflow for New Paper Figures
 
 1. Add or update a config in `scripts/experiments/paper/`.
