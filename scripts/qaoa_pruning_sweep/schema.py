@@ -52,6 +52,7 @@ SUMMARY_FIELDS = [
     "start_utc",
     "end_utc",
     "command",
+    "feynman_env",
     "commit_short",
     "branch",
     "dirty",
@@ -67,6 +68,7 @@ OVERRIDE_FIELDS = (
     "fraction",
     "batch_size",
     "verbosity",
+    "feynman_env",
 )
 
 DEFAULT_OPTIONS: dict[str, Any] = {
@@ -93,6 +95,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "fraction": None,
     "batch_size": None,
     "verbosity": None,
+    "feynman_env": None,
 }
 
 REQUIRED_FIELDS = ("experiment_name", "base_config", "thresholds")
@@ -136,6 +139,7 @@ class SweepConfig:
     fraction: float | None
     batch_size: int | None
     verbosity: int | None
+    feynman_env: dict[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -145,6 +149,7 @@ class RuntimeConfig:
     fraction: float
     batch_size: int
     verbosity: int
+    feynman_env: dict[str, str]
 
 
 @dataclass(frozen=True)

@@ -1,23 +1,28 @@
 {
-  "experiment_name": "aa_n4_it3_mark5_checkpoint_ablation",
+  "experiment_name": "qwalk_iteration_checkpoint_sources",
   "repo_root": ".",
-  "vary": "batch_size",
+  "vary": "circuit_it",
   "values": [
-    10
+    14,
+    16,
+    18,
+    20,
+    22,
+    24,
+    26
   ],
-  "repeat": 5,
+  "repeat": 1,
   "ranks": 1,
   "feynman_env": {
     "OMP_NUM_THREADS": "32"
   },
-  "batch_size": 10,
+  "batch_size": 1,
   "fraction": 1.0,
   "threshold": 1e-08,
   "circuit": {
-    "generator": "aa",
-    "n": 4,
-    "it": 3,
-    "mark": 5
+    "generator": "qwalk",
+    "n": 8,
+    "it": 1
   },
   "input_statevector": {
     "generator": "ket0",
@@ -26,7 +31,7 @@
   "output_bitstrings": {
     "generator": "one_interval",
     "size": 1,
-    "count": 10
+    "count": 1
   },
   "cases": [
     {
@@ -35,9 +40,9 @@
       "r": 0
     },
     {
-      "name": "fixed_cp",
-      "p": 23,
-      "r": 23
+      "name": "fixed_cp_thirds",
+      "p": "thirds",
+      "r": "thirds"
     },
     {
       "name": "autotuned_cp",
@@ -45,6 +50,6 @@
       "r": null
     }
   ],
-  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp.",
+  "notes": "QWalk sweep over iterations; compare no_cp vs fixed thirds vs autotuned using artificial sources on x-axis.",
   "binary": "build-release/sv_prefetcher_subset_mpi.x"
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import shlex
 from pathlib import Path
@@ -112,6 +113,7 @@ def base_params(config: SweepConfig) -> dict[str, Any]:
         "r": config.r,
         "verbosity": config.verbosity,
         "dense": config.dense,
+        "feynman_env": config.feynman_env,
     }
 
 
@@ -319,6 +321,7 @@ def make_run_one(
             cwd=paths.repo_root,
             timeout_seconds=config.timeout_seconds,
             dry_run=config.dry_run,
+            env_overrides=dict(params.get("feynman_env") or {}),
         )
         end = dt.datetime.now(dt.timezone.utc)
 
@@ -353,6 +356,8 @@ def make_run_one(
             "autotune_candidates": metrics["autotune_candidates"],
             "autotune_step_size": metrics["autotune_step_size"],
             "autotune_best_gate_ops_estimate": metrics["autotune_best_gate_ops_estimate"],
+            "active_workers": metrics["active_workers"],
+            "omp_threads_per_worker": metrics["omp_threads_per_worker"],
             "total_gates": structure_metrics["total_gates"],
             "chunk0_gates": structure_metrics["chunk0_gates"],
             "chunk1_gates": structure_metrics["chunk1_gates"],
@@ -371,6 +376,7 @@ def make_run_one(
             "start_utc": iso_utc(start),
             "end_utc": iso_utc(end),
             "command": shlex.join(cmd),
+            "feynman_env": json.dumps(dict(params.get("feynman_env") or {}), sort_keys=True),
             "circuit_file_used": _rel(circuit_path, paths.repo_root),
             "commit_short": git_info.get("commit_short", ""),
             "branch": git_info.get("branch", ""),

@@ -7,6 +7,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import time
@@ -16,7 +17,19 @@ from typing import Any
 
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.circuit.library import HGate, PhaseGate, RXGate, RYGate, SwapGate, XGate, ZGate
+from qiskit.circuit.library import (
+    HGate,
+    PhaseGate,
+    RXGate,
+    RYGate,
+    SwapGate,
+    TGate,
+    TdgGate,
+    U2Gate,
+    U3Gate,
+    XGate,
+    ZGate,
+)
 from qiskit.quantum_info import Statevector
 from sweeplib.materialize import (
     resolve_circuit_input,
@@ -78,6 +91,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
+        "feynman_env": dict(pick("feynman_env", None, {}) or {}),
         "circuit": pick("circuit", args.circuit),
         "input_statevector": pick("input_statevector", args.input_statevector),
         "output_bitstrings": pick("output_bitstrings", args.output_bitstrings),
@@ -207,7 +221,7 @@ def parse_qasm(path: Path) -> tuple[int, list[QasmInstruction]]:
 
 
 def _num_targets(base_gate: str) -> int:
-    if base_gate in {"h", "x", "z", "p", "rx", "ry"}:
+    if base_gate in {"h", "x", "z", "p", "rx", "ry", "t", "tdg", "u1", "u2", "u3"}:
         return 1
     if base_gate == "swap":
         return 2
@@ -225,6 +239,18 @@ def _base_gate_op(base_gate: str, params: list[float]):
         if len(params) != 1:
             raise ValueError("p gate expects exactly one parameter")
         return PhaseGate(params[0])
+    if base_gate == "u1":
+        if len(params) != 1:
+            raise ValueError("u1 gate expects exactly one parameter")
+        return PhaseGate(params[0])
+    if base_gate == "t":
+        if params:
+            raise ValueError("t gate expects no parameters")
+        return TGate()
+    if base_gate == "tdg":
+        if params:
+            raise ValueError("tdg gate expects no parameters")
+        return TdgGate()
     if base_gate == "rx":
         if len(params) != 1:
             raise ValueError("rx gate expects exactly one parameter")
@@ -233,6 +259,14 @@ def _base_gate_op(base_gate: str, params: list[float]):
         if len(params) != 1:
             raise ValueError("ry gate expects exactly one parameter")
         return RYGate(params[0])
+    if base_gate == "u2":
+        if len(params) != 2:
+            raise ValueError("u2 gate expects exactly two parameters")
+        return U2Gate(params[0], params[1])
+    if base_gate == "u3":
+        if len(params) != 3:
+            raise ValueError("u3 gate expects exactly three parameters")
+        return U3Gate(params[0], params[1], params[2])
     if base_gate == "swap":
         return SwapGate()
     raise ValueError(f"Unsupported gate base '{base_gate}'")
@@ -288,6 +322,7 @@ def run_feynman(
     threshold: float,
     batch_size: int,
     verbosity: int,
+    feynman_env: dict[str, str] | None,
 ) -> tuple[float, str, str]:
     cmd = [
         mpirun,
@@ -312,7 +347,9 @@ def run_feynman(
         str(verbosity),
     ]
     t0 = time.perf_counter()
-    proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    env = os.environ.copy()
+    env.update({str(key): str(value) for key, value in dict(feynman_env or {}).items()})
+    proc = subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
     dt_s = time.perf_counter() - t0
     return dt_s, proc.stdout, proc.stderr
 
@@ -434,6 +471,7 @@ def main(argv: list[str] | None = None) -> int:
         threshold=float(cfg["threshold"]),
         batch_size=int(cfg["batch_size"]),
         verbosity=int(cfg["verbosity"]),
+        feynman_env=cfg["feynman_env"],
     )
 
     (run_dir / "stdout.log").write_text(stdout, encoding="utf-8")

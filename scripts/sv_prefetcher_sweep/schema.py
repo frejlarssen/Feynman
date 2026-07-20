@@ -17,6 +17,7 @@ CASE_OVERRIDE_FIELDS = (
     "r",
     "verbosity",
     "dense",
+    "feynman_env",
 )
 
 PARAM_FIELDS = (
@@ -85,6 +86,7 @@ SUMMARY_FIELDS = list(
         "end_utc",
         "circuit_file_used",
         "command",
+        "feynman_env",
         "commit_short",
         "branch",
         "dirty",
@@ -117,6 +119,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "dry_run": False,
     "config": "",
     "cases": None,
+    "feynman_env": None,
 }
 
 REQUIRED_FIELDS = (
@@ -172,6 +175,7 @@ class SweepConfig:
     notes: str
     dry_run: bool
     cases: list[dict[str, Any]] | None
+    feynman_env: dict[str, str] | None
 
 
 @dataclass(frozen=True)

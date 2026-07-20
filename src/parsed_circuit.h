@@ -144,6 +144,7 @@ struct ParsedCircuit {
         }
 
         string basic_type_str = type_str.substr(num_controls);
+        GateType gate_type = gate_type_from_string(basic_type_str);
 
         // TODO: Store parsed gate with a certain number of control bits and
         // with a basic target type.
@@ -155,6 +156,12 @@ struct ParsedCircuit {
         while (getline(param_stream, param_str, ',')) {
           float param = stof(param_str);
           params.push_back(param);
+        }
+        const int expected_params = gate_type_infos.at(gate_type).num_params;
+        if (params.size() != static_cast<size_t>(expected_params)) {
+          cerr << "Gate " << type_str << " expects " << expected_params
+               << " parameters, got " << params.size() << '\n';
+          exit(1);
         }
 
         std::stringstream qubit_stream(qubits_str);
@@ -178,8 +185,8 @@ struct ParsedCircuit {
             exit(1);
           }
           wires[arg_index].emplace_back(
-              gate_index, gate_type_from_string(basic_type_str), num_controls,
-              arg_indices, qparam, params);
+              gate_index, gate_type, num_controls, arg_indices, qparam,
+              params);
         }
         gate_index++;
       }

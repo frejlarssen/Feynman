@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-def _add_common_sweep_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", required=True, help="Path to sweep config JSON.")
+def _add_common_sweep_flags(parser: argparse.ArgumentParser, *, require_config: bool = True) -> None:
+    parser.add_argument("--config", required=require_config, help="Path to sweep config JSON.")
     parser.add_argument("--experiment-name", default="", help="Optional experiment name override.")
     parser.add_argument("--repo-root", default="", help="Optional repo root override.")
     parser.add_argument("--output-root", default="", help="Optional output root override.")
@@ -23,7 +23,9 @@ def _add_common_sweep_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def _sweep_argv(args: argparse.Namespace) -> list[str]:
-    argv = ["--config", args.config]
+    argv = []
+    if args.config:
+        argv.extend(["--config", args.config])
     if args.experiment_name:
         argv.extend(["--experiment-name", args.experiment_name])
     if args.repo_root:
@@ -57,6 +59,28 @@ def build_parser() -> argparse.ArgumentParser:
     qaoa = sub.add_parser("qaoa-pruning", help="Run QAOA pruning threshold sweep.")
     _add_common_sweep_flags(qaoa)
     qaoa.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
+
+    qwalk_quimb_sweep = sub.add_parser("qwalk-quimb-sweep", help="Run QWalk Feynman vs quimb qubit sweep.")
+    _add_common_sweep_flags(qwalk_quimb_sweep, require_config=False)
+    qwalk_quimb_sweep.add_argument("--no-plot", action="store_true", help="Disable auto-plot at sweep completion.")
+    qwalk_quimb_sweep.add_argument("--plot-only", action="store_true", help="Regenerate plots from an existing summary.csv.")
+    qwalk_quimb_sweep.add_argument("--summary-csv", default="", help="Existing qwalk-quimb sweep summary.csv for --plot-only.")
+    qwalk_quimb_sweep.add_argument("--plot-output-dir", default="", help="Directory for regenerated plots.")
+
+    qwalk_quimb_gate_contract = sub.add_parser(
+        "qwalk-quimb-gate-contract-sweep",
+        help="Run qwalk-quimb sweeps for quimb gate contraction modes.",
+    )
+    qwalk_quimb_gate_contract.add_argument("--config", required=True, help="Path to base qwalk-quimb sweep config JSON.")
+    qwalk_quimb_gate_contract.add_argument("--repo-root", default="", help="Optional repo root override.")
+    qwalk_quimb_gate_contract.add_argument("--output-root", default="", help="Optional outer output root.")
+    qwalk_quimb_gate_contract.add_argument("--continue-on-error", action="store_true")
+    qwalk_quimb_gate_contract.add_argument("--dry-run", action="store_true")
+    qwalk_quimb_gate_contract.add_argument(
+        "--contract-values",
+        nargs="*",
+        help="Specific contract values to test. Defaults to all documented quimb modes.",
+    )
 
     run_all = sub.add_parser(
         "run-all-experiments",
@@ -110,6 +134,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Substring filter for --latest qft-demo run directory matching.",
     )
     qft_val.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
+
+    qwalk_quimb = validation_sub.add_parser("qwalk-quimb", help="Run quantum-walk vs quimb validation.")
+    qwalk_quimb.add_argument("--config", required=True, help="Path to validation config JSON.")
+    qwalk_quimb.add_argument("--output-root", default="", help="Optional output root override.")
+    qwalk_quimb.add_argument("--repo-root", default="", help="Optional repo root override.")
+    qwalk_quimb.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
 
     plot = sub.add_parser("plot", help="Plot from existing summary/output artifacts.")
     plot_sub = plot.add_subparsers(dest="plot_kind", required=True)
@@ -640,12 +670,17 @@ def _detect_experiment_mode(config_path: Path) -> str:
         raise ValueError(f"Config must be a JSON object: {config_path}")
     config_type = config_path.parent.name
     if config_type == "perf":
+        stem = config_path.stem.lower()
+        if "qwalk_quimb" in stem or str(payload.get("backend", "")).lower() == "quimb":
+            return "qwalk-quimb-sweep"
         # QAOA pruning configs use thresholds + base_config.
         if "thresholds" in payload and "base_config" in payload:
             return "qaoa-pruning"
         return "perf-sweep"
     if config_type == "validation":
         stem = config_path.stem.lower()
+        if "quimb" in stem or str(payload.get("backend", "")).lower() == "quimb":
+            return "validation:qwalk-quimb"
         if "qiskit_validation" in stem or "qiskit" in stem:
             return "validation:qaoa-qiskit"
         return "validation:qft-demo"
@@ -671,8 +706,12 @@ def _build_run_all_command(script_path: Path, cfg: Path, mode: str) -> list[str]
         return [sys.executable, str(script_path), "perf-sweep", "--config", str(cfg)]
     if mode == "qaoa-pruning":
         return [sys.executable, str(script_path), "qaoa-pruning", "--config", str(cfg)]
+    if mode == "qwalk-quimb-sweep":
+        return [sys.executable, str(script_path), "qwalk-quimb-sweep", "--config", str(cfg)]
     if mode == "validation:qaoa-qiskit":
         return [sys.executable, str(script_path), "validation", "qaoa-qiskit", "--config", str(cfg)]
+    if mode == "validation:qwalk-quimb":
+        return [sys.executable, str(script_path), "validation", "qwalk-quimb", "--config", str(cfg)]
     if mode == "validation:qft-demo":
         return [sys.executable, str(script_path), "validation", "qft-demo", "--config", str(cfg)]
     raise ValueError(f"Unsupported run-all mode: {mode}")
@@ -691,13 +730,13 @@ def _run_all_experiments(args: argparse.Namespace) -> int:
     for cfg in configs:
         mode = _detect_experiment_mode(cfg)
         cmd = _build_run_all_command(script_path, cfg, mode)
+        if args.continue_on_error and mode in {"perf-sweep", "qaoa-pruning", "qwalk-quimb-sweep"}:
+            cmd.append("--continue-on-error")
+        if args.timeout_seconds is not None and mode in {"perf-sweep", "qaoa-pruning", "qwalk-quimb-sweep"}:
+            cmd.extend(["--timeout-seconds", str(args.timeout_seconds)])
         if args.dry_run:
             print(f"[run-all-experiments] DRY-RUN: {' '.join(cmd)}")
             continue
-        if args.continue_on_error and mode in {"perf-sweep", "qaoa-pruning"}:
-            cmd.append("--continue-on-error")
-        if args.timeout_seconds is not None and mode in {"perf-sweep", "qaoa-pruning"}:
-            cmd.extend(["--timeout-seconds", str(args.timeout_seconds)])
         print(f"[run-all-experiments] Running: {mode} :: {cfg}")
         proc = subprocess.run(cmd, cwd=str(repo_root), check=False)
         if proc.returncode != 0:
@@ -731,15 +770,47 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_plot:
             sweep_argv.append("--no-plot")
         return qaoa_pruning_main(entry_script=Path(__file__).resolve(), argv=sweep_argv)
+    if args.command == "qwalk-quimb-sweep":
+        from tensor_comparison.qwalk_quimb_sweep import main as qwalk_quimb_sweep_main
+
+        sweep_argv = _sweep_argv(args)
+        if args.no_plot:
+            sweep_argv.append("--no-plot")
+        if args.plot_only:
+            sweep_argv.append("--plot-only")
+        if args.summary_csv:
+            sweep_argv.extend(["--summary-csv", args.summary_csv])
+        if args.plot_output_dir:
+            sweep_argv.extend(["--plot-output-dir", args.plot_output_dir])
+        return qwalk_quimb_sweep_main(sweep_argv)
+    if args.command == "qwalk-quimb-gate-contract-sweep":
+        from tensor_comparison.qwalk_quimb_gate_contract_sweep import main as gate_contract_sweep_main
+
+        sweep_argv = ["--config", args.config]
+        if args.repo_root:
+            sweep_argv.extend(["--repo-root", args.repo_root])
+        if args.output_root:
+            sweep_argv.extend(["--output-root", args.output_root])
+        if args.continue_on_error:
+            sweep_argv.append("--continue-on-error")
+        if args.dry_run:
+            sweep_argv.append("--dry-run")
+        if args.contract_values:
+            sweep_argv.append("--contract-values")
+            sweep_argv.extend(args.contract_values)
+        return gate_contract_sweep_main(sweep_argv)
     if args.command == "run-all-experiments":
         return _run_all_experiments(args)
     if args.command == "validation":
         from validation.qaoa_qiskit_validation import main as qaoa_validation_main
         from validation.qft_demo import main as qft_demo_main
+        from tensor_comparison.qwalk_quimb import main as qwalk_quimb_main
 
         val_argv = _validation_argv(args)
         if args.validation_kind == "qaoa-qiskit":
             return qaoa_validation_main(val_argv)
+        if args.validation_kind == "qwalk-quimb":
+            return qwalk_quimb_main(val_argv)
         if args.validation_kind == "qft-demo":
             return qft_demo_main(val_argv)
         parser.error(f"Unknown validation kind: {args.validation_kind}")

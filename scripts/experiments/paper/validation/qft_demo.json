@@ -2,7 +2,10 @@
   "experiment_name": "qft_demo",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
-  "ranks": 1,
+  "ranks": 8,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "4"
+  },
   "circuit": {
     "generator": "qft",
     "n": 12,
@@ -32,7 +35,7 @@
   },
   "fraction": 1.0,
   "threshold": 0.0,
-  "batch_size": 8,
+  "batch_size": 1,
   "verbosity": 1,
   "dense": false,
   "normalize_input": true,

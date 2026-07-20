@@ -156,6 +156,7 @@ def resolve_paths_and_runtime(config: SweepConfig, repo_root: Path) -> tuple[Pro
     fraction = float(merged_cfg.get("fraction", 1.0))
     batch_size = int(merged_cfg.get("batch_size", 32))
     verbosity = int(merged_cfg.get("verbosity", 1))
+    feynman_env = {str(k): str(v) for k, v in dict(merged_cfg.get("feynman_env") or {}).items()}
 
     if ranks < 1:
         raise ValueError(f"Invalid ranks={ranks}. Must be >= 1.")
@@ -187,6 +188,7 @@ def resolve_paths_and_runtime(config: SweepConfig, repo_root: Path) -> tuple[Pro
         fraction=fraction,
         batch_size=batch_size,
         verbosity=verbosity,
+        feynman_env=feynman_env,
     )
     return paths, runtime
 
@@ -261,6 +263,7 @@ def make_run_one(
             cwd=paths.repo_root,
             timeout_seconds=config.timeout_seconds,
             dry_run=config.dry_run,
+            env_overrides=runtime.feynman_env,
         )
         end = dt.datetime.now(dt.timezone.utc)
 
@@ -310,6 +313,7 @@ def make_run_one(
             "start_utc": iso_utc(start),
             "end_utc": iso_utc(end),
             "command": shlex.join(cmd),
+            "feynman_env": json.dumps(runtime.feynman_env, sort_keys=True),
             "commit_short": git_info.get("commit_short", ""),
             "branch": git_info.get("branch", ""),
             "dirty": int(bool(git_info.get("dirty", False))),
@@ -373,6 +377,7 @@ def build_metadata(
                 "fraction": runtime.fraction,
                 "batch_size": runtime.batch_size,
                 "verbosity": runtime.verbosity,
+                "feynman_env": runtime.feynman_env,
             },
         },
     )

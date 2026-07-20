@@ -174,8 +174,13 @@ def _launcher_metadata(launcher_cmd: str, repo_root: Path) -> dict[str, Any]:
         }
 
     probes = [tokens + ["--version"], tokens + ["-V"]]
+    last_error = ""
     for probe in probes:
-        proc = run_capture(probe, repo_root)
+        try:
+            proc = run_capture(probe, repo_root)
+        except OSError as err:
+            last_error = str(err)
+            continue
         combined = (proc.stdout + "\n" + proc.stderr).strip()
         if proc.returncode == 0 and combined:
             return {
@@ -186,7 +191,16 @@ def _launcher_metadata(launcher_cmd: str, repo_root: Path) -> dict[str, Any]:
                 "output": combined,
             }
 
-    last = run_capture(probes[-1], repo_root)
+    try:
+        last = run_capture(probes[-1], repo_root)
+    except OSError as err:
+        return {
+            "command": launcher_cmd,
+            "version_ok": False,
+            "version_probe": shlex.join(probes[-1]),
+            "returncode": -1,
+            "output": last_error or str(err),
+        }
     return {
         "command": launcher_cmd,
         "version_ok": False,
@@ -198,15 +212,23 @@ def _launcher_metadata(launcher_cmd: str, repo_root: Path) -> dict[str, Any]:
 
 def _hardware_metadata(repo_root: Path) -> dict[str, Any]:
     logical_cores = os.cpu_count()
-    nproc_proc = run_capture(["nproc"], repo_root)
     nproc_online = None
-    if nproc_proc.returncode == 0:
-        token = nproc_proc.stdout.strip().splitlines()[0] if nproc_proc.stdout.strip() else ""
-        if token.isdigit():
-            nproc_online = int(token)
+    nproc_error = ""
+    try:
+        nproc_proc = run_capture(["nproc"], repo_root)
+    except OSError as err:
+        nproc_error = str(err)
+    else:
+        if nproc_proc.returncode == 0:
+            token = nproc_proc.stdout.strip().splitlines()[0] if nproc_proc.stdout.strip() else ""
+            if token.isdigit():
+                nproc_online = int(token)
+        elif nproc_proc.stderr.strip():
+            nproc_error = nproc_proc.stderr.strip()
     return {
         "logical_cores_os_cpu_count": logical_cores,
         "logical_cores_nproc": nproc_online,
+        "nproc_error": nproc_error,
     }
 
 
