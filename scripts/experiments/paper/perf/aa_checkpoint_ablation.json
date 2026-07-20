@@ -3,14 +3,14 @@
   "repo_root": ".",
   "vary": "batch_size",
   "values": [
-    32
+    10
   ],
   "repeat": 5,
-  "ranks": 8,
+  "ranks": 1,
   "feynman_env": {
-    "OMP_NUM_THREADS": "4"
+    "OMP_NUM_THREADS": "32"
   },
-  "batch_size": 32,
+  "batch_size": 10,
   "fraction": 1.0,
   "threshold": 1e-08,
   "circuit": {

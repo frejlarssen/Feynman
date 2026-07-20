@@ -35,7 +35,7 @@
   },
   "fraction": 1.0,
   "threshold": 0.0,
-  "batch_size": 8,
+  "batch_size": 1,
   "verbosity": 1,
   "dense": false,
   "normalize_input": true,

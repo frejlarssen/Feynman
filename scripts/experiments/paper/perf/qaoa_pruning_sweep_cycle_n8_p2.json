@@ -3,10 +3,11 @@
   "repo_root": ".",
   "output_root": "data/outputs/experiments",
   "base_config": "scripts/experiments/exploratory/validation/qaoa_cycle_n8_p2_qiskit_validation.json",
-  "ranks": 16,
+  "ranks": 8,
   "feynman_env": {
-    "OMP_NUM_THREADS": "2"
+    "OMP_NUM_THREADS": "4"
   },
+  "batch_size": 32,
   "thresholds": [
     0.0,
     2e-06,

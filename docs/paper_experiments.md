@@ -5,9 +5,37 @@ This file tracks the subset of runs tied to manuscript figures/results in
 
 Use explicit config paths and explicit artifact paths for paper reproducibility.
 Avoid relying on `--latest` in paper scripts.
-Paper configs use the resource split: a fixed 32-hardware-thread budget, split as
-`ranks * OMP_NUM_THREADS = 32`, with `ranks` no larger than the requested
-output-bitstring parallelism.
+
+## Resource Policy
+
+Paper configs state the Feynman resource split explicitly. Feynman uses two
+levels of parallelism: MPI distributes batches of requested output bitstrings,
+while OpenMP parallelizes work inside each worker over artificial-source
+histories in chunk 2 and over the final amplitude reduction.
+
+The relevant MPI work count is therefore:
+
+```text
+number_of_batches = ceil(output_count / batch_size)
+```
+
+For the 32-hardware-thread paper runs, configs are chosen so that:
+
+```text
+ranks <= number_of_batches
+ranks * OMP_NUM_THREADS = 32
+```
+
+The `batch_size` is chosen from the experiment's purpose. Experiments that
+isolate one amplitude or intentionally avoid distributed-output effects use
+one MPI rank and place the thread budget inside the worker. Experiments with
+many requested outputs use MPI ranks only when there are enough output batches
+to feed them.
+
+The quimb comparison is treated as a single-node, shared-memory method
+comparison rather than a Feynman distributed-output scaling result. There,
+Feynman uses one MPI rank so that MPI scheduling over independent output
+amplitudes is not mixed into the comparison with single-process quimb.
 
 ## Reference Environment
 

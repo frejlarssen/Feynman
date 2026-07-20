@@ -16,7 +16,7 @@
   "feynman_env": {
     "OMP_NUM_THREADS": "32"
   },
-  "batch_size": 32,
+  "batch_size": 1,
   "fraction": 1.0,
   "threshold": 1e-08,
   "circuit": {
