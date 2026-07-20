@@ -789,7 +789,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             for i, n in enumerate(quimb_not_measured_ns):
                 ax.axvline(
                     n,
-                    color="#c44e52",
+                    color="#b00020",
                     linestyle=":",
                     linewidth=1.2,
                     label="memory limit" if i == 0 else None,
@@ -799,7 +799,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             for i, n in enumerate(quimb_timeout_ns):
                 ax.axvline(
                     n,
-                    color="#8c1d40",
+                    color="#b00020",
                     linestyle="--",
                     linewidth=1.2,
                     label="timeout" if i == 0 else None,
@@ -829,8 +829,6 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             ax_ops.plot(
                 xs,
                 ys,
-                marker="^",
-                markersize=3.5,
                 linewidth=1.1,
                 linestyle="--",
                 color=ops_color,
