@@ -29,7 +29,6 @@ from scripts.sweeplib.plot_style import (
     apply_plot_fontsizes,
     configure_headless_matplotlib,
     single_column_figure_size,
-    stacked_single_column_figure_size,
 )
 from scripts.sweeplib.provenance import build_sweep_metadata, get_git_info
 
@@ -747,7 +746,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             "Feynman": "#1f77b4",
             "Feynman transpiled": "#2ca02c",
             "quimb": "#ff7f0e",
-            "transpiled Qiskit ops": "#1f77b4",
+            "transpiled Qiskit ops": "#9467bd",
         }
         return colors.get(label, "C0")
 
@@ -793,7 +792,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
                     color="#c44e52",
                     linestyle=":",
                     linewidth=1.2,
-                    label="quimb memory limit" if i == 0 else None,
+                    label="memory limit" if i == 0 else None,
                     zorder=0,
                 )
         if mark_missing_quimb and quimb_timeout_ns:
@@ -803,7 +802,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
                     color="#8c1d40",
                     linestyle="--",
                     linewidth=1.2,
-                    label="quimb timeout" if i == 0 else None,
+                    label="timeout" if i == 0 else None,
                     zorder=0,
                 )
         ax.set_ylabel(ylabel)
@@ -813,30 +812,46 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             ax.legend(loc=legend_loc)
         return plotted
 
-    fig, (ax_time, ax_ops) = plt.subplots(
-        nrows=2,
-        ncols=1,
-        figsize=stacked_single_column_figure_size(),
-        sharex=True,
-        constrained_layout=True,
-        gridspec_kw={"height_ratios": [3, 1.35], "hspace": 0.08},
-    )
+    fig, ax_time = plt.subplots(figsize=single_column_figure_size(2.7))
     plot_series(
         ax_time,
         ylabel="Time (s)",
         series=time_series,
         mark_missing_quimb=True,
-        legend_loc="center left",
-    )
-    plot_series(
-        ax_ops,
-        ylabel="Qiskit ops",
-        series=ops_series,
-        mark_missing_quimb=False,
         legend=False,
     )
-    ax_time.set_title(title)
-    ax_ops.set_xlabel("Qubits")
+    ax_ops = ax_time.twinx()
+    ops_color = series_color("transpiled Qiskit ops")
+    for label, values in ops_series.items():
+        first_segment = True
+        for xs in iter_measured_segments(values):
+            ys = [values[x][0] for x in xs]
+            ax_ops.plot(
+                xs,
+                ys,
+                marker="^",
+                markersize=3.5,
+                linewidth=1.1,
+                linestyle="--",
+                color=ops_color,
+                label="Qiskit ops" if first_segment else None,
+            )
+            first_segment = False
+    ax_ops.set_ylabel("Qiskit ops", color=ops_color)
+    ax_ops.set_yscale("log")
+    ax_ops.tick_params(axis="y", colors=ops_color)
+    ax_time.set_xlabel("Qubits")
+    handles_time, labels_time = ax_time.get_legend_handles_labels()
+    handles_ops, labels_ops = ax_ops.get_legend_handles_labels()
+    fig.suptitle(title, y=0.98)
+    fig.legend(
+        handles_time + handles_ops,
+        labels_time + labels_ops,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.91),
+        ncol=2,
+    )
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.82))
     out = output_dir / "qwalk_quimb_time.pdf"
     fig.savefig(out, dpi=160)
     plt.close(fig)
