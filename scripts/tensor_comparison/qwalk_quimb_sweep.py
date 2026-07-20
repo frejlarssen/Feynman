@@ -705,12 +705,13 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
+    all_ns = sorted({int(row["n"]) for row in rows_all})
     quimb_not_measured_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "failed"})
     quimb_timeout_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "timeout"})
 
     outputs: list[Path] = []
     time_series = {
-        "Feynman original": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
+        "Feynman": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
         "Feynman transpiled": _mean_std_by_n(rows_all, "feynman_transpiled_internal_total_s"),
         "quimb": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
     }
@@ -722,6 +723,28 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     ops_series = {
         "transpiled Qiskit ops": _mean_std_by_n(rows_all, "transpiled_qiskit_ops"),
     }
+
+    def iter_measured_segments(values: dict[int, tuple[float, float, int]]) -> list[list[int]]:
+        segments: list[list[int]] = []
+        current: list[int] = []
+        for n in all_ns:
+            if n in values:
+                current.append(n)
+            elif current:
+                segments.append(current)
+                current = []
+        if current:
+            segments.append(current)
+        return segments
+
+    def series_color(label: str) -> str:
+        colors = {
+            "Feynman": "#1f77b4",
+            "Feynman transpiled": "#2ca02c",
+            "quimb": "#ff7f0e",
+            "transpiled Qiskit ops": "#1f77b4",
+        }
+        return colors.get(label, "C0")
 
     def plot_series(
         ax: Any,
@@ -736,23 +759,27 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         for label, values in series.items():
             if not values:
                 continue
-            xs = sorted(values)
-            ys = [values[x][0] for x in xs]
-            stds = [values[x][1] for x in xs]
-            lower = [min(std, max(y * 0.999, 0.0)) for y, std in zip(ys, stds)]
-            upper = stds
-            ax.errorbar(
-                xs,
-                ys,
-                yerr=[lower, upper],
-                marker="o",
-                linewidth=1.6,
-                elinewidth=1.3,
-                capsize=5,
-                capthick=1.3,
-                label=label,
-            )
-            plotted = True
+            first_segment = True
+            color = series_color(label)
+            for xs in iter_measured_segments(values):
+                ys = [values[x][0] for x in xs]
+                stds = [values[x][1] for x in xs]
+                lower = [min(std, max(y * 0.999, 0.0)) for y, std in zip(ys, stds)]
+                upper = stds
+                ax.errorbar(
+                    xs,
+                    ys,
+                    yerr=[lower, upper],
+                    marker="o",
+                    linewidth=1.6,
+                    elinewidth=1.3,
+                    capsize=5,
+                    capthick=1.3,
+                    color=color,
+                    label=label if first_segment else None,
+                )
+                first_segment = False
+                plotted = True
         if mark_missing_quimb and quimb_not_measured_ns:
             for i, n in enumerate(quimb_not_measured_ns):
                 ax.axvline(
@@ -760,7 +787,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
                     color="#c44e52",
                     linestyle=":",
                     linewidth=1.7,
-                    label="quimb not measured" if i == 0 else None,
+                    label="quimb memory limit" if i == 0 else None,
                     zorder=0,
                 )
         if mark_missing_quimb and quimb_timeout_ns:
