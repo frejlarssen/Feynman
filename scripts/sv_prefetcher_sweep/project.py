@@ -353,6 +353,8 @@ def make_run_one(
             "autotune_candidates": metrics["autotune_candidates"],
             "autotune_step_size": metrics["autotune_step_size"],
             "autotune_best_gate_ops_estimate": metrics["autotune_best_gate_ops_estimate"],
+            "active_workers": metrics["active_workers"],
+            "omp_threads_per_worker": metrics["omp_threads_per_worker"],
             "total_gates": structure_metrics["total_gates"],
             "chunk0_gates": structure_metrics["chunk0_gates"],
             "chunk1_gates": structure_metrics["chunk1_gates"],
