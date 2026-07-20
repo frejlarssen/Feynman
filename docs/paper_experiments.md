@@ -121,6 +121,7 @@ resource split above. The global `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, and
     - `summary.csv`
     - `summary_by_n.csv`
     - `qwalk_quimb_time.pdf`
+    - `qwalk_quimb_stages.pdf`
     - `qwalk_quimb_memory.pdf`
     - `qwalk_quimb_transpiled_ops.pdf`
 

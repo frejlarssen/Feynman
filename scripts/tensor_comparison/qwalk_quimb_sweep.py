@@ -656,11 +656,18 @@ def _mean_std_by_n(rows: list[dict[str, Any]], column: str) -> dict[int, tuple[f
 def _write_aggregate_summary(summary_csv: Path, *, output_dir: Path) -> Path:
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
+    rows_quimb_build_complete = [
+        row
+        for row in rows_all
+        if row.get("quimb_status") == "ok" or row.get("quimb_amplitude_s") not in ("", None)
+    ]
     series = {
         "feynman_walltime_s": _mean_std_by_n(rows_all, "feynman_walltime_s"),
         "feynman_internal_total_s": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
         "feynman_peak_rss_mb": _mean_std_by_n(rows_all, "feynman_peak_rss_mb"),
         "quimb_total_s": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
+        "quimb_transpile_s": _mean_std_by_n(rows_all, "quimb_transpile_s"),
+        "quimb_build_s": _mean_std_by_n(rows_quimb_build_complete, "quimb_build_s"),
         "quimb_amplitude_s": _mean_std_by_n(rows_quimb_ok, "quimb_amplitude_s"),
         "quimb_peak_rss_mb": _mean_std_by_n(rows_quimb_ok, "quimb_peak_rss_mb"),
         "transpiled_qiskit_ops": _mean_std_by_n(rows_all, "transpiled_qiskit_ops"),
@@ -709,6 +716,11 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
+    rows_quimb_build_complete = [
+        row
+        for row in rows_all
+        if row.get("quimb_status") == "ok" or row.get("quimb_amplitude_s") not in ("", None)
+    ]
     all_ns = sorted({int(row["n"]) for row in rows_all})
     quimb_not_measured_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "failed"})
     quimb_timeout_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "timeout"})
@@ -718,6 +730,12 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         "Feynman": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
         "Feynman transpiled": _mean_std_by_n(rows_all, "feynman_transpiled_internal_total_s"),
         "quimb": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
+    }
+    quimb_stage_series = {
+        "Transpile": _mean_std_by_n(rows_all, "quimb_transpile_s"),
+        "Build phase": _mean_std_by_n(rows_quimb_build_complete, "quimb_build_s"),
+        "Amplitude phase": _mean_std_by_n(rows_quimb_ok, "quimb_amplitude_s"),
+        "Completed total": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
     }
     memory_series = {
         "Feynman original": _mean_std_by_n(rows_all, "feynman_peak_rss_mb"),
@@ -747,6 +765,10 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
             "Feynman transpiled": "#2ca02c",
             "quimb": "#ff7f0e",
             "transpiled Qiskit ops": "#9467bd",
+            "Transpile": "#1f77b4",
+            "Build phase": "#ff7f0e",
+            "Amplitude phase": "#2ca02c",
+            "Completed total": "#333333",
         }
         return colors.get(label, "C0")
 
@@ -851,6 +873,56 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.82))
     out = output_dir / "qwalk_quimb_time.pdf"
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    outputs.append(out)
+
+    fig, ax = plt.subplots(figsize=single_column_figure_size(3.0))
+    plot_series(
+        ax,
+        ylabel="Time (s)",
+        series=quimb_stage_series,
+        mark_missing_quimb=False,
+        legend=False,
+    )
+    for n in quimb_not_measured_ns:
+        ax.axvline(n, color="#b00020", linestyle=":", linewidth=1.2, zorder=0)
+        ax.text(
+            n,
+            0.98,
+            "memory",
+            color="#b00020",
+            fontsize="x-small",
+            rotation=90,
+            ha="right",
+            va="top",
+            transform=ax.get_xaxis_transform(),
+        )
+    for n in quimb_timeout_ns:
+        ax.axvline(n, color="#b00020", linestyle="--", linewidth=1.2, zorder=0)
+        ax.text(
+            n,
+            0.98,
+            "timeout",
+            color="#b00020",
+            fontsize="x-small",
+            rotation=90,
+            ha="right",
+            va="top",
+            transform=ax.get_xaxis_transform(),
+        )
+    ax.set_xlabel("Qubits")
+    handles, labels = ax.get_legend_handles_labels()
+    fig.suptitle("quimb Time Spent by Phase", y=0.98)
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.91),
+        ncol=2,
+    )
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.78))
+    out = output_dir / "qwalk_quimb_stages.pdf"
     fig.savefig(out, dpi=160)
     plt.close(fig)
     outputs.append(out)
