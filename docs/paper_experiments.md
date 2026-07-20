@@ -5,7 +5,54 @@ This file tracks the subset of runs tied to manuscript figures/results in
 
 Use explicit config paths and explicit artifact paths for paper reproducibility.
 Avoid relying on `--latest` in paper scripts.
-Paper configs use the resource split: a fixed 32-hardware-thread budget, split as `ranks * OMP_NUM_THREADS = 32`, with `ranks` no larger than the requested output-bitstring parallelism.
+Paper configs use the resource split: a fixed 32-hardware-thread budget, split as
+`ranks * OMP_NUM_THREADS = 32`, with `ranks` no larger than the requested
+output-bitstring parallelism.
+
+## Reference Environment
+
+The final paper reruns used a module-based Linux environment with:
+
+- GCC `13.2.0`
+- Python `3.11.7`
+- Open MPI `4.1.6`
+- Python dependencies installed from `requirements.txt`
+
+Equivalent setup:
+
+```bash
+module purge
+module load gcc/13.2.0-gcc-12.2.0-a63szea
+module load python/3.11.7-gcc-13.2.0-3zbbpkg
+module load openmpi/4.1.6-gcc-13.2.0-4x5z7ie
+
+python3 -m venv ~/feynman-venv
+source ~/feynman-venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Build:
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release -j 4
+```
+
+Set the parent Python/quimb thread-pool environment before running paper
+experiments:
+
+```bash
+export OMP_NUM_THREADS=32
+export OPENBLAS_NUM_THREADS=32
+export MKL_NUM_THREADS=32
+export NUMEXPR_NUM_THREADS=32
+```
+
+Feynman subprocesses do not inherit this `OMP_NUM_THREADS=32` setting blindly:
+each paper config sets `feynman_env.OMP_NUM_THREADS` explicitly according to the
+resource split above. The global `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, and
+`NUMEXPR_NUM_THREADS` settings are mainly relevant to Python/quimb runs.
 
 ## Current Mapping
 
