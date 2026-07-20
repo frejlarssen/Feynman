@@ -864,9 +864,12 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     handles_time, labels_time = ax_time.get_legend_handles_labels()
     handles_ops, labels_ops = ax_ops.get_legend_handles_labels()
     fig.suptitle(title, y=0.98)
+    handles_all = handles_time + handles_ops
+    labels_all = labels_time + labels_ops
+    order = [2,3,4,0,1]
     fig.legend(
-        handles_time + handles_ops,
-        labels_time + labels_ops,
+        [handles_all[idx] for idx in order],
+        [labels_all[idx] for idx in order],
         loc="upper center",
         bbox_to_anchor=(0.5, 0.91),
         ncol=2,
