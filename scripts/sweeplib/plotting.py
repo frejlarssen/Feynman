@@ -89,8 +89,8 @@ def render_sweep_plot(
             yerr=y_std,
             fmt="o-",
             capsize=4,
-            linewidth=1.4,
-            markersize=5,
+            linewidth=1.2,
+            markersize=3.5,
         )
 
     display_x = format_metric_label(x_label)

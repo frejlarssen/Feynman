@@ -525,7 +525,7 @@ def _render_demo_plot(
 
     fig, axes = plt.subplots(1, 2, figsize=single_column_figure_size(1.9))
 
-    axes[0].plot(in_idx, in_real, linewidth=1.0)
+    axes[0].plot(in_idx, in_real, linewidth=0.8)
     axes[0].set_title("Input signal (real part)", fontsize=subplot_title_fontsize)
     axes[0].set_xlabel("Time-domain index")
     axes[0].set_ylabel("Amplitude")

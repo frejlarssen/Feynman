@@ -776,10 +776,11 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
                     ys,
                     yerr=[lower, upper],
                     marker="o",
-                    linewidth=1.6,
-                    elinewidth=1.3,
-                    capsize=5,
-                    capthick=1.3,
+                    markersize=3.5,
+                    linewidth=1.2,
+                    elinewidth=0.9,
+                    capsize=3,
+                    capthick=0.9,
                     color=color,
                     label=label if first_segment else None,
                 )
@@ -791,7 +792,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
                     n,
                     color="#c44e52",
                     linestyle=":",
-                    linewidth=1.7,
+                    linewidth=1.2,
                     label="quimb memory limit" if i == 0 else None,
                     zorder=0,
                 )
@@ -801,7 +802,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
                     n,
                     color="#8c1d40",
                     linestyle="--",
-                    linewidth=1.7,
+                    linewidth=1.2,
                     label="quimb timeout" if i == 0 else None,
                     zorder=0,
                 )

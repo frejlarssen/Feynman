@@ -144,8 +144,8 @@ def _plot_cases_vs_x(
             yerr=stds,
             fmt="o-",
             capsize=4,
-            linewidth=1.4,
-            markersize=5,
+            linewidth=1.2,
+            markersize=3.5,
             label=case_name,
         )
     if xscale not in {"linear", "log", "symlog"}:

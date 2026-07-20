@@ -127,7 +127,7 @@ def plot_time_fidelity(
     else:
         ax_time.set_xscale(xscale)
 
-    ax_time.set_xlabel("threshold t")
+    ax_time.set_xlabel("Threshold $t$")
     ax_time.set_ylabel(format_metric_label(time_column))
     ax_fidelity.set_ylabel(format_metric_label(fidelity_column))
     ax_time.tick_params(axis="y", colors=LINE_COLOR_PRIMARY)

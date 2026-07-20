@@ -28,8 +28,9 @@ DOUBLE_COLUMN_FIGURE_HEIGHT_IN = 2.65
 LINE_COLOR_PRIMARY = "#1f77b4"
 LINE_COLOR_SECONDARY = "#d62728"
 
-DEFAULT_LINEWIDTH_PRIMARY = 1.8
-DEFAULT_LINEWIDTH_SECONDARY = 1.6
+DEFAULT_LINEWIDTH_PRIMARY = 1.2
+DEFAULT_LINEWIDTH_SECONDARY = 1.1
+DEFAULT_MARKERSIZE = 3.5
 DEFAULT_MARKER_PRIMARY = "o"
 DEFAULT_MARKER_SECONDARY = "s"
 
@@ -129,6 +130,8 @@ def apply_plot_fontsizes(*, plt, label_fontsize: float | None = None) -> float:
             "axes.titlesize": title_size,
             "legend.fontsize": tick_size,
             "figure.titlesize": figure_title_size,
+            "lines.linewidth": DEFAULT_LINEWIDTH_PRIMARY,
+            "lines.markersize": DEFAULT_MARKERSIZE,
         }
     )
     return size

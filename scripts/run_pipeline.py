@@ -579,8 +579,8 @@ def _plot_perf_case_lines(args: argparse.Namespace) -> int:
             yerr=stds,
             fmt="o-",
             capsize=4,
-            linewidth=1.4,
-            markersize=5,
+            linewidth=1.2,
+            markersize=3.5,
             label=case_name,
         )
 
