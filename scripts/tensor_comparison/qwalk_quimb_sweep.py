@@ -200,7 +200,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "output_bitstrings": output_bitstrings,
         "validation": validation,
         "plotting": plotting,
-        "notes": raw.get("notes", ""),
+        "notes": pick("notes", raw.get("notes", "")),
     }
     if args.continue_on_error:
         cfg["continue_on_error"] = True

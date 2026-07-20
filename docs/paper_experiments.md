@@ -1,7 +1,7 @@
 # Paper Experiments
 
 This file tracks the subset of runs tied to manuscript figures/results in
-`untracked/paper/main.tex`.
+`untracked/main.tex`.
 
 Use explicit config paths and explicit artifact paths for paper reproducibility.
 Avoid relying on `--latest` in paper scripts.
@@ -10,15 +10,22 @@ Avoid relying on `--latest` in paper scripts.
 
 - QFT validation figure (`fig:qft_validation`)
   - Run:
-    - `python scripts/run_pipeline.py validation qft-demo --config scripts/experiments/paper/validation/qft_two_freq_nqubits_demo_norm.json`
+    - `python scripts/run_pipeline.py validation qft-demo --config scripts/experiments/paper/validation/qft_demo.json`
   - Expected artifacts:
     - `summary.json`
     - `output_population.csv`
     - `demo_plot.pdf`
 
+- Quantum walk artificial-source scaling (`fig:artificial_sources_time_qw`)
+  - Run:
+    - `python scripts/run_pipeline.py perf-sweep --config scripts/experiments/paper/perf/qwalk_iteration_checkpoint_sources.json`
+  - Expected artifacts:
+    - `summary.csv`
+    - `qwalk_iteration_checkpoint_sources_ttot_vs_a_by_case.pdf`
+
 - Checkpointing ablation figure (`fig:checkpointing_ablation`)
   - Run:
-    - `python scripts/run_pipeline.py perf-sweep --config scripts/experiments/paper/perf/aa_n3_it3_mark1_checkpoint_ablation.json`
+    - `python scripts/run_pipeline.py perf-sweep --config scripts/experiments/paper/perf/aa_checkpoint_ablation.json`
   - Expected artifacts:
     - `summary.csv`
     - `plot_total_full_s_vs_batch_size.pdf`
@@ -30,6 +37,16 @@ Avoid relying on `--latest` in paper scripts.
   - Expected artifacts:
     - `summary.csv`
     - `summary_time_fidelity.pdf`
+
+- Quantum walk tensor comparison figure
+  - Run:
+    - `python scripts/run_pipeline.py qwalk-quimb-sweep --config scripts/experiments/paper/perf/qwalk_quimb_qubit_sweep.json`
+  - Expected artifacts:
+    - `summary.csv`
+    - `summary_by_n.csv`
+    - `qwalk_quimb_time.pdf`
+    - `qwalk_quimb_memory.pdf`
+    - `qwalk_quimb_transpiled_ops.pdf`
 
 ## Suggested Workflow for New Paper Figures
 

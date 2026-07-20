@@ -730,13 +730,13 @@ def _run_all_experiments(args: argparse.Namespace) -> int:
     for cfg in configs:
         mode = _detect_experiment_mode(cfg)
         cmd = _build_run_all_command(script_path, cfg, mode)
+        if args.continue_on_error and mode in {"perf-sweep", "qaoa-pruning", "qwalk-quimb-sweep"}:
+            cmd.append("--continue-on-error")
+        if args.timeout_seconds is not None and mode in {"perf-sweep", "qaoa-pruning", "qwalk-quimb-sweep"}:
+            cmd.extend(["--timeout-seconds", str(args.timeout_seconds)])
         if args.dry_run:
             print(f"[run-all-experiments] DRY-RUN: {' '.join(cmd)}")
             continue
-        if args.continue_on_error and mode in {"perf-sweep", "qaoa-pruning"}:
-            cmd.append("--continue-on-error")
-        if args.timeout_seconds is not None and mode in {"perf-sweep", "qaoa-pruning"}:
-            cmd.extend(["--timeout-seconds", str(args.timeout_seconds)])
         print(f"[run-all-experiments] Running: {mode} :: {cfg}")
         proc = subprocess.run(cmd, cwd=str(repo_root), check=False)
         if proc.returncode != 0:

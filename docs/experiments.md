@@ -19,6 +19,8 @@ Perf run telemetry now records:
 
 - `summary.csv`: `ranks`, `active_workers`, `omp_threads_per_worker`
 - `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
+- `sweep_metadata.json`: git commit, dirty flag, config/build inputs, and a
+  scoped git patch snapshot for perf sweeps
 
 Batch-run all configs (perf + validation):
 
@@ -39,7 +41,7 @@ python scripts/run_pipeline.py run-all-experiments --scope exploratory --fail-fa
 
 ```bash
 python scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/exploratory/perf/qft_n8_batch_sweep.json
+  --config scripts/experiments/exploratory/perf/qft_batch_sweep.json
 ```
 
 Plot from explicit summary:
@@ -57,42 +59,42 @@ AA (small):
 
 ```bash
 python scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/paper/perf/aa_n3_it3_mark1_checkpoint_ablation.json
+  --config scripts/experiments/paper/perf/aa_checkpoint_ablation.json
 ```
 
 AA (larger):
 
 ```bash
 python scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/exploratory/perf/aa_n4_it3_mark5_checkpoint_ablation.json
+  --config scripts/experiments/exploratory/perf/aa_checkpoint_ablation.json
 ```
 
 QFT:
 
 ```bash
 python scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/exploratory/perf/qft_n8_k2_checkpoint_ablation.json
+  --config scripts/experiments/exploratory/perf/qft_checkpoint_ablation.json
 ```
 
 QWalk:
 
 ```bash
 python scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/exploratory/perf/qwalk_n16_it16_checkpoint_ablation.json
+  --config scripts/experiments/exploratory/perf/qwalk_checkpoint_ablation.json
 ```
 
 QWalk iteration sweep with checkpoint strategy lines:
 
 ```bash
 python scripts/run_pipeline.py perf-sweep \
-  --config scripts/experiments/exploratory/perf/qwalk_n16_iteration_checkpoint_sources.json
+  --config scripts/experiments/paper/perf/qwalk_iteration_checkpoint_sources.json
 ```
 
 Plot `total_full_s` vs `total_artificial_sources` with one line per case:
 
 ```bash
 python scripts/run_pipeline.py plot perf-case-lines \
-  --summary-csv data/outputs/experiments/<timestamp>_qwalk_n16_iteration_checkpoint_sources/summary.csv \
+  --summary-csv data/outputs/experiments/<timestamp>_qwalk_iteration_checkpoint_sources/summary.csv \
   --x-column total_artificial_sources \
   --y-column total_full_s \
   --yscale log
@@ -102,7 +104,7 @@ Case aggregate plot:
 
 ```bash
 python scripts/run_pipeline.py plot perf-cases \
-  --summary-csv data/outputs/experiments/<timestamp>_aa_n3_it3_mark1_checkpoint_ablation/summary.csv \
+  --summary-csv data/outputs/experiments/<timestamp>_aa_n4_it3_mark5_checkpoint_ablation/summary.csv \
   --y-column gate_ops_estimate
 ```
 
@@ -162,14 +164,17 @@ Feynman on the original and quimb-lowered circuits for agreement and timing.
 
 ```bash
 python scripts/run_pipeline.py validation qaoa-qiskit \
-  --config scripts/experiments/paper/validation/qaoa_cycle_n8_p2_qiskit_validation.json
+  --config scripts/experiments/exploratory/validation/qaoa_cycle_n8_p2_qiskit_validation.json
 ```
+
+This is a development/reference check used by the QAOA pruning machinery, not
+a standalone paper figure.
 
 Alternative config:
 
 ```bash
 python scripts/run_pipeline.py validation qaoa-qiskit \
-  --config scripts/experiments/exploratory/validation/qft_n8_k4_qiskit_validation.json
+  --config scripts/experiments/exploratory/validation/qft_qiskit_validation.json
 ```
 
 Plot-only:
@@ -190,7 +195,7 @@ Other available configs:
 
 ```bash
 python scripts/run_pipeline.py validation qft-demo \
-  --config scripts/experiments/paper/validation/qft_two_freq_nqubits_demo_norm.json
+  --config scripts/experiments/paper/validation/qft_demo.json
 ```
 
 ```bash
