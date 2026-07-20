@@ -25,7 +25,12 @@ for path in (SCRIPT_REPO_ROOT, SCRIPT_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from scripts.sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+from scripts.sweeplib.plot_style import (
+    apply_plot_fontsizes,
+    configure_headless_matplotlib,
+    single_column_figure_size,
+    stacked_single_column_figure_size,
+)
 from scripts.sweeplib.provenance import build_sweep_metadata, get_git_info
 
 
@@ -804,14 +809,13 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         ax.set_yscale("log")
         ax.grid(True, alpha=0.3)
         if plotted and legend:
-            legend_fontsize = max(8.0, label_fontsize * 1.5) if label_fontsize is not None else "large"
-            ax.legend(loc=legend_loc, fontsize=legend_fontsize)
+            ax.legend(loc=legend_loc)
         return plotted
 
     fig, (ax_time, ax_ops) = plt.subplots(
         nrows=2,
         ncols=1,
-        figsize=(8, 6),
+        figsize=stacked_single_column_figure_size(),
         sharex=True,
         constrained_layout=True,
         gridspec_kw={"height_ratios": [3, 1.35], "hspace": 0.08},
@@ -841,7 +845,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         ("qwalk_quimb_memory.pdf", "Peak RSS (MB)", memory_series, True),
         ("qwalk_quimb_transpiled_ops.pdf", "Transpiled Qiskit ops", ops_series, False),
     ):
-        fig, ax = plt.subplots(figsize=(8, 5))
+        fig, ax = plt.subplots(figsize=single_column_figure_size())
         plotted = plot_series(
             ax,
             ylabel=ylabel,
@@ -852,8 +856,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         ax.set_xlabel("Qubits")
         ax.set_title(title)
         if plotted:
-            legend_fontsize = max(8.0, label_fontsize * 0.55) if label_fontsize is not None else "small"
-            ax.legend(fontsize=legend_fontsize)
+            ax.legend()
         fig.tight_layout()
         out = output_dir / filename
         fig.savefig(out, dpi=160)

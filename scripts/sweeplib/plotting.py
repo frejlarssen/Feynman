@@ -5,7 +5,12 @@ import math
 import statistics
 from pathlib import Path
 
-from .plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
+from .plot_style import (
+    apply_plot_fontsizes,
+    configure_headless_matplotlib,
+    format_metric_label,
+    single_column_figure_size,
+)
 
 
 def _to_float(value: str) -> float:
@@ -63,7 +68,7 @@ def render_sweep_plot(
     import matplotlib.pyplot as plt
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=single_column_figure_size())
 
     if mode == "scatter":
         ax.scatter(xs, ys, s=36, alpha=0.8)

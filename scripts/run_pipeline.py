@@ -442,7 +442,12 @@ def _plot_perf_sweep(args: argparse.Namespace) -> int:
 
 
 def _plot_perf_cases(args: argparse.Namespace) -> int:
-    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
+    from sweeplib.plot_style import (
+        apply_plot_fontsizes,
+        configure_headless_matplotlib,
+        format_metric_label,
+        single_column_figure_size,
+    )
 
     import csv
 
@@ -488,7 +493,7 @@ def _plot_perf_cases(args: argparse.Namespace) -> int:
     case_names = sorted(grouped)
     means = [statistics.mean(grouped[name]) for name in case_names]
     stds = [statistics.stdev(grouped[name]) if len(grouped[name]) > 1 else 0.0 for name in case_names]
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=single_column_figure_size())
     xs = list(range(len(case_names)))
     ax.bar(xs, means, yerr=stds, capsize=5, alpha=0.9)
     ax.set_xticks(xs, case_names)
@@ -519,7 +524,12 @@ def _plot_perf_cases(args: argparse.Namespace) -> int:
 
 
 def _plot_perf_case_lines(args: argparse.Namespace) -> int:
-    from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
+    from sweeplib.plot_style import (
+        apply_plot_fontsizes,
+        configure_headless_matplotlib,
+        format_metric_label,
+        single_column_figure_size,
+    )
 
     import csv
 
@@ -555,7 +565,7 @@ def _plot_perf_case_lines(args: argparse.Namespace) -> int:
     import matplotlib.pyplot as plt
 
     apply_plot_fontsizes(plt=plt, label_fontsize=args.label_fontsize)
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=single_column_figure_size())
     for case_name in sorted(grouped):
         x_sorted = sorted(grouped[case_name])
         means = [statistics.mean(grouped[case_name][x]) for x in x_sorted]
@@ -802,16 +812,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run-all-experiments":
         return _run_all_experiments(args)
     if args.command == "validation":
-        from validation.qaoa_qiskit_validation import main as qaoa_validation_main
-        from validation.qft_demo import main as qft_demo_main
-        from tensor_comparison.qwalk_quimb import main as qwalk_quimb_main
-
         val_argv = _validation_argv(args)
         if args.validation_kind == "qaoa-qiskit":
+            from validation.qaoa_qiskit_validation import main as qaoa_validation_main
+
             return qaoa_validation_main(val_argv)
         if args.validation_kind == "qwalk-quimb":
+            from tensor_comparison.qwalk_quimb import main as qwalk_quimb_main
+
             return qwalk_quimb_main(val_argv)
         if args.validation_kind == "qft-demo":
+            from validation.qft_demo import main as qft_demo_main
+
             return qft_demo_main(val_argv)
         parser.error(f"Unknown validation kind: {args.validation_kind}")
     if args.command == "plot":

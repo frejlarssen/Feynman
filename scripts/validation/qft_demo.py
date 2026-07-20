@@ -39,6 +39,7 @@ from scripts.sweeplib.materialize import (  # noqa: E402
 from scripts.sweeplib.plot_style import (  # noqa: E402
     apply_plot_fontsizes,
     resolve_subplot_title_fontsize,
+    single_column_figure_size,
 )
 
 
@@ -522,11 +523,11 @@ def _render_demo_plot(
     x_out = np.arange(len(output_bins))
     dec_labels = [str(b) for b in output_bins]
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
+    fig, axes = plt.subplots(1, 2, figsize=single_column_figure_size())
 
     axes[0].plot(in_idx, in_real, linewidth=1.0)
-    axes[0].set_title("Input Signal (Real Part)", fontsize=subplot_title_fontsize)
-    axes[0].set_xlabel("Basis Index (Time domain)")
+    axes[0].set_title("Input signal (real part)", fontsize=subplot_title_fontsize)
+    axes[0].set_xlabel("Time-domain index")
     axes[0].set_ylabel("Amplitude")
     axes[0].grid(True, axis="y", alpha=0.25)
 
@@ -536,8 +537,8 @@ def _render_demo_plot(
         axes[1].bar(x_out + bar_w / 2.0, qiskit_pop, width=bar_w, alpha=0.72, label="Qiskit")
     else:
         axes[1].bar(x_out, output_pop, alpha=0.82, label="Feynman")
-    axes[1].set_title("Output Population (Requested Bitstrings)", fontsize=subplot_title_fontsize)
-    axes[1].set_xlabel("Output Bitstring (Frequency domain)")
+    axes[1].set_title("Output populations", fontsize=subplot_title_fontsize)
+    axes[1].set_xlabel("Frequency-bin index")
     axes[1].set_ylabel(r"$|amp|^2$")
     if len(output_bins) <= max_xticks:
         tick_idx = list(range(len(output_bins)))
@@ -551,7 +552,7 @@ def _render_demo_plot(
     if qiskit_pop is not None:
         axes[1].legend()
 
-    fig.tight_layout()
+    fig.tight_layout(w_pad=0.4)
     fig.savefig(out_pdf)
     plt.close(fig)
 
