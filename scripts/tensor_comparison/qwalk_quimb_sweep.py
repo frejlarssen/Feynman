@@ -804,7 +804,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         ax.set_yscale("log")
         ax.grid(True, alpha=0.3)
         if plotted and legend:
-            legend_fontsize = max(8.0, label_fontsize * 0.55) if label_fontsize is not None else "small"
+            legend_fontsize = max(8.0, label_fontsize * 1.5) if label_fontsize is not None else "large"
             ax.legend(loc=legend_loc, fontsize=legend_fontsize)
         return plotted
 
