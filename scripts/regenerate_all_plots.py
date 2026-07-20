@@ -122,15 +122,23 @@ def _is_qwalk_quimb_summary(summary_csv: Path) -> bool:
     return {"quimb_status", "feynman_status", "transpiled_qiskit_ops"}.issubset(fields)
 
 
-def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
+def _matches_only(run_dir: Path, only: str | None) -> bool:
+    return only is None or only.lower() in run_dir.name.lower()
+
+
+def regenerate_all_plots(*, dry_run: bool, fail_fast: bool, only: str | None = None) -> int:
     errors: list[str] = []
     stats = ReplotStats()
+    matched_run_dirs: set[Path] = set()
 
     experiments_root = REPO_ROOT / "data" / "outputs" / "experiments"
     validation_root = REPO_ROOT / "data" / "outputs" / "validation"
 
     if experiments_root.exists():
         for summary_csv in sorted(experiments_root.glob("*/summary.csv")):
+            if not _matches_only(summary_csv.parent, only):
+                continue
+            matched_run_dirs.add(summary_csv.parent)
             run_name = summary_csv.parent.name
             if "qaoa_pruning_sweep" in run_name:
                 ok, err = _run(
@@ -229,6 +237,9 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
 
     if validation_root.exists() and (not fail_fast or not errors):
         for comparison_csv in sorted(validation_root.glob("*/comparison.csv")):
+            if not _matches_only(comparison_csv.parent, only):
+                continue
+            matched_run_dirs.add(comparison_csv.parent)
             ok, err = _run(
                 [*RUN_PIPELINE, "plot", "qaoa-qiskit", "--comparison-csv", str(comparison_csv)],
                 dry_run=dry_run,
@@ -247,8 +258,10 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
             summary
             for root in qft_roots
             for summary in _collect_qft_demo_summaries(root)
+            if _matches_only(summary.parent, only)
             if summary not in seen_qft_summaries and not seen_qft_summaries.add(summary)
         ]:
+            matched_run_dirs.add(summary_json.parent)
             try:
                 population_csv, input_statevector = _qft_replot_paths(summary_json)
             except (OSError, json.JSONDecodeError) as exc:
@@ -281,7 +294,13 @@ def regenerate_all_plots(*, dry_run: bool, fail_fast: bool) -> int:
                 if fail_fast:
                     break
 
+    if only is not None and not matched_run_dirs:
+        print(f"No saved run directory matched --only {only!r}.")
+        return 1
+
     print("Replot summary:")
+    if only is not None:
+        print(f"  selected:          {only}")
     print(f"  perf-sweep plots: {stats.perf_sweep}")
     print(f"  perf-case plots:  {stats.perf_cases}")
     print(f"  perf-lines plots: {stats.perf_case_lines}")
@@ -304,12 +323,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--dry-run", action="store_true", help="Print commands without executing.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop after first failure.")
+    parser.add_argument(
+        "--only",
+        metavar="RUN_NAME",
+        help="Regenerate only saved run directories whose name contains this value.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    return regenerate_all_plots(dry_run=args.dry_run, fail_fast=args.fail_fast)
+    return regenerate_all_plots(dry_run=args.dry_run, fail_fast=args.fail_fast, only=args.only)
 
 
 if __name__ == "__main__":

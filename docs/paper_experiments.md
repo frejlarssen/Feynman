@@ -134,6 +134,17 @@ python scripts/regenerate_all_plots.py --dry-run
 python scripts/regenerate_all_plots.py --fail-fast
 ```
 
+Regenerate one experiment family by selecting any unique part of its saved
+run-directory name:
+
+```bash
+python scripts/regenerate_all_plots.py --only qft_demo --fail-fast
+python scripts/regenerate_all_plots.py --only checkpoint_ablation --fail-fast
+python scripts/regenerate_all_plots.py --only qaoa_pruning --fail-fast
+python scripts/regenerate_all_plots.py --only qwalk_iteration --fail-fast
+python scripts/regenerate_all_plots.py --only qwalk_quimb --fail-fast
+```
+
 The dry run should list the five paper experiment families: checkpoint
 ablation, QAOA pruning, quantum-walk artificial-source scaling, quantum-walk
 quimb comparison, and QFT validation. Multi-case performance summaries may
