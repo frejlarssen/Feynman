@@ -90,7 +90,7 @@ resource split above. The global `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, and
   - Expected artifacts:
     - `summary.json`
     - `output_population.csv`
-    - `demo_plot.pdf`
+    - `qft_demo.pdf`
 
 - Quantum walk artificial-source scaling (`fig:artificial_sources_time_qw`)
   - Run:
@@ -104,15 +104,15 @@ resource split above. The global `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, and
     - `python scripts/run_pipeline.py perf-sweep --config scripts/experiments/paper/perf/aa_checkpoint_ablation.json`
   - Expected artifacts:
     - `summary.csv`
-    - `plot_total_full_s_vs_batch_size.pdf`
-    - `plot_total_full_s_by_case.pdf`
+    - `aa_checkpoint_ablation_ttot_vs_batch.pdf`
+    - `aa_checkpoint_ablation_ttot_by_case.pdf`
 
 - QAOA pruning figure (`fig:qaoa_pruning_sweep`)
   - Run:
     - `python scripts/run_pipeline.py qaoa-pruning --config scripts/experiments/paper/perf/qaoa_pruning_sweep_cycle_n8_p2.json`
   - Expected artifacts:
     - `summary.csv`
-    - `summary_time_fidelity.pdf`
+    - `qaoa_pruning_sweep_cycle_n8_p2.pdf`
 
 - Quantum walk tensor comparison figure
   - Run:
@@ -136,7 +136,9 @@ python scripts/regenerate_all_plots.py --fail-fast
 
 The dry run should list the five paper experiment families: checkpoint
 ablation, QAOA pruning, quantum-walk artificial-source scaling, quantum-walk
-quimb comparison, and QFT validation.
+quimb comparison, and QFT validation. Multi-case performance summaries may
+also produce generic auxiliary plots alongside the paper-bound figure; these
+are regenerated from the same saved `summary.csv` and do not rerun a benchmark.
 
 ## Suggested Workflow for New Paper Figures
 
