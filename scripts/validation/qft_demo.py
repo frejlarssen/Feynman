@@ -16,6 +16,7 @@ import csv
 import datetime as dt
 import json
 import math
+import os
 import shlex
 import subprocess
 import sys
@@ -96,6 +97,7 @@ def _merge_config(
         "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
+        "feynman_env": dict(pick("feynman_env", None, {}) or {}),
         "circuit": pick("circuit", args.circuit),
         "input_statevector": pick("input_statevector", args.input_statevector),
         "output_bitstrings": pick("output_bitstrings", args.output_bitstrings),
@@ -444,6 +446,7 @@ def _run_sv_prefetcher(
     dense: bool,
     p: int | None,
     r: int | None,
+    feynman_env: dict[str, str] | None,
 ) -> tuple[list[str], int, str, str]:
     run_args = [
         str(binary),
@@ -475,12 +478,15 @@ def _run_sv_prefetcher(
     else:
         cmd = [mpirun, "-n", str(ranks), *run_args]
 
+    env = os.environ.copy()
+    env.update({str(key): str(value) for key, value in dict(feynman_env or {}).items()})
     proc = subprocess.run(
         cmd,
         cwd=str(repo_root),
         text=True,
         capture_output=True,
         check=False,
+        env=env,
     )
     return cmd, proc.returncode, proc.stdout, proc.stderr
 
@@ -730,6 +736,7 @@ def main(argv: list[str] | None = None) -> int:
         dense=cfg["dense"],
         p=cfg["p"],
         r=cfg["r"],
+        feynman_env=cfg["feynman_env"],
     )
     feynman_runtime_s = float(time.perf_counter() - feynman_t0)
     (sweep_dir / "stdout.log").write_text(stdout_text, encoding="utf-8")

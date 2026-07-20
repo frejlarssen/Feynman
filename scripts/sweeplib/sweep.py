@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -27,9 +28,15 @@ def execute_command(
     cwd: Path,
     timeout_seconds: float | None,
     dry_run: bool,
+    env_overrides: dict[str, str] | None = None,
 ) -> tuple[int, float, str, str]:
     if dry_run:
         return 0, 0.0, f"[dry-run] {shlex.join(cmd)}\n", ""
+
+    env = None
+    if env_overrides:
+        env = os.environ.copy()
+        env.update({str(key): str(value) for key, value in env_overrides.items()})
 
     t0 = time.perf_counter()
     try:
@@ -40,6 +47,7 @@ def execute_command(
             text=True,
             check=False,
             timeout=timeout_seconds,
+            env=env,
         )
         elapsed = time.perf_counter() - t0
         return proc.returncode, elapsed, proc.stdout, proc.stderr

@@ -2,7 +2,10 @@
   "experiment_name": "qft_qiskit_validation_two_tone",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
-  "ranks": 1,
+  "ranks": 16,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "2"
+  },
   "circuit": {
     "generator": "qft",
     "n": 8,

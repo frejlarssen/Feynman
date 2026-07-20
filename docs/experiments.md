@@ -17,7 +17,7 @@ Perf configs in this catalog use `build-release/sv_prefetcher_subset_mpi.x`.
 
 Perf run telemetry now records:
 
-- `summary.csv`: `ranks`, `active_workers`, `omp_threads_per_worker`
+- `summary.csv`: `ranks`, `feynman_env`, `active_workers`, `omp_threads_per_worker`
 - `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
 - `sweep_metadata.json`: git commit, dirty flag, config/build inputs, and a
   scoped git patch snapshot for perf sweeps

@@ -25,7 +25,10 @@
   "run_feynman": true,
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
-  "ranks": 1,
+  "ranks": 8,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "4"
+  },
   "batch_size": 32,
   "fraction": 1.0,
   "threshold": 0.0,

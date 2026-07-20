@@ -32,9 +32,9 @@
     "binary": "build-release/sv_prefetcher_subset_mpi.x",
     "mpirun": "mpirun",
     "feynman_env": {
-      "OMP_NUM_THREADS": "2"
+      "OMP_NUM_THREADS": "4"
     },
-    "ranks": 16,
+    "ranks": 8,
     "batch_size": 32,
     "fraction": 1.0,
     "threshold": 0.0,

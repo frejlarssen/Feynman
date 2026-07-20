@@ -5,6 +5,7 @@ This file tracks the subset of runs tied to manuscript figures/results in
 
 Use explicit config paths and explicit artifact paths for paper reproducibility.
 Avoid relying on `--latest` in paper scripts.
+Paper configs use the resource split: a fixed 32-hardware-thread budget, split as `ranks * OMP_NUM_THREADS = 32`, with `ranks` no larger than the requested output-bitstring parallelism.
 
 ## Current Mapping
 

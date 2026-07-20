@@ -4,7 +4,10 @@
   "output_root": "data/outputs/validation",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
-  "ranks": 1,
+  "ranks": 16,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "2"
+  },
   "circuit": {
     "generator": "qaoa_maxcut",
     "n": 8,

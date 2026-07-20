@@ -7,6 +7,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import time
@@ -90,6 +91,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
+        "feynman_env": dict(pick("feynman_env", None, {}) or {}),
         "circuit": pick("circuit", args.circuit),
         "input_statevector": pick("input_statevector", args.input_statevector),
         "output_bitstrings": pick("output_bitstrings", args.output_bitstrings),
@@ -320,6 +322,7 @@ def run_feynman(
     threshold: float,
     batch_size: int,
     verbosity: int,
+    feynman_env: dict[str, str] | None,
 ) -> tuple[float, str, str]:
     cmd = [
         mpirun,
@@ -344,7 +347,9 @@ def run_feynman(
         str(verbosity),
     ]
     t0 = time.perf_counter()
-    proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    env = os.environ.copy()
+    env.update({str(key): str(value) for key, value in dict(feynman_env or {}).items()})
+    proc = subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
     dt_s = time.perf_counter() - t0
     return dt_s, proc.stdout, proc.stderr
 
@@ -466,6 +471,7 @@ def main(argv: list[str] | None = None) -> int:
         threshold=float(cfg["threshold"]),
         batch_size=int(cfg["batch_size"]),
         verbosity=int(cfg["verbosity"]),
+        feynman_env=cfg["feynman_env"],
     )
 
     (run_dir / "stdout.log").write_text(stdout, encoding="utf-8")
