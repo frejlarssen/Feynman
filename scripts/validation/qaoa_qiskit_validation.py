@@ -36,7 +36,11 @@ from sweeplib.materialize import (
     resolve_output_bitstrings_input,
     resolve_statevector_input,
 )
-from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+from sweeplib.plot_style import (
+    apply_plot_fontsizes,
+    configure_headless_matplotlib,
+    single_column_figure_size,
+)
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -406,7 +410,7 @@ def plot_from_comparison_csv(
     import matplotlib.pyplot as plt
 
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    fig, axes = plt.subplots(1, 2, figsize=single_column_figure_size())
     axes[0].plot(xs, feynman_real, marker="o", linewidth=1.3, markersize=3)
     axes[0].set_xlabel("subset output index")
     axes[0].set_ylabel("feynman_real")

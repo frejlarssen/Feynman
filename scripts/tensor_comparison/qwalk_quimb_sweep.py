@@ -25,7 +25,11 @@ for path in (SCRIPT_REPO_ROOT, SCRIPT_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from scripts.sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+from scripts.sweeplib.plot_style import (
+    apply_plot_fontsizes,
+    configure_headless_matplotlib,
+    single_column_figure_size,
+)
 from scripts.sweeplib.provenance import build_sweep_metadata, get_git_info
 
 
@@ -652,11 +656,18 @@ def _mean_std_by_n(rows: list[dict[str, Any]], column: str) -> dict[int, tuple[f
 def _write_aggregate_summary(summary_csv: Path, *, output_dir: Path) -> Path:
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
+    rows_quimb_build_complete = [
+        row
+        for row in rows_all
+        if row.get("quimb_status") == "ok" or row.get("quimb_amplitude_s") not in ("", None)
+    ]
     series = {
         "feynman_walltime_s": _mean_std_by_n(rows_all, "feynman_walltime_s"),
         "feynman_internal_total_s": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
         "feynman_peak_rss_mb": _mean_std_by_n(rows_all, "feynman_peak_rss_mb"),
         "quimb_total_s": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
+        "quimb_transpile_s": _mean_std_by_n(rows_all, "quimb_transpile_s"),
+        "quimb_build_s": _mean_std_by_n(rows_quimb_build_complete, "quimb_build_s"),
         "quimb_amplitude_s": _mean_std_by_n(rows_quimb_ok, "quimb_amplitude_s"),
         "quimb_peak_rss_mb": _mean_std_by_n(rows_quimb_ok, "quimb_peak_rss_mb"),
         "transpiled_qiskit_ops": _mean_std_by_n(rows_all, "transpiled_qiskit_ops"),
@@ -705,16 +716,26 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     rows_all = _read_rows(summary_csv, include_failures=True)
     rows_quimb_ok = [row for row in rows_all if row.get("quimb_status") == "ok"]
+    rows_quimb_build_complete = [
+        row
+        for row in rows_all
+        if row.get("quimb_status") == "ok" or row.get("quimb_amplitude_s") not in ("", None)
+    ]
+    all_ns = sorted({int(row["n"]) for row in rows_all})
     quimb_not_measured_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "failed"})
     quimb_timeout_ns = sorted({int(row["n"]) for row in rows_all if row.get("quimb_status") == "timeout"})
 
     outputs: list[Path] = []
     time_series = {
-        "Feynman original wall": _mean_std_by_n(rows_all, "feynman_walltime_s"),
-        "Feynman original internal": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
-        "Feynman transpiled wall": _mean_std_by_n(rows_all, "feynman_transpiled_walltime_s"),
-        "Feynman transpiled internal": _mean_std_by_n(rows_all, "feynman_transpiled_internal_total_s"),
+        "Feynman": _mean_std_by_n(rows_all, "feynman_internal_total_s"),
+        "Feynman transpiled": _mean_std_by_n(rows_all, "feynman_transpiled_internal_total_s"),
         "quimb": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
+    }
+    quimb_stage_series = {
+        "Transpile": _mean_std_by_n(rows_all, "quimb_transpile_s"),
+        "Build phase": _mean_std_by_n(rows_quimb_build_complete, "quimb_build_s"),
+        "Amplitude phase": _mean_std_by_n(rows_quimb_ok, "quimb_amplitude_s"),
+        "Completed total": _mean_std_by_n(rows_quimb_ok, "quimb_total_s"),
     }
     memory_series = {
         "Feynman original": _mean_std_by_n(rows_all, "feynman_peak_rss_mb"),
@@ -725,58 +746,204 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
         "transpiled Qiskit ops": _mean_std_by_n(rows_all, "transpiled_qiskit_ops"),
     }
 
-    for filename, ylabel, series, mark_missing_quimb in (
-        ("qwalk_quimb_time.pdf", "Time (s)", time_series, True),
-        ("qwalk_quimb_memory.pdf", "Peak RSS (MB)", memory_series, True),
-        ("qwalk_quimb_transpiled_ops.pdf", "Transpiled Qiskit ops", ops_series, False),
-    ):
-        fig, ax = plt.subplots(figsize=(8, 5))
+    def iter_measured_segments(values: dict[int, tuple[float, float, int]]) -> list[list[int]]:
+        segments: list[list[int]] = []
+        current: list[int] = []
+        for n in all_ns:
+            if n in values:
+                current.append(n)
+            elif current:
+                segments.append(current)
+                current = []
+        if current:
+            segments.append(current)
+        return segments
+
+    def series_color(label: str) -> str:
+        colors = {
+            "Feynman": "#1f77b4",
+            "Feynman transpiled": "#2ca02c",
+            "quimb": "#ff7f0e",
+            "transpiled Qiskit ops": "#9467bd",
+            "Transpile": "#1f77b4",
+            "Build phase": "#ff7f0e",
+            "Amplitude phase": "#2ca02c",
+            "Completed total": "#333333",
+        }
+        return colors.get(label, "C0")
+
+    def plot_series(
+        ax: Any,
+        *,
+        ylabel: str,
+        series: dict[str, dict[int, tuple[float, float, int]]],
+        mark_missing_quimb: bool,
+        legend: bool = True,
+        legend_loc: str = "best",
+    ) -> bool:
         plotted = False
         for label, values in series.items():
             if not values:
                 continue
-            xs = sorted(values)
-            ys = [values[x][0] for x in xs]
-            stds = [values[x][1] for x in xs]
-            lower = [min(std, max(y * 0.999, 0.0)) for y, std in zip(ys, stds)]
-            upper = stds
-            ax.errorbar(
-                xs,
-                ys,
-                yerr=[lower, upper],
-                marker="o",
-                linewidth=1.6,
-                elinewidth=1.3,
-                capsize=5,
-                capthick=1.3,
-                label=label,
-            )
-            plotted = True
+            first_segment = True
+            color = series_color(label)
+            for xs in iter_measured_segments(values):
+                ys = [values[x][0] for x in xs]
+                stds = [values[x][1] for x in xs]
+                lower = [min(std, max(y * 0.999, 0.0)) for y, std in zip(ys, stds)]
+                upper = stds
+                ax.errorbar(
+                    xs,
+                    ys,
+                    yerr=[lower, upper],
+                    marker="o",
+                    markersize=3.5,
+                    linewidth=1.2,
+                    elinewidth=0.9,
+                    capsize=3,
+                    capthick=0.9,
+                    color=color,
+                    label=label if first_segment else None,
+                )
+                first_segment = False
+                plotted = True
         if mark_missing_quimb and quimb_not_measured_ns:
             for i, n in enumerate(quimb_not_measured_ns):
                 ax.axvline(
                     n,
-                    color="0.7",
+                    color="#b00020",
                     linestyle=":",
-                    linewidth=1.1,
-                    label="quimb not measured" if i == 0 else None,
+                    linewidth=1.2,
+                    label="memory limit" if i == 0 else None,
                     zorder=0,
                 )
         if mark_missing_quimb and quimb_timeout_ns:
             for i, n in enumerate(quimb_timeout_ns):
                 ax.axvline(
                     n,
-                    color="0.45",
+                    color="#b00020",
                     linestyle="--",
-                    linewidth=1.1,
-                    label="quimb timeout" if i == 0 else None,
+                    linewidth=1.2,
+                    label="timeout" if i == 0 else None,
                     zorder=0,
                 )
-        ax.set_xlabel("Qubits")
         ax.set_ylabel(ylabel)
         ax.set_yscale("log")
-        ax.set_title(title)
         ax.grid(True, alpha=0.3)
+        if plotted and legend:
+            ax.legend(loc=legend_loc)
+        return plotted
+
+    fig, ax_time = plt.subplots(figsize=single_column_figure_size(2.7))
+    plot_series(
+        ax_time,
+        ylabel="Time (s)",
+        series=time_series,
+        mark_missing_quimb=True,
+        legend=False,
+    )
+    ax_ops = ax_time.twinx()
+    ops_color = series_color("transpiled Qiskit ops")
+    for label, values in ops_series.items():
+        first_segment = True
+        for xs in iter_measured_segments(values):
+            ys = [values[x][0] for x in xs]
+            ax_ops.plot(
+                xs,
+                ys,
+                linewidth=1.1,
+                linestyle="--",
+                color=ops_color,
+                label="Qiskit ops" if first_segment else None,
+            )
+            first_segment = False
+    ax_ops.set_ylabel("Qiskit ops", color=ops_color)
+    ax_ops.set_yscale("log")
+    ax_ops.tick_params(axis="y", colors=ops_color)
+    ax_time.set_xlabel("Qubits")
+    handles_time, labels_time = ax_time.get_legend_handles_labels()
+    handles_ops, labels_ops = ax_ops.get_legend_handles_labels()
+    fig.suptitle(title, y=0.98)
+    handles_all = handles_time + handles_ops
+    labels_all = labels_time + labels_ops
+    order = [2,3,4,0,1]
+    fig.legend(
+        [handles_all[idx] for idx in order],
+        [labels_all[idx] for idx in order],
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.91),
+        ncol=2,
+    )
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.82))
+    out = output_dir / "qwalk_quimb_time.pdf"
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    outputs.append(out)
+
+    fig, ax = plt.subplots(figsize=single_column_figure_size(3.0))
+    plot_series(
+        ax,
+        ylabel="Time (s)",
+        series=quimb_stage_series,
+        mark_missing_quimb=False,
+        legend=False,
+    )
+    for n in quimb_not_measured_ns:
+        ax.axvline(n, color="#b00020", linestyle=":", linewidth=1.2, zorder=0)
+        ax.text(
+            n,
+            0.98,
+            "memory",
+            color="#b00020",
+            fontsize="x-small",
+            rotation=90,
+            ha="right",
+            va="top",
+            transform=ax.get_xaxis_transform(),
+        )
+    for n in quimb_timeout_ns:
+        ax.axvline(n, color="#b00020", linestyle="--", linewidth=1.2, zorder=0)
+        ax.text(
+            n,
+            0.98,
+            "timeout",
+            color="#b00020",
+            fontsize="x-small",
+            rotation=90,
+            ha="right",
+            va="top",
+            transform=ax.get_xaxis_transform(),
+        )
+    ax.set_xlabel("Qubits")
+    handles, labels = ax.get_legend_handles_labels()
+    fig.suptitle("quimb Time Spent by Phase", y=0.98)
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.91),
+        ncol=2,
+    )
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.78))
+    out = output_dir / "qwalk_quimb_stages.pdf"
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    outputs.append(out)
+
+    for filename, ylabel, series, mark_missing_quimb in (
+        ("qwalk_quimb_memory.pdf", "Peak RSS (MB)", memory_series, True),
+        ("qwalk_quimb_transpiled_ops.pdf", "Transpiled Qiskit ops", ops_series, False),
+    ):
+        fig, ax = plt.subplots(figsize=single_column_figure_size())
+        plotted = plot_series(
+            ax,
+            ylabel=ylabel,
+            series=series,
+            mark_missing_quimb=mark_missing_quimb,
+            legend=False,
+        )
+        ax.set_xlabel("Qubits")
+        ax.set_title(title)
         if plotted:
             ax.legend()
         fig.tight_layout()

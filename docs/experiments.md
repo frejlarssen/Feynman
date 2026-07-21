@@ -226,12 +226,18 @@ explicit artifact paths.
 Bulk regeneration after style changes:
 
 ```bash
-python scripts/regenerate_all_plots.py
-```
-
-Optional helpers:
-
-```bash
 python scripts/regenerate_all_plots.py --dry-run
 python scripts/regenerate_all_plots.py --fail-fast
+```
+
+This discovers saved summaries under `data/outputs/experiments/` and
+`data/outputs/validation/`. It regenerates plots from those artifacts only; it
+does not rerun experiments. Multi-case performance summaries generate the
+generic sweep, case aggregate, and case-line variants when applicable.
+
+To continue past individual plotting failures instead of stopping at the first
+one, omit `--fail-fast`:
+
+```bash
+python scripts/regenerate_all_plots.py
 ```

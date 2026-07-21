@@ -8,19 +8,55 @@ PLOT_TICK_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_TICK_FONTSIZE_DELTA"
 PLOT_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_TITLE_FONTSIZE_DELTA"
 PLOT_FIGURE_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_FIGURE_TITLE_FONTSIZE_DELTA"
 PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA_ENV = "FEYNMAN_PLOT_SUBPLOT_TITLE_FONTSIZE_DELTA"
-DEFAULT_LABEL_FONTSIZE = 20.0
-DEFAULT_TICK_FONTSIZE_DELTA = -1.0
-DEFAULT_TITLE_FONTSIZE_DELTA = 1.0
-DEFAULT_FIGURE_TITLE_FONTSIZE_DELTA = 2.0
-DEFAULT_SUBPLOT_TITLE_FONTSIZE_DELTA = -2.0
+
+# Measured from the IEEEtran 10 pt conference manuscript log.  Matplotlib
+# expects inches, while TeX reports dimensions in TeX points (72.27 pt/in).
+IEEE_CONFERENCE_COLUMN_WIDTH_PT = 252.0
+IEEE_CONFERENCE_TEXT_WIDTH_PT = 516.0
+TEX_POINTS_PER_INCH = 72.27
+
+DEFAULT_LABEL_FONTSIZE = 8.5
+DEFAULT_TICK_FONTSIZE_DELTA = -0.9
+DEFAULT_TITLE_FONTSIZE_DELTA = 0.0
+DEFAULT_FIGURE_TITLE_FONTSIZE_DELTA = 0.7
+DEFAULT_SUBPLOT_TITLE_FONTSIZE_DELTA = -0.9
+
+SINGLE_COLUMN_FIGURE_HEIGHT_IN = 2.35
+STACKED_SINGLE_COLUMN_FIGURE_HEIGHT_IN = 3.25
+DOUBLE_COLUMN_FIGURE_HEIGHT_IN = 2.65
 
 LINE_COLOR_PRIMARY = "#1f77b4"
 LINE_COLOR_SECONDARY = "#d62728"
 
-DEFAULT_LINEWIDTH_PRIMARY = 1.8
-DEFAULT_LINEWIDTH_SECONDARY = 1.6
+DEFAULT_LINEWIDTH_PRIMARY = 1.2
+DEFAULT_LINEWIDTH_SECONDARY = 1.1
+DEFAULT_MARKERSIZE = 3.5
 DEFAULT_MARKER_PRIMARY = "o"
 DEFAULT_MARKER_SECONDARY = "s"
+
+
+def ieee_column_width_inches() -> float:
+    return IEEE_CONFERENCE_COLUMN_WIDTH_PT / TEX_POINTS_PER_INCH
+
+
+def ieee_text_width_inches() -> float:
+    return IEEE_CONFERENCE_TEXT_WIDTH_PT / TEX_POINTS_PER_INCH
+
+
+def single_column_figure_size(
+    height_inches: float = SINGLE_COLUMN_FIGURE_HEIGHT_IN,
+) -> tuple[float, float]:
+    return ieee_column_width_inches(), float(height_inches)
+
+
+def stacked_single_column_figure_size() -> tuple[float, float]:
+    return ieee_column_width_inches(), STACKED_SINGLE_COLUMN_FIGURE_HEIGHT_IN
+
+
+def double_column_figure_size(
+    height_inches: float = DOUBLE_COLUMN_FIGURE_HEIGHT_IN,
+) -> tuple[float, float]:
+    return ieee_text_width_inches(), float(height_inches)
 
 
 def configure_headless_matplotlib() -> None:
@@ -94,6 +130,8 @@ def apply_plot_fontsizes(*, plt, label_fontsize: float | None = None) -> float:
             "axes.titlesize": title_size,
             "legend.fontsize": tick_size,
             "figure.titlesize": figure_title_size,
+            "lines.linewidth": DEFAULT_LINEWIDTH_PRIMARY,
+            "lines.markersize": DEFAULT_MARKERSIZE,
         }
     )
     return size
