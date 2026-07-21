@@ -12,7 +12,7 @@ micromamba activate feynman
 Generate input artifacts:
 
 ```bash
-python3 generators/generate_bulk.py
+python generators/generate_bulk.py
 ```
 
 Build release for experiments:
@@ -45,13 +45,13 @@ The output amplitudes is found in `data/outputs/tmp/qft_n8_k2_run.hsv`.
 Unified pipeline entrypoint for experiments:
 
 ```bash
-python3 scripts/run_pipeline.py <subcommand> ...
+python scripts/run_pipeline.py <subcommand> ...
 ```
 
 Minimal perf sweep:
 
 ```bash
-python3 scripts/run_pipeline.py perf-sweep \
+python scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/exploratory/perf/qft_batch_sweep.json
 ```
 

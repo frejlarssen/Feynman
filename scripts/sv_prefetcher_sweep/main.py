@@ -9,7 +9,12 @@ from pathlib import Path
 
 from sweeplib.provenance import get_git_info
 from sweeplib.sweep import run_sweep
-from sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib, format_metric_label
+from sweeplib.plot_style import (
+    apply_plot_fontsizes,
+    configure_headless_matplotlib,
+    format_metric_label,
+    single_column_figure_size,
+)
 from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
 
 from .cli import build_config
@@ -77,7 +82,7 @@ def _plot_cases_total_full(summary_csv: Path, *, config_stem: str) -> Path:
     case_names = sorted(grouped)
     means = [statistics.mean(grouped[name]) for name in case_names]
     stds = [statistics.stdev(grouped[name]) if len(grouped[name]) > 1 else 0.0 for name in case_names]
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=single_column_figure_size())
     xs = list(range(len(case_names)))
     ax.bar(xs, means, yerr=stds, capsize=5, alpha=0.9)
     ax.set_xticks(xs, case_names)
@@ -125,7 +130,7 @@ def _plot_cases_vs_x(
     import matplotlib.pyplot as plt
 
     apply_plot_fontsizes(plt=plt, label_fontsize=None)
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=single_column_figure_size())
     for case_name in sorted(grouped):
         x_sorted = sorted(grouped[case_name])
         means = [statistics.mean(grouped[case_name][x]) for x in x_sorted]
@@ -139,8 +144,8 @@ def _plot_cases_vs_x(
             yerr=stds,
             fmt="o-",
             capsize=4,
-            linewidth=1.4,
-            markersize=5,
+            linewidth=1.2,
+            markersize=3.5,
             label=case_name,
         )
     if xscale not in {"linear", "log", "symlog"}:

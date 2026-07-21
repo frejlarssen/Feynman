@@ -1,0 +1,37 @@
+{
+  "experiment_name": "qwalk_quimb_smoke",
+  "repo_root": ".",
+  "output_root": "data/outputs/validation",
+  "circuit": {
+    "generator": "qwalk",
+    "n": 15,
+    "it": 4
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 2
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 2,
+    "count": 8
+  },
+  "qiskit_optimization_level": 1,
+  "quimb_optimize": "greedy",
+  "quimb_rehearse": false,
+  "quimb_simplify_sequence": "ADCRS",
+  "quimb_simplify_atol": 1e-12,
+  "quimb_simplify_equalize_norms": false,
+  "run_feynman": true,
+  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 8,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "4"
+  },
+  "batch_size": 32,
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "verbosity": 1,
+  "notes": "Smoke comparison: exact selected qwalk amplitudes via quimb tensor contraction and Feynman."
+}

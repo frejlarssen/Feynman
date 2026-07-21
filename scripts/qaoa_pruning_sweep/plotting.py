@@ -15,6 +15,7 @@ from sweeplib.plot_style import (
     apply_plot_fontsizes,
     configure_headless_matplotlib,
     format_metric_label,
+    single_column_figure_size,
 )
 
 
@@ -99,7 +100,7 @@ def plot_time_fidelity(
         include_failures=include_failures,
     )
 
-    fig, ax_time = plt.subplots(figsize=(8.0, 4.8))
+    fig, ax_time = plt.subplots(figsize=single_column_figure_size())
     ax_fidelity = ax_time.twinx()
 
     time_line = ax_time.plot(
@@ -126,7 +127,7 @@ def plot_time_fidelity(
     else:
         ax_time.set_xscale(xscale)
 
-    ax_time.set_xlabel("threshold t")
+    ax_time.set_xlabel("Threshold $t$")
     ax_time.set_ylabel(format_metric_label(time_column))
     ax_fidelity.set_ylabel(format_metric_label(fidelity_column))
     ax_time.tick_params(axis="y", colors=LINE_COLOR_PRIMARY)
@@ -139,6 +140,6 @@ def plot_time_fidelity(
     fig.tight_layout()
 
     output_path = output.resolve() if output else default_output(summary_path)
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path, dpi=200)
     plt.close(fig)
     return output_path

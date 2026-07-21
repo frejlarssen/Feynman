@@ -6,7 +6,10 @@
     32
   ],
   "repeat": 5,
-  "ranks": 4,
+  "ranks": 8,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "4"
+  },
   "batch_size": 32,
   "fraction": 1.0,
   "threshold": 1e-08,
