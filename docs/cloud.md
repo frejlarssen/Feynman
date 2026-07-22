@@ -55,6 +55,12 @@ bash scripts/build_and_import_cloud_images.sh feynman-cluster
 
 ### Airflow
 
+We use a seperate venv environment for running airflow:
+
+```bash
+source ~/venvs/airflow/bin/activate
+```
+
 When airflow is installed:
 
 ```bash
@@ -125,6 +131,22 @@ You can also pass an explicit DAG id and pod counts:
 `bash scripts/benchmark_cloud_pod_sweep.sh feynman 1 2 4 8`
 
 The script runs pod counts sequentially, waits for each DAG run to finish, and
-prints the wall-clock time per run. To also save CSV results:
+prints the wall-clock time per run. By default it saves a timestamped summary
+CSV under `untracked/cloud_benchmarks/<timestamp>/summary.csv`.
+
+Before triggering anything, it checks that `feynman-simulate`, `feynman-split`,
+and `feynman-concat` are present inside the `feynman-cluster` k3d node. If any
+are missing, it fails loudly and tells you to rerun:
+
+`bash scripts/build_and_import_cloud_images.sh feynman-cluster`
+
+You can override the destination if you want:
 
 `RESULTS_FILE=untracked/cloud_benchmark_results.csv bash scripts/benchmark_cloud_pod_sweep.sh`
+
+After the sweep, switch back to the `feynman` development environment and plot:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv
+```
