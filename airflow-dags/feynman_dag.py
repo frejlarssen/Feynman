@@ -15,6 +15,10 @@ SPLIT_IMAGE = "feynman-split:latest"
 SIMULATE_IMAGE = "feynman-simulate:latest"
 CONCAT_IMAGE = "feynman-concat:latest"
 MAX_HEXSTRINGS_PER_BATCH = 100
+TARGET_NUM_PODS_TEMPLATE = "{{ dag_run.conf.get('target_num_pods', 0) }}"
+MAX_HEXSTRINGS_PER_BATCH_TEMPLATE = (
+    "{{ dag_run.conf.get('max_hexstrings_per_batch', " + str(MAX_HEXSTRINGS_PER_BATCH) + ") }}"
+)
 
 DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
     name="feynman-data",
@@ -81,7 +85,7 @@ def feynman():
         config_file=KUBECONFIG,
         do_xcom_push=True,
         get_logs=True,
-        on_finish_action="delete_pod",
+        on_finish_action="delete_succeeded_pod",
         volume_mounts=[DATA_VOLUME_MOUNT],
         volumes=[DATA_VOLUME],
         arguments=[
@@ -89,8 +93,12 @@ def feynman():
             HEXSTRINGS_FILE,
             "-o",
             f"{DATA_MOUNT_PATH}/generated/batches",
-            "-n",
-            str(MAX_HEXSTRINGS_PER_BATCH),
+            "{% if dag_run.conf.get('target_num_pods', 0) | int > 0 %}-k{% else %}-n{% endif %}",
+            "{% if dag_run.conf.get('target_num_pods', 0) | int > 0 %}"
+            + TARGET_NUM_PODS_TEMPLATE
+            + "{% else %}"
+            + MAX_HEXSTRINGS_PER_BATCH_TEMPLATE
+            + "{% endif %}",
             "-x",
             "/airflow/xcom/return.json",
             "-v",

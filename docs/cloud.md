@@ -102,7 +102,7 @@ Choose the `feynman` DAG and trigger it.
 ## Benchmark
 
 For benchmarking a fixed problem at different pod counts, keep the circuit and
-hexstring file fixed and vary the target pod count at trigger time:
+hexstring file fixed and vary the target pod count at trigger time. While running airflow standalone, trigger from another terminal:
 
 ```bash
 airflow dags trigger feynman --conf '{"target_num_pods": 4}'

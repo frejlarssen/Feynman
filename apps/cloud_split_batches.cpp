@@ -13,6 +13,7 @@ struct Options {
   std::string output_dir;
   std::string xcom_output_file;
   std::size_t batch_size = 0;
+  std::size_t target_num_batches = 0;
   std::string output_prefix = "batch_";
   std::string output_suffix = ".hs";
   int verbosity = 1;
@@ -23,7 +24,8 @@ Options get_options(int argc, char *argv[]) {
 
   const char *helpstr =
       "Usage: ./cloud_split_batches.x -h hexstrings_file -o output_dir "
-      "-n batch_size [-x xcom_output_file] [-p output_prefix] "
+      "(-n batch_size | -k target_num_batches) [-x xcom_output_file] "
+      "[-p output_prefix] "
       "[-s output_suffix] [-v verbosity]\n";
 
   if (argc < 2) {
@@ -32,7 +34,7 @@ Options get_options(int argc, char *argv[]) {
   }
 
   int k;
-  while ((k = getopt(argc, argv, "h:o:n:x:p:s:v:")) != -1) {
+  while ((k = getopt(argc, argv, "h:o:n:k:x:p:s:v:")) != -1) {
     switch (k) {
     case 'h':
       opts.hexstrings_file = optarg;
@@ -42,6 +44,9 @@ Options get_options(int argc, char *argv[]) {
       break;
     case 'n':
       opts.batch_size = static_cast<std::size_t>(std::stoull(optarg));
+      break;
+    case 'k':
+      opts.target_num_batches = static_cast<std::size_t>(std::stoull(optarg));
       break;
     case 'x':
       opts.xcom_output_file = optarg;
@@ -61,7 +66,10 @@ Options get_options(int argc, char *argv[]) {
     }
   }
 
-  if (opts.hexstrings_file.empty() || opts.output_dir.empty() || opts.batch_size == 0) {
+  const bool has_batch_size = opts.batch_size > 0;
+  const bool has_target_num_batches = opts.target_num_batches > 0;
+  if (opts.hexstrings_file.empty() || opts.output_dir.empty() ||
+      has_batch_size == has_target_num_batches) {
     std::cout << helpstr;
     std::exit(1);
   }
@@ -127,18 +135,30 @@ std::size_t split_batches(const Options &opts) {
   const ParsedHexstringFile parsed = parse_hexstring_file(opts.hexstrings_file);
   fs::create_directories(opts.output_dir);
 
+  std::size_t batch_size = opts.batch_size;
+  if (batch_size == 0) {
+    batch_size = std::max<std::size_t>(
+        1, (parsed.bitstrings.size() + opts.target_num_batches - 1) /
+               opts.target_num_batches);
+  }
+
   const std::size_t num_batches =
-      (parsed.bitstrings.size() + opts.batch_size - 1) / opts.batch_size;
+      (parsed.bitstrings.size() + batch_size - 1) / batch_size;
 
   if (opts.verbosity >= 1) {
     std::cout << "Splitting " << parsed.bitstrings.size() << " bitstrings into "
-              << num_batches << " batch files\n";
+              << num_batches << " batch files"
+              << " (batch_size=" << batch_size;
+    if (opts.target_num_batches > 0) {
+      std::cout << ", requested_target_num_batches=" << opts.target_num_batches;
+    }
+    std::cout << ")\n";
   }
 
   for (std::size_t batch_id = 0; batch_id < num_batches; ++batch_id) {
-    const std::size_t start = batch_id * opts.batch_size;
+    const std::size_t start = batch_id * batch_size;
     const std::size_t end =
-        std::min(start + opts.batch_size, parsed.bitstrings.size());
+        std::min(start + batch_size, parsed.bitstrings.size());
 
     std::string output;
     output += std::to_string(end - start) + "\n";
