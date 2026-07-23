@@ -53,6 +53,24 @@ def _pick(payload: dict[str, Any], *keys: str) -> Any:
     raise ValueError(f"Expected one of keys {keys!r} in config.")
 
 
+def parse_target_num_pods_list(payload: dict[str, Any]) -> list[int]:
+    raw_value = payload.get("target_num_pods_list", payload.get("target_num_pods"))
+    if raw_value is None:
+        return []
+    if not isinstance(raw_value, list) or not raw_value:
+        raise ValueError(
+            "target_num_pods_list must be a non-empty JSON array of positive integers."
+        )
+
+    pod_counts: list[int] = []
+    for raw_item in raw_value:
+        pod_count = int(raw_item)
+        if pod_count <= 0:
+            raise ValueError("target_num_pods_list entries must be > 0.")
+        pod_counts.append(pod_count)
+    return pod_counts
+
+
 def _infer_circuit_qubits(circuit_cfg: Any) -> int | None:
     if not isinstance(circuit_cfg, dict):
         return None
@@ -168,6 +186,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True, help="Path to cloud benchmark config JSON.")
     parser.add_argument("--target-num-pods", type=int, default=None)
     parser.add_argument("--max-hexstrings-per-batch", type=int, default=None)
+    parser.add_argument(
+        "--print-target-num-pods-list",
+        action="store_true",
+        help="Print the configured benchmark pod counts as a space-separated list.",
+    )
     return parser.parse_args()
 
 
@@ -176,8 +199,16 @@ def main() -> int:
     if args.target_num_pods is not None and args.max_hexstrings_per_batch is not None:
         raise ValueError("Pass only one of --target-num-pods or --max-hexstrings-per-batch.")
 
+    config_path = _resolve_config_path(args.config)
+    payload = _load_config(config_path)
+
+    if args.print_target_num_pods_list:
+        sys.stdout.write(" ".join(str(pods) for pods in parse_target_num_pods_list(payload)))
+        sys.stdout.write("\n")
+        return 0
+
     conf = render_conf(
-        config_path=_resolve_config_path(args.config),
+        config_path=config_path,
         target_num_pods=args.target_num_pods,
         max_hexstrings_per_batch=args.max_hexstrings_per_batch,
     )

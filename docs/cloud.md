@@ -148,6 +148,23 @@ A simple benchmark sweep is available in:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh`
 
+When `--config` is used, the script now looks for
+`target_num_pods_list` in the benchmark JSON and uses that pod-count
+sweep by default.
+
+Example:
+
+```json
+{
+  "experiment_name": "qwalk_n64_it4",
+  "target_num_pods_list": [1, 2, 4]
+}
+```
+
+Explicit pod counts on the command line still override the JSON list:
+
+`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json 1 2`
+
 You can also pass an explicit DAG id and pod counts:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh feynman 1 2 4 8`
@@ -163,6 +180,17 @@ Example with the quantum-walk benchmark case:
 The script runs pod counts sequentially, waits for each DAG run to finish, and
 prints the wall-clock time per run. By default it saves a timestamped summary
 CSV under `untracked/cloud_benchmarks/<timestamp>/summary.csv`.
+
+Each summary row now includes both:
+
+- `elapsed_seconds`: full DAG wall-clock time
+- `simulate_stage_elapsed_seconds`: the span from the first `simulate_batch`
+  task instance start to the last `simulate_batch` task instance end
+- `simulate_task_instance_seconds_sum`: the sum of all finished
+  `simulate_batch` task-instance durations
+
+That makes it easier to separate orchestration overhead from actual parallel
+simulation work.
 
 When `--config` is used, the sweep script renders the Airflow `dag_run.conf`
 with the repo's `feynman` development Python by default
@@ -212,4 +240,12 @@ After the sweep, switch back to the `feynman` development environment and plot:
 ```bash
 python scripts/plot_cloud_benchmark.py \
   --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv
+```
+
+To plot the parallel compute stage instead of the full DAG wall-clock time:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv \
+  --metric simulate_stage_elapsed_seconds
 ```

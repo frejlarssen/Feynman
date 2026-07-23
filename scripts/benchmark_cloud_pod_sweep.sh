@@ -54,7 +54,7 @@ RESULTS_DIR=$(dirname "${RESULTS_FILE}")
 mkdir -p "${RESULTS_DIR}"
 
 if [ ! -f "${RESULTS_FILE}" ]; then
-  printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,start_utc,end_utc\n" > "${RESULTS_FILE}"
+  printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
 require_cluster_image() {
@@ -122,9 +122,16 @@ if [ -n "${CONFIG_PATH}" ]; then
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
+  if [ "$#" -eq 0 ]; then
+    CONFIG_POD_COUNTS="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
+    if [ -n "${CONFIG_POD_COUNTS}" ]; then
+      POD_COUNTS="${CONFIG_POD_COUNTS}"
+    fi
+  fi
 fi
 
 echo "Benchmark results will be written to ${RESULTS_FILE}"
+echo "Pod counts: ${POD_COUNTS}"
 
 for pods in $POD_COUNTS
 do
@@ -153,9 +160,36 @@ do
         end_epoch="$(date +%s)"
         end_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         elapsed_seconds=$((end_epoch - start_epoch))
+        simulate_task_instance_count=""
+        simulate_finished_task_instance_count=""
+        simulate_stage_start_utc=""
+        simulate_stage_end_utc=""
+        simulate_stage_elapsed_seconds=""
+        simulate_task_instance_seconds_sum=""
+        if simulate_metrics_tsv="$(python3 scripts/summarize_airflow_task_timing.py \
+          --dag-id "${DAG_ID}" \
+          --run-id "${run_id}" \
+          --task-id simulate_batch \
+          --output tsv 2>/dev/null)"; then
+          if [ -n "${simulate_metrics_tsv}" ]; then
+            IFS="$(printf '\t')" read -r \
+              simulate_task_instance_count \
+              simulate_finished_task_instance_count \
+              simulate_stage_start_utc \
+              simulate_stage_end_utc \
+              simulate_stage_elapsed_seconds \
+              simulate_task_instance_seconds_sum <<EOF
+${simulate_metrics_tsv}
+EOF
+            unset IFS
+          fi
+        fi
         echo "Run ${run_id} finished with state=${state} in ${elapsed_seconds}s."
-        printf "%s,%s,%s,%s,%s,%s,%s,%s\n" \
-          "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${state}" "${elapsed_seconds}" "${start_utc}" "${end_utc}" \
+        if [ -n "${simulate_stage_elapsed_seconds}" ]; then
+          echo "  simulate_batch stage span=${simulate_stage_elapsed_seconds}s, summed worker time=${simulate_task_instance_seconds_sum}s across ${simulate_finished_task_instance_count}/${simulate_task_instance_count} task instances."
+        fi
+        printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+          "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${start_utc}" "${end_utc}" \
           >> "${RESULTS_FILE}"
         if [ "${state}" != "success" ]; then
           echo "Task states for failed run ${run_id}:"

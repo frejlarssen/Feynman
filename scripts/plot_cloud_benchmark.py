@@ -20,6 +20,18 @@ from scripts.sweeplib.plot_style import (
     single_column_figure_size,
 )
 
+METRIC_LABELS = {
+    "elapsed_seconds": "Wall-clock time [s]",
+    "simulate_stage_elapsed_seconds": "simulate_batch stage span [s]",
+    "simulate_task_instance_seconds_sum": "Summed simulate_batch task-instance time [s]",
+}
+
+METRIC_TITLES = {
+    "elapsed_seconds": "Cloud benchmark wall-clock time",
+    "simulate_stage_elapsed_seconds": "Cloud benchmark simulate stage span",
+    "simulate_task_instance_seconds_sum": "Cloud benchmark summed simulate task time",
+}
+
 
 def _load_rows(summary_csv: Path) -> list[dict[str, str]]:
     with summary_csv.open("r", newline="", encoding="utf-8") as handle:
@@ -37,21 +49,24 @@ def _successful_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return successful
 
 
-def _to_groups(rows: list[dict[str, str]]) -> dict[int, list[float]]:
+def _to_groups(rows: list[dict[str, str]], *, metric: str) -> dict[int, list[float]]:
     groups: dict[int, list[float]] = {}
     for row in rows:
         pods = int(row["target_num_pods"])
-        elapsed = float(row["elapsed_seconds"])
+        raw_value = row.get(metric, "").strip()
+        if not raw_value:
+            continue
+        elapsed = float(raw_value)
         if math.isnan(elapsed):
             continue
         groups.setdefault(pods, []).append(elapsed)
     if not groups:
-        raise RuntimeError("No plottable elapsed_seconds rows found.")
+        raise RuntimeError(f"No plottable {metric} rows found.")
     return groups
 
 
-def _default_output(summary_csv: Path) -> Path:
-    return summary_csv.parent / "cloud_benchmark_elapsed_vs_pods.pdf"
+def _default_output(summary_csv: Path, *, metric: str) -> Path:
+    return summary_csv.parent / f"cloud_benchmark_{metric}_vs_pods.pdf"
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,14 +87,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--title",
-        default="Cloud benchmark wall-clock time",
-        help="Plot title.",
+        default=None,
+        help="Optional plot title. Defaults depend on the selected metric.",
     )
     parser.add_argument(
         "--label-fontsize",
         type=float,
         default=None,
         help="Optional fontsize override for plot labels.",
+    )
+    parser.add_argument(
+        "--metric",
+        choices=tuple(METRIC_LABELS),
+        default="elapsed_seconds",
+        help="Summary CSV column to plot.",
     )
     return parser.parse_args()
 
@@ -92,7 +113,7 @@ def main() -> int:
 
     rows = _load_rows(summary_csv)
     rows_success = _successful_rows(rows)
-    groups = _to_groups(rows_success)
+    groups = _to_groups(rows_success, metric=args.metric)
     experiment_names = sorted(
         {
             row.get("experiment_name", "").strip()
@@ -143,8 +164,8 @@ def main() -> int:
     )
 
     ax.set_xlabel("Target pods")
-    ax.set_ylabel("Wall-clock time [s]")
-    title = args.title
+    ax.set_ylabel(METRIC_LABELS[args.metric])
+    title = args.title if args.title is not None else METRIC_TITLES[args.metric]
     if experiment_names:
         title = f"{title}: {', '.join(experiment_names)}"
     ax.set_title(title)
@@ -152,7 +173,11 @@ def main() -> int:
     ax.legend()
     fig.tight_layout()
 
-    output_path = args.output.resolve() if args.output is not None else _default_output(summary_csv)
+    output_path = (
+        args.output.resolve()
+        if args.output is not None
+        else _default_output(summary_csv, metric=args.metric)
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
