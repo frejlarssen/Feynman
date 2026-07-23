@@ -72,6 +72,10 @@ airflow standalone
 Use `scripts/prepare_airflow_local.sh` when you want the full local sync: DAG
 files plus the three task images imported into the `feynman-cluster` k3d node.
 
+Be aware that the k3d node shares the host filesystem usage. On July 22, 2026
+we observed kubelet image garbage collection removing unused `feynman-*` images
+once node usage rose above the default 85% image-GC high threshold.
+
 ### After reboot
 
 If the machine was powered off and you want to resume using the cloud workflow:
@@ -139,6 +143,13 @@ and `feynman-concat` are present inside the `feynman-cluster` k3d node. If any
 are missing, it fails loudly and tells you to rerun:
 
 `bash scripts/build_and_import_cloud_images.sh feynman-cluster`
+
+It warns once node usage reaches 80%, because that is the “start paying
+attention” level for this setup.
+
+It also fails loudly if the k3d node root filesystem is already at or above the
+default kubelet image-GC high threshold (85%), because in that state kubelet may
+garbage-collect unused task images out from under the benchmark.
 
 You can override the destination if you want:
 

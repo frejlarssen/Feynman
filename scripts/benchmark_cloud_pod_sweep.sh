@@ -7,6 +7,8 @@ shift || true
 POLL_SECONDS="${POLL_SECONDS:-5}"
 K3D_CLUSTER_NAME="${K3D_CLUSTER_NAME:-feynman-cluster}"
 K3D_NODE_NAME="${K3D_NODE_NAME:-k3d-${K3D_CLUSTER_NAME}-server-0}"
+K3D_NODE_WARNING_THRESHOLD_PERCENT="${K3D_NODE_WARNING_THRESHOLD_PERCENT:-80}"
+K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT="${K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT:-85}"
 BENCHMARK_STAMP="${BENCHMARK_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 BENCHMARK_DIR="${BENCHMARK_DIR:-untracked/cloud_benchmarks/${BENCHMARK_STAMP}}"
 RESULTS_FILE="${RESULTS_FILE:-${BENCHMARK_DIR}/summary.csv}"
@@ -34,6 +36,26 @@ require_cluster_image() {
     exit 1
   fi
 }
+
+node_root_usage_percent() {
+  docker exec "${K3D_NODE_NAME}" sh -lc "df -P / | awk 'NR==2 {gsub(/%/, \"\", \$5); print \$5}'"
+}
+
+usage_percent="$(node_root_usage_percent)"
+if [ "${usage_percent}" -ge "${K3D_NODE_WARNING_THRESHOLD_PERCENT}" ]; then
+  echo "WARNING: k3d node ${K3D_NODE_NAME} root filesystem is at ${usage_percent}%." >&2
+  echo "This is above the recommended warning threshold of ${K3D_NODE_WARNING_THRESHOLD_PERCENT}%." >&2
+  echo "Benchmark stability may degrade as kubelet approaches image garbage collection." >&2
+fi
+
+if [ "${usage_percent}" -ge "${K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT}" ]; then
+  echo "k3d node ${K3D_NODE_NAME} root filesystem is at ${usage_percent}%." >&2
+  echo "This is above the kubelet image-GC high threshold of ${K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT}%." >&2
+  echo "Unused task images may be garbage-collected during or before the benchmark." >&2
+  echo "Free disk space before benchmarking, then re-import the cloud images:" >&2
+  echo "  bash scripts/build_and_import_cloud_images.sh ${K3D_CLUSTER_NAME}" >&2
+  exit 1
+fi
 
 echo "Preflight: checking required images inside ${K3D_NODE_NAME}..."
 require_cluster_image "feynman-simulate"
