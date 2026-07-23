@@ -4,6 +4,7 @@
 #include "../src/simulator.h"
 #include "../src/typedef.h"
 #include "../src/utils.h"
+#include <filesystem>
 #include <iostream>
 #ifdef USE_OPENMP
 #include <omp.h>
@@ -14,6 +15,7 @@
 #define CLOSE_TO_ZERO 1e-8
 
 using namespace std;
+namespace fs = std::filesystem;
 
 struct Options {
   string circuit_file;
@@ -176,6 +178,16 @@ void run(Options &opts) {
     std::cout << "Total output bitstrings to simulate: "
               << static_cast<std::size_t>(total_output_bitstrings) << '\n';
 
+  const fs::path output_path(opts.output_statevector_file);
+  if (output_path.has_parent_path()) {
+    fs::create_directories(output_path.parent_path());
+  }
+  const fs::path timing_file_path =
+      replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
+  if (timing_file_path.has_parent_path()) {
+    fs::create_directories(timing_file_path.parent_path());
+  }
+
   // Loop through all input-output pairs. Start with amplitude depending on
   // input statevector.
   std::string local_buf;
@@ -197,6 +209,10 @@ void run(Options &opts) {
   // Loop though all output bitstrings
   std::size_t count_processed_bitstrings = 0;
   auto start_svcc_sim = get_time();
+  const std::size_t progress_interval =
+      (total_output_bitstrings <= 10)
+          ? 1
+          : (total_output_bitstrings <= 100 ? 10 : 100);
 
   // Worker body
   auto process_outputs = [&](std::size_t start, std::size_t end) {
@@ -268,6 +284,27 @@ void run(Options &opts) {
                      std::to_string(output_amp.real()) + "+" +
                      std::to_string(output_amp.imag()) + "i\n";
       }
+
+      const bool should_report_progress =
+          opts.verbosity >= 1 &&
+          (count_processed_bitstrings == total_output_bitstrings ||
+           (count_processed_bitstrings % progress_interval) == 0);
+      if (should_report_progress) {
+        const duration<double> elapsed_progress = get_time() - start_svcc_sim;
+        const double elapsed_seconds = elapsed_progress.count();
+        const double processed = static_cast<double>(count_processed_bitstrings);
+        const double total = static_cast<double>(total_output_bitstrings);
+        const double percent_done = (total > 0.0) ? (100.0 * processed / total) : 100.0;
+        const double rate =
+            (elapsed_seconds > 0.0) ? (processed / elapsed_seconds) : 0.0;
+        const double eta_seconds =
+            (rate > 0.0) ? ((total - processed) / rate) : 0.0;
+        printf(
+            "Progress: processed %zu / %lld output bitstrings (%.1f%%, "
+            "elapsed %.1fs, rate %.2f bitstrings/s, eta %.1fs)\n",
+            count_processed_bitstrings, total_output_bitstrings, percent_done,
+            elapsed_seconds, rate, eta_seconds);
+      }
     }
 #endif
 #if PERF_INSTRUMENT
@@ -279,9 +316,7 @@ void run(Options &opts) {
 
   // parallel output to disk
   write_string_to_file(opts.output_statevector_file, local_buf);
-  auto timing_file_path =
-      replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
-  write_string_to_file(timing_file_path, local_buf_timing);
+  write_string_to_file(timing_file_path.string(), local_buf_timing);
 
   if (opts.verbosity >= 1) {
     printf("Number of simulate calls: %d\n", num_calls_simulate);

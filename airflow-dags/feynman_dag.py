@@ -16,6 +16,7 @@ TARGET_NUM_PODS_TEMPLATE = "{{ dag_run.conf.get('target_num_pods', 0) }}"
 MAX_HEXSTRINGS_PER_BATCH_TEMPLATE = (
     "{{ dag_run.conf.get('max_hexstrings_per_batch', " + str(MAX_HEXSTRINGS_PER_BATCH) + ") }}"
 )
+SIMULATE_OMP_NUM_THREADS_TEMPLATE = "{{ dag_run.conf.get('simulate_omp_num_threads', 1) }}"
 DEFAULT_BENCHMARK_CASE = {
     "experiment_name": "qft_n8_k2",
     "circuit_file": f"{DATA_MOUNT_PATH}/generated/circuits/qft/qft_n8_k2.qasm",
@@ -74,6 +75,13 @@ DATA_VOLUME = k8s.V1Volume(
         claim_name=DATA_PVC_NAME,
     ),
 )
+
+SIMULATE_ENV_VARS = [
+    k8s.V1EnvVar(
+        name="OMP_NUM_THREADS",
+        value=SIMULATE_OMP_NUM_THREADS_TEMPLATE,
+    ),
+]
 
 
 @dag(
@@ -158,6 +166,7 @@ def feynman():
         config_file=KUBECONFIG,
         get_logs=True,
         on_finish_action="delete_pod",
+        env_vars=SIMULATE_ENV_VARS,
         volume_mounts=[DATA_VOLUME_MOUNT],
         volumes=[DATA_VOLUME],
     ).expand(arguments=batch_arguments)

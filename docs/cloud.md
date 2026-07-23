@@ -126,6 +126,13 @@ override the batch size directly:
 airflow dags trigger feynman --conf '{"max_hexstrings_per_batch": 125}'
 ```
 
+To keep laptop runs safer by default, `simulate_batch` now runs with
+`OMP_NUM_THREADS=1` unless you override it explicitly in `dag_run.conf`:
+
+```bash
+airflow dags trigger feynman --conf '{"simulate_omp_num_threads": 2}'
+```
+
 A simple benchmark sweep is available in:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh`
@@ -140,7 +147,7 @@ same high-level sections as the non-cloud configs: `circuit`,
 
 Example with the quantum-walk benchmark case:
 
-`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_n128_it16_scale.json`
+`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
 
 The script runs pod counts sequentially, waits for each DAG run to finish, and
 prints the wall-clock time per run. By default it saves a timestamped summary
@@ -151,6 +158,11 @@ with the repo's `feynman` development Python by default
 (`~/micromamba/envs/feynman/bin/python`). That keeps the Airflow venv lean while
 still letting benchmark configs reuse the normal generator/materialization stack.
 Override with `CONFIG_RENDER_PYTHON=...` if needed.
+
+While a `simulate_batch` pod is running, its logs now emit periodic heartbeat
+lines of the form `processed X / Y output bitstrings ...` at normal verbosity.
+Use `kubectl logs -f <simulate-pod-name>` if you want to watch long-running
+cloud tasks make progress.
 
 Before triggering anything, it checks that `feynman-simulate`, `feynman-split`,
 and `feynman-concat` are present inside the `feynman-cluster` k3d node. If any

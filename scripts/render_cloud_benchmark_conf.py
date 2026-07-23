@@ -53,6 +53,68 @@ def _pick(payload: dict[str, Any], *keys: str) -> Any:
     raise ValueError(f"Expected one of keys {keys!r} in config.")
 
 
+def _infer_circuit_qubits(circuit_cfg: Any) -> int | None:
+    if not isinstance(circuit_cfg, dict):
+        return None
+    n_raw = circuit_cfg.get("n")
+    return int(n_raw) if n_raw is not None else None
+
+
+def _infer_statevector_qubits(statevector_cfg: Any) -> int | None:
+    if not isinstance(statevector_cfg, dict):
+        return None
+    generator = str(statevector_cfg.get("generator", "")).strip().lower()
+    if generator == "ket0":
+        size_raw = statevector_cfg.get("size")
+        return int(size_raw) * 8 if size_raw is not None else None
+    size_raw = statevector_cfg.get("size")
+    if size_raw is not None:
+        return int(size_raw) * 8
+    n_qubits_raw = statevector_cfg.get("n_qubits", statevector_cfg.get("n"))
+    return int(n_qubits_raw) if n_qubits_raw is not None else None
+
+
+def _infer_output_bitstring_qubits(output_cfg: Any) -> int | None:
+    if not isinstance(output_cfg, dict):
+        return None
+    size_raw = output_cfg.get("size")
+    return int(size_raw) * 8 if size_raw is not None else None
+
+
+def _validate_generator_dimensions(
+    *,
+    experiment_name: str,
+    circuit_cfg: Any,
+    statevector_cfg: Any,
+    output_cfg: Any,
+) -> None:
+    circuit_qubits = _infer_circuit_qubits(circuit_cfg)
+    statevector_qubits = _infer_statevector_qubits(statevector_cfg)
+    output_qubits = _infer_output_bitstring_qubits(output_cfg)
+
+    if (
+        circuit_qubits is not None
+        and statevector_qubits is not None
+        and circuit_qubits != statevector_qubits
+    ):
+        raise ValueError(
+            "Cloud benchmark config has mismatched circuit and input_statevector sizes "
+            f"for {experiment_name}: circuit uses {circuit_qubits} qubits but "
+            f"input_statevector describes {statevector_qubits} qubits."
+        )
+
+    if (
+        circuit_qubits is not None
+        and output_qubits is not None
+        and circuit_qubits != output_qubits
+    ):
+        raise ValueError(
+            "Cloud benchmark config has mismatched circuit and output_bitstrings sizes "
+            f"for {experiment_name}: circuit uses {circuit_qubits} qubits but "
+            f"output_bitstrings describe {output_qubits} qubits."
+        )
+
+
 def render_conf(
     *,
     config_path: Path,
@@ -65,6 +127,13 @@ def render_conf(
     circuit_cfg = _pick(payload, "circuit", "circuit_file")
     statevector_cfg = _pick(payload, "input_statevector", "input_statevector_file")
     output_cfg = _pick(payload, "output_bitstrings", "output_bitstrings_file")
+
+    _validate_generator_dimensions(
+        experiment_name=experiment_name,
+        circuit_cfg=circuit_cfg,
+        statevector_cfg=statevector_cfg,
+        output_cfg=output_cfg,
+    )
 
     circuit_path, _ = resolve_circuit_input(circuit_cfg, REPO_ROOT)
     statevector_path, _ = resolve_statevector_input(statevector_cfg, REPO_ROOT)

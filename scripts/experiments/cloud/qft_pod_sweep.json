@@ -1,0 +1,17 @@
+{
+  "experiment_name": "qft_n8_k2",
+  "circuit": {
+    "generator": "qft",
+    "n": 8,
+    "k": 2
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 10
+  }
+}

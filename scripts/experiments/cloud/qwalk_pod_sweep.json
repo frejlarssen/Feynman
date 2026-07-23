@@ -1,17 +1,17 @@
 {
-  "experiment_name": "qft_n8_k2_cloud",
+  "experiment_name": "qwalk_n16_it2",
   "circuit": {
-    "generator": "qft",
-    "n": 8,
-    "k": 2
+    "generator": "qwalk",
+    "n": 16,
+    "it": 2
   },
   "input_statevector": {
     "generator": "ket0",
-    "size": 1
+    "size": 2
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 1,
-    "count": 10
+    "size": 2,
+    "count": 16
   }
 }
