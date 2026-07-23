@@ -134,9 +134,23 @@ You can also pass an explicit DAG id and pod counts:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh feynman 1 2 4 8`
 
+Cloud benchmark configs live under `scripts/experiments/cloud/` and reuse the
+same high-level sections as the non-cloud configs: `circuit`,
+`input_statevector`, and `output_bitstrings`.
+
+Example with the quantum-walk benchmark case:
+
+`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_n128_it16_scale.json`
+
 The script runs pod counts sequentially, waits for each DAG run to finish, and
 prints the wall-clock time per run. By default it saves a timestamped summary
 CSV under `untracked/cloud_benchmarks/<timestamp>/summary.csv`.
+
+When `--config` is used, the sweep script renders the Airflow `dag_run.conf`
+with the repo's `feynman` development Python by default
+(`~/micromamba/envs/feynman/bin/python`). That keeps the Airflow venv lean while
+still letting benchmark configs reuse the normal generator/materialization stack.
+Override with `CONFIG_RENDER_PYTHON=...` if needed.
 
 Before triggering anything, it checks that `feynman-simulate`, `feynman-split`,
 and `feynman-concat` are present inside the `feynman-cluster` k3d node. If any
@@ -154,6 +168,21 @@ garbage-collect unused task images out from under the benchmark.
 You can override the destination if you want:
 
 `RESULTS_FILE=untracked/cloud_benchmark_results.csv bash scripts/benchmark_cloud_pod_sweep.sh`
+
+If you need to abort a running benchmark:
+
+- Press `Ctrl-C` in the terminal running `bash scripts/benchmark_cloud_pod_sweep.sh`
+  to stop the local polling script.
+- That does not stop the already-triggered Airflow DAG run.
+- To stop the actual running cloud task, find the pod and delete it:
+
+```bash
+kubectl get pods
+kubectl delete pod <simulate-pod-name>
+```
+
+- Deleting the running `simulate_batch` pod should fail that task and therefore
+  fail the DAG run.
 
 After the sweep, switch back to the `feynman` development environment and plot:
 

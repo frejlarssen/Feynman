@@ -93,6 +93,13 @@ def main() -> int:
     rows = _load_rows(summary_csv)
     rows_success = _successful_rows(rows)
     groups = _to_groups(rows_success)
+    experiment_names = sorted(
+        {
+            row.get("experiment_name", "").strip()
+            for row in rows_success
+            if row.get("experiment_name", "").strip()
+        }
+    )
 
     configure_headless_matplotlib()
     import matplotlib
@@ -137,7 +144,10 @@ def main() -> int:
 
     ax.set_xlabel("Target pods")
     ax.set_ylabel("Wall-clock time [s]")
-    ax.set_title(args.title)
+    title = args.title
+    if experiment_names:
+        title = f"{title}: {', '.join(experiment_names)}"
+    ax.set_title(title)
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()

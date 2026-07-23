@@ -1,0 +1,17 @@
+{
+  "experiment_name": "qwalk_n128_it16_cloud_scale",
+  "circuit": {
+    "generator": "qwalk",
+    "n": 128,
+    "it": 16
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 16
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 16,
+    "count": 1024
+  }
+}
