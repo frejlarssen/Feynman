@@ -1,17 +1,17 @@
 {
-  "experiment_name": "qwalk_n16_it2",
+  "experiment_name": "qwalk_n64_it4",
   "circuit": {
     "generator": "qwalk",
-    "n": 16,
-    "it": 2
+    "n": 64,
+    "it": 4
   },
   "input_statevector": {
     "generator": "ket0",
-    "size": 2
+    "size": 8
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 2,
+    "size": 8,
     "count": 16
   }
 }
