@@ -54,7 +54,7 @@ RESULTS_DIR=$(dirname "${RESULTS_FILE}")
 mkdir -p "${RESULTS_DIR}"
 
 if [ ! -f "${RESULTS_FILE}" ]; then
-  printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,start_utc,end_utc\n" > "${RESULTS_FILE}"
+  printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
 require_cluster_image() {
@@ -166,6 +166,23 @@ do
         simulate_stage_end_utc=""
         simulate_stage_elapsed_seconds=""
         simulate_task_instance_seconds_sum=""
+        simulate_log_file_count=""
+        simulate_autotune_match_count=""
+        simulate_autotuning_seconds_sum=""
+        simulate_autotuning_seconds_mean=""
+        simulate_autotuning_seconds_max=""
+        simulate_worker_sim_seconds_sum=""
+        simulate_worker_sim_seconds_mean=""
+        simulate_worker_sim_seconds_max=""
+        simulate_worker_simulate_calls_seconds_sum=""
+        simulate_worker_simulate_calls_seconds_mean=""
+        simulate_worker_simulate_calls_seconds_max=""
+        simulate_worker_write_seconds_sum=""
+        simulate_worker_write_seconds_mean=""
+        simulate_worker_write_seconds_max=""
+        simulate_worker_full_seconds_sum=""
+        simulate_worker_full_seconds_mean=""
+        simulate_worker_full_seconds_max=""
         if simulate_metrics_tsv="$(python3 scripts/summarize_airflow_task_timing.py \
           --dag-id "${DAG_ID}" \
           --run-id "${run_id}" \
@@ -184,12 +201,44 @@ EOF
             unset IFS
           fi
         fi
+        if simulate_log_metrics_tsv="$(python3 scripts/summarize_cloud_task_logs.py \
+          --dag-id "${DAG_ID}" \
+          --run-id "${run_id}" \
+          --task-id simulate_batch \
+          --output tsv 2>/dev/null)"; then
+          if [ -n "${simulate_log_metrics_tsv}" ]; then
+            IFS="$(printf '\t')" read -r \
+              simulate_log_file_count \
+              simulate_autotune_match_count \
+              simulate_autotuning_seconds_sum \
+              simulate_autotuning_seconds_mean \
+              simulate_autotuning_seconds_max \
+              simulate_worker_sim_seconds_sum \
+              simulate_worker_sim_seconds_mean \
+              simulate_worker_sim_seconds_max \
+              simulate_worker_simulate_calls_seconds_sum \
+              simulate_worker_simulate_calls_seconds_mean \
+              simulate_worker_simulate_calls_seconds_max \
+              simulate_worker_write_seconds_sum \
+              simulate_worker_write_seconds_mean \
+              simulate_worker_write_seconds_max \
+              simulate_worker_full_seconds_sum \
+              simulate_worker_full_seconds_mean \
+              simulate_worker_full_seconds_max <<EOF
+${simulate_log_metrics_tsv}
+EOF
+            unset IFS
+          fi
+        fi
         echo "Run ${run_id} finished with state=${state} in ${elapsed_seconds}s."
         if [ -n "${simulate_stage_elapsed_seconds}" ]; then
           echo "  simulate_batch stage span=${simulate_stage_elapsed_seconds}s, summed worker time=${simulate_task_instance_seconds_sum}s across ${simulate_finished_task_instance_count}/${simulate_task_instance_count} task instances."
         fi
-        printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-          "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${start_utc}" "${end_utc}" \
+        if [ -n "${simulate_autotuning_seconds_sum}" ] || [ -n "${simulate_worker_full_seconds_sum}" ]; then
+          echo "  worker logs: autotune sum=${simulate_autotuning_seconds_sum}s, worker full sum=${simulate_worker_full_seconds_sum}s from ${simulate_log_file_count} log files."
+        fi
+        printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+          "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
           >> "${RESULTS_FILE}"
         if [ "${state}" != "success" ]; then
           echo "Task states for failed run ${run_id}:"

@@ -188,6 +188,12 @@ Each summary row now includes both:
   task instance start to the last `simulate_batch` task instance end
 - `simulate_task_instance_seconds_sum`: the sum of all finished
   `simulate_batch` task-instance durations
+- `simulate_autotuning_seconds_*`: autotuning totals/means/maxima extracted from
+  the worker logs
+- `simulate_worker_simulate_calls_seconds_*`: pure `simulate(...)` totals/means/maxima
+  extracted from `Total clocktime for all simulate calls: ...`
+- `simulate_worker_full_seconds_*`: full worker totals/means/maxima extracted
+  from `Total clocktime (including I/O) for sv.cpp: ...`
 
 That makes it easier to separate orchestration overhead from actual parallel
 simulation work.
