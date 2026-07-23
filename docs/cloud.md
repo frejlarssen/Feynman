@@ -127,7 +127,18 @@ airflow dags trigger feynman --conf '{"max_hexstrings_per_batch": 125}'
 ```
 
 To keep laptop runs safer by default, `simulate_batch` now runs with
-`OMP_NUM_THREADS=1` unless you override it explicitly in `dag_run.conf`:
+`OMP_NUM_THREADS=1`. For config-driven runs, put the fixed thread count directly
+in the benchmark JSON:
+
+```json
+{
+  "experiment_name": "qwalk_n64_it4",
+  "simulate_omp_num_threads": 2
+}
+```
+
+You can still override it explicitly in `dag_run.conf` for ad hoc manual
+triggers:
 
 ```bash
 airflow dags trigger feynman --conf '{"simulate_omp_num_threads": 2}'

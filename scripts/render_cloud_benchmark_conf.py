@@ -148,6 +148,12 @@ def render_conf(
     }
 
     conf: dict[str, Any] = {"benchmark_case": benchmark_case}
+    simulate_omp_num_threads = payload.get("simulate_omp_num_threads")
+    if simulate_omp_num_threads is not None:
+        simulate_omp_num_threads = int(simulate_omp_num_threads)
+        if simulate_omp_num_threads <= 0:
+            raise ValueError("simulate_omp_num_threads must be > 0.")
+        conf["simulate_omp_num_threads"] = simulate_omp_num_threads
     if target_num_pods is not None:
         conf["target_num_pods"] = int(target_num_pods)
     if max_hexstrings_per_batch is not None:
