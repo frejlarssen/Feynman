@@ -149,15 +149,16 @@ A simple benchmark sweep is available in:
 `bash scripts/benchmark_cloud_pod_sweep.sh`
 
 When `--config` is used, the script now looks for
-`target_num_pods_list` in the benchmark JSON and uses that pod-count
-sweep by default.
+`target_num_pods_list` and `repeat` in the benchmark JSON and uses those
+pod counts and repeated runs by default.
 
 Example:
 
 ```json
 {
   "experiment_name": "qwalk_n64_it4",
-  "target_num_pods_list": [1, 2, 4]
+  "target_num_pods_list": [1, 2, 4],
+  "repeat": 3
 }
 ```
 
@@ -177,9 +178,10 @@ Example with the quantum-walk benchmark case:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
 
-The script runs pod counts sequentially, waits for each DAG run to finish, and
-prints the wall-clock time per run. By default it saves a timestamped summary
-CSV under `data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv`.
+The script runs pod counts sequentially, repeats each pod count according to the
+config's `repeat` value, waits for each DAG run to finish, and prints the
+wall-clock time per run. By default it saves a timestamped summary CSV under
+`data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv`.
 
 If that directory exists with the wrong owner or mode, fix it before running
 the benchmark:
@@ -215,6 +217,7 @@ That keeps benchmark archiving independent of Airflow REST API credentials.
 
 Each summary row now includes both:
 
+- `repeat_index`: which repeated run this was for the given pod count
 - `elapsed_seconds`: full DAG wall-clock time
 - `simulate_stage_elapsed_seconds`: the span from the first `simulate_batch`
   task instance start to the last `simulate_batch` task instance end

@@ -71,6 +71,14 @@ def parse_target_num_pods_list(payload: dict[str, Any]) -> list[int]:
     return pod_counts
 
 
+def parse_repeat_count(payload: dict[str, Any]) -> int:
+    raw_value = payload.get("repeat", 1)
+    repeat_count = int(raw_value)
+    if repeat_count <= 0:
+        raise ValueError("repeat must be > 0.")
+    return repeat_count
+
+
 def _infer_circuit_qubits(circuit_cfg: Any) -> int | None:
     if not isinstance(circuit_cfg, dict):
         return None
@@ -191,6 +199,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the configured benchmark pod counts as a space-separated list.",
     )
+    parser.add_argument(
+        "--print-repeat-count",
+        action="store_true",
+        help="Print the configured number of repeated runs per pod count.",
+    )
     return parser.parse_args()
 
 
@@ -204,6 +217,10 @@ def main() -> int:
 
     if args.print_target_num_pods_list:
         sys.stdout.write(" ".join(str(pods) for pods in parse_target_num_pods_list(payload)))
+        sys.stdout.write("\n")
+        return 0
+    if args.print_repeat_count:
+        sys.stdout.write(str(parse_repeat_count(payload)))
         sys.stdout.write("\n")
         return 0
 

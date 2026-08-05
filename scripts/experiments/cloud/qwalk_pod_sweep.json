@@ -1,6 +1,7 @@
 {
   "experiment_name": "qwalk_n64_it14",
   "target_num_pods_list": [1, 2, 4],
+  "repeat": 3,
   "simulate_omp_num_threads": 1,
   "circuit": {
     "generator": "qwalk",

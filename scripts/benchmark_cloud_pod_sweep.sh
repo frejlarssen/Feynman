@@ -45,6 +45,7 @@ BENCHMARK_STAMP="${BENCHMARK_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 BENCHMARK_DIR="${BENCHMARK_DIR:-}"
 RESULTS_FILE="${RESULTS_FILE:-}"
 CONFIG_EXPERIMENT_NAME="qft_n8_k2"
+REPEAT_COUNT=1
 
 if [ "$#" -eq 0 ]; then
   POD_COUNTS="1 2 4 8"
@@ -125,6 +126,7 @@ if [ -n "${CONFIG_PATH}" ]; then
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
   CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", "qft_n8_k2"))' "${CONFIG_PATH}")"
+  REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
   if [ "$#" -eq 0 ]; then
     CONFIG_POD_COUNTS="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
     if [ -n "${CONFIG_POD_COUNTS}" ]; then
@@ -160,7 +162,7 @@ fi
 mkdir -p "${BENCHMARK_DIR}/runs"
 
 if [ ! -f "${RESULTS_FILE}" ]; then
-  printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
+  printf "dag_id,experiment_name,run_id,target_num_pods,repeat_index,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
 "${HELPER_PYTHON}" scripts/write_cloud_benchmark_metadata.py \
@@ -175,145 +177,151 @@ fi
 echo "Benchmark directory: ${BENCHMARK_DIR}"
 echo "Benchmark results will be written to ${RESULTS_FILE}"
 echo "Pod counts: ${POD_COUNTS}"
+echo "Repeats per pod count: ${REPEAT_COUNT}"
 
 for pods in $POD_COUNTS
 do
-  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  run_id="benchmark_pods_${pods}_${timestamp}"
-  start_epoch="$(date +%s)"
-  start_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  conf_json="{\"target_num_pods\": ${pods}}"
-  experiment_name="qft_n8_k2"
-  if [ -n "${CONFIG_PATH}" ]; then
-    conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --target-num-pods "${pods}")"
-    experiment_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("benchmark_case", {}).get("experiment_name", "unknown"))' "${conf_json}")"
-  fi
-  run_dir="${BENCHMARK_DIR}/runs/${run_id}"
-  mkdir -p "${run_dir}"
-  printf "%s\n" "${conf_json}" > "${run_dir}/dag_run_conf.json"
-
-  echo "Triggering ${DAG_ID} with target_num_pods=${pods} (run_id=${run_id})..."
-  airflow dags trigger "${DAG_ID}" \
-    --run-id "${run_id}" \
-    --conf "${conf_json}"
-
-  while true
+  repeat_index=1
+  while [ "${repeat_index}" -le "${REPEAT_COUNT}" ]
   do
-    state_raw="$(airflow dags state "${DAG_ID}" "${run_id}" 2>/dev/null | tail -n 1 | tr -d '[:space:]')"
-    state="${state_raw%%,*}"
-    case "${state}" in
-      success|failed|canceled)
-        end_epoch="$(date +%s)"
-        end_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        elapsed_seconds=$((end_epoch - start_epoch))
-        simulate_task_instance_count=""
-        simulate_finished_task_instance_count=""
-        simulate_stage_start_utc=""
-        simulate_stage_end_utc=""
-        simulate_stage_elapsed_seconds=""
-        simulate_task_instance_seconds_sum=""
-        simulate_log_file_count=""
-        simulate_autotune_match_count=""
-        simulate_autotuning_seconds_sum=""
-        simulate_autotuning_seconds_mean=""
-        simulate_autotuning_seconds_max=""
-        simulate_worker_sim_seconds_sum=""
-        simulate_worker_sim_seconds_mean=""
-        simulate_worker_sim_seconds_max=""
-        simulate_worker_simulate_calls_seconds_sum=""
-        simulate_worker_simulate_calls_seconds_mean=""
-        simulate_worker_simulate_calls_seconds_max=""
-        simulate_worker_write_seconds_sum=""
-        simulate_worker_write_seconds_mean=""
-        simulate_worker_write_seconds_max=""
-        simulate_worker_full_seconds_sum=""
-        simulate_worker_full_seconds_mean=""
-        simulate_worker_full_seconds_max=""
-        if simulate_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_airflow_task_timing.py \
-          --dag-id "${DAG_ID}" \
-          --run-id "${run_id}" \
-          --task-id simulate_batch \
-          --output tsv 2>/dev/null)"; then
-          if [ -n "${simulate_metrics_tsv}" ]; then
-            IFS="$(printf '\t')" read -r \
-              simulate_task_instance_count \
-              simulate_finished_task_instance_count \
-              simulate_stage_start_utc \
-              simulate_stage_end_utc \
-              simulate_stage_elapsed_seconds \
-              simulate_task_instance_seconds_sum <<EOF
-${simulate_metrics_tsv}
-EOF
-            unset IFS
-          fi
-        fi
-        if simulate_log_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_cloud_task_logs.py \
-          --dag-id "${DAG_ID}" \
-          --run-id "${run_id}" \
-          --task-id simulate_batch \
-          --output tsv 2>/dev/null)"; then
-          if [ -n "${simulate_log_metrics_tsv}" ]; then
-            IFS="$(printf '\t')" read -r \
-              simulate_log_file_count \
-              simulate_autotune_match_count \
-              simulate_autotuning_seconds_sum \
-              simulate_autotuning_seconds_mean \
-              simulate_autotuning_seconds_max \
-              simulate_worker_sim_seconds_sum \
-              simulate_worker_sim_seconds_mean \
-              simulate_worker_sim_seconds_max \
-              simulate_worker_simulate_calls_seconds_sum \
-              simulate_worker_simulate_calls_seconds_mean \
-              simulate_worker_simulate_calls_seconds_max \
-              simulate_worker_write_seconds_sum \
-              simulate_worker_write_seconds_mean \
-              simulate_worker_write_seconds_max \
-              simulate_worker_full_seconds_sum \
-              simulate_worker_full_seconds_mean \
-              simulate_worker_full_seconds_max <<EOF
-${simulate_log_metrics_tsv}
-EOF
-            unset IFS
-          fi
-        fi
-        echo "Run ${run_id} finished with state=${state} in ${elapsed_seconds}s."
-        if [ -n "${simulate_stage_elapsed_seconds}" ]; then
-          echo "  simulate_batch stage span=${simulate_stage_elapsed_seconds}s, summed worker time=${simulate_task_instance_seconds_sum}s across ${simulate_finished_task_instance_count}/${simulate_task_instance_count} task instances."
-        fi
-        if [ -n "${simulate_autotuning_seconds_sum}" ] || [ -n "${simulate_worker_full_seconds_sum}" ]; then
-          echo "  worker logs: autotune sum=${simulate_autotuning_seconds_sum}s, worker full sum=${simulate_worker_full_seconds_sum}s from ${simulate_log_file_count} log files."
-        fi
-        printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-          "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
-          >> "${RESULTS_FILE}"
-        task_states_json="${run_dir}/task_states.json"
-        if airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" --output json \
-          >"${task_states_json}" 2>"${run_dir}/task_states_stderr.log"; then
-          if ! "${HELPER_PYTHON}" scripts/archive_cloud_benchmark_run.py \
+    timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    run_id="benchmark_pods_${pods}_r${repeat_index}_${timestamp}"
+    start_epoch="$(date +%s)"
+    start_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    conf_json="{\"target_num_pods\": ${pods}}"
+    experiment_name="qft_n8_k2"
+    if [ -n "${CONFIG_PATH}" ]; then
+      conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --target-num-pods "${pods}")"
+      experiment_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("benchmark_case", {}).get("experiment_name", "unknown"))' "${conf_json}")"
+    fi
+    run_dir="${BENCHMARK_DIR}/runs/${run_id}"
+    mkdir -p "${run_dir}"
+    printf "%s\n" "${conf_json}" > "${run_dir}/dag_run_conf.json"
+
+    echo "Triggering ${DAG_ID} with target_num_pods=${pods} repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+    airflow dags trigger "${DAG_ID}" \
+      --run-id "${run_id}" \
+      --conf "${conf_json}"
+
+    while true
+    do
+      state_raw="$(airflow dags state "${DAG_ID}" "${run_id}" 2>/dev/null | tail -n 1 | tr -d '[:space:]')"
+      state="${state_raw%%,*}"
+      case "${state}" in
+        success|failed|canceled)
+          end_epoch="$(date +%s)"
+          end_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          elapsed_seconds=$((end_epoch - start_epoch))
+          simulate_task_instance_count=""
+          simulate_finished_task_instance_count=""
+          simulate_stage_start_utc=""
+          simulate_stage_end_utc=""
+          simulate_stage_elapsed_seconds=""
+          simulate_task_instance_seconds_sum=""
+          simulate_log_file_count=""
+          simulate_autotune_match_count=""
+          simulate_autotuning_seconds_sum=""
+          simulate_autotuning_seconds_mean=""
+          simulate_autotuning_seconds_max=""
+          simulate_worker_sim_seconds_sum=""
+          simulate_worker_sim_seconds_mean=""
+          simulate_worker_sim_seconds_max=""
+          simulate_worker_simulate_calls_seconds_sum=""
+          simulate_worker_simulate_calls_seconds_mean=""
+          simulate_worker_simulate_calls_seconds_max=""
+          simulate_worker_write_seconds_sum=""
+          simulate_worker_write_seconds_mean=""
+          simulate_worker_write_seconds_max=""
+          simulate_worker_full_seconds_sum=""
+          simulate_worker_full_seconds_mean=""
+          simulate_worker_full_seconds_max=""
+          if simulate_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_airflow_task_timing.py \
             --dag-id "${DAG_ID}" \
             --run-id "${run_id}" \
-            --output-dir "${run_dir}" \
-            --task-states-json "${task_states_json}" \
-            >"${run_dir}/archive_stdout.log" 2>"${run_dir}/archive_stderr.log"; then
-            echo "WARNING: failed to archive benchmark artifacts for ${run_id}." >&2
-            echo "See ${run_dir}/archive_stderr.log" >&2
+            --task-id simulate_batch \
+            --output tsv 2>/dev/null)"; then
+            if [ -n "${simulate_metrics_tsv}" ]; then
+              IFS="$(printf '\t')" read -r \
+                simulate_task_instance_count \
+                simulate_finished_task_instance_count \
+                simulate_stage_start_utc \
+                simulate_stage_end_utc \
+                simulate_stage_elapsed_seconds \
+                simulate_task_instance_seconds_sum <<EOF
+${simulate_metrics_tsv}
+EOF
+              unset IFS
+            fi
           fi
-        else
-          echo "WARNING: failed to capture task-state JSON for ${run_id}." >&2
-          echo "See ${run_dir}/task_states_stderr.log" >&2
-        fi
-        if [ "${state}" != "success" ]; then
-          echo "Task states for failed run ${run_id}:"
-          airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" || true
-          exit 1
-        fi
-        break
-        ;;
-      *)
-        echo "Run ${run_id} state=${state_raw}; sleeping ${POLL_SECONDS}s..."
-        sleep "${POLL_SECONDS}"
-        ;;
-    esac
+          if simulate_log_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_cloud_task_logs.py \
+            --dag-id "${DAG_ID}" \
+            --run-id "${run_id}" \
+            --task-id simulate_batch \
+            --output tsv 2>/dev/null)"; then
+            if [ -n "${simulate_log_metrics_tsv}" ]; then
+              IFS="$(printf '\t')" read -r \
+                simulate_log_file_count \
+                simulate_autotune_match_count \
+                simulate_autotuning_seconds_sum \
+                simulate_autotuning_seconds_mean \
+                simulate_autotuning_seconds_max \
+                simulate_worker_sim_seconds_sum \
+                simulate_worker_sim_seconds_mean \
+                simulate_worker_sim_seconds_max \
+                simulate_worker_simulate_calls_seconds_sum \
+                simulate_worker_simulate_calls_seconds_mean \
+                simulate_worker_simulate_calls_seconds_max \
+                simulate_worker_write_seconds_sum \
+                simulate_worker_write_seconds_mean \
+                simulate_worker_write_seconds_max \
+                simulate_worker_full_seconds_sum \
+                simulate_worker_full_seconds_mean \
+                simulate_worker_full_seconds_max <<EOF
+${simulate_log_metrics_tsv}
+EOF
+              unset IFS
+            fi
+          fi
+          echo "Run ${run_id} finished with state=${state} in ${elapsed_seconds}s."
+          if [ -n "${simulate_stage_elapsed_seconds}" ]; then
+            echo "  simulate_batch stage span=${simulate_stage_elapsed_seconds}s, summed worker time=${simulate_task_instance_seconds_sum}s across ${simulate_finished_task_instance_count}/${simulate_task_instance_count} task instances."
+          fi
+          if [ -n "${simulate_autotuning_seconds_sum}" ] || [ -n "${simulate_worker_full_seconds_sum}" ]; then
+            echo "  worker logs: autotune sum=${simulate_autotuning_seconds_sum}s, worker full sum=${simulate_worker_full_seconds_sum}s from ${simulate_log_file_count} log files."
+          fi
+          printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+            "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${repeat_index}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
+            >> "${RESULTS_FILE}"
+          task_states_json="${run_dir}/task_states.json"
+          if airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" --output json \
+            >"${task_states_json}" 2>"${run_dir}/task_states_stderr.log"; then
+            if ! "${HELPER_PYTHON}" scripts/archive_cloud_benchmark_run.py \
+              --dag-id "${DAG_ID}" \
+              --run-id "${run_id}" \
+              --output-dir "${run_dir}" \
+              --task-states-json "${task_states_json}" \
+              >"${run_dir}/archive_stdout.log" 2>"${run_dir}/archive_stderr.log"; then
+              echo "WARNING: failed to archive benchmark artifacts for ${run_id}." >&2
+              echo "See ${run_dir}/archive_stderr.log" >&2
+            fi
+          else
+            echo "WARNING: failed to capture task-state JSON for ${run_id}." >&2
+            echo "See ${run_dir}/task_states_stderr.log" >&2
+          fi
+          if [ "${state}" != "success" ]; then
+            echo "Task states for failed run ${run_id}:"
+            airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" || true
+            exit 1
+          fi
+          break
+          ;;
+        *)
+          echo "Run ${run_id} state=${state}; sleeping ${POLL_SECONDS}s..."
+          sleep "${POLL_SECONDS}"
+          ;;
+      esac
+    done
+    repeat_index=$((repeat_index + 1))
   done
 done
 

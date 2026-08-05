@@ -1,6 +1,7 @@
 {
   "experiment_name": "qft_n8_k2",
   "target_num_pods_list": [1, 2, 4, 8],
+  "repeat": 3,
   "simulate_omp_num_threads": 1,
   "circuit": {
     "generator": "qft",
