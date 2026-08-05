@@ -178,6 +178,9 @@ Example with the quantum-walk benchmark case:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
 
+For longer local runs, consider launching the sweep inside `tmux` so a
+terminal-window close does not kill the local polling script.
+
 The script runs pod counts sequentially, repeats each pod count according to the
 config's `repeat` value, waits for each DAG run to finish, and prints the
 wall-clock time per run. By default it saves a timestamped summary CSV under
