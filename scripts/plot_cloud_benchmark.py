@@ -43,6 +43,7 @@ METRIC_TITLES = {
     "simulate_worker_simulate_calls_seconds_sum": "Cloud benchmark summed pure simulate() time",
     "simulate_worker_simulate_calls_seconds_mean": "Cloud benchmark mean pure simulate() time",
 }
+EFFICIENCY_LINE_COLOR = "#2F4858"
 
 
 def _load_rows(summary_csv: Path) -> list[dict[str, str]]:
@@ -81,6 +82,30 @@ def _default_output(summary_csv: Path, *, metric: str) -> Path:
     return summary_csv.parent / f"cloud_benchmark_{metric}_vs_pods.pdf"
 
 
+def _strong_scaling_efficiency_percent(
+    *,
+    x_sorted: list[int],
+    mean_ys: list[float],
+) -> list[float]:
+    if len(x_sorted) != len(mean_ys):
+        raise ValueError("x_sorted and mean_ys must have the same length.")
+    if not x_sorted:
+        return []
+
+    baseline_pods = x_sorted[0]
+    baseline_time = mean_ys[0]
+    if baseline_pods <= 0 or baseline_time <= 0.0:
+        raise ValueError("Baseline pod count and baseline time must be positive.")
+
+    efficiencies: list[float] = []
+    for pods, elapsed in zip(x_sorted, mean_ys, strict=True):
+        if pods <= 0 or elapsed <= 0.0:
+            efficiencies.append(float("nan"))
+            continue
+        efficiencies.append(100.0 * baseline_time * baseline_pods / (elapsed * pods))
+    return efficiencies
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Plot cloud benchmark wall-clock time versus target pod count."
@@ -113,6 +138,11 @@ def parse_args() -> argparse.Namespace:
         choices=tuple(METRIC_LABELS),
         default="elapsed_seconds",
         help="Summary CSV column to plot.",
+    )
+    parser.add_argument(
+        "--no-efficiency",
+        action="store_true",
+        help="Disable the strong-scaling efficiency line.",
     )
     return parser.parse_args()
 
@@ -175,6 +205,28 @@ def main() -> int:
         label="Mean +/- std",
     )
 
+    legend_handles, legend_labels = ax.get_legend_handles_labels()
+    if not args.no_efficiency:
+        efficiency_ys = _strong_scaling_efficiency_percent(
+            x_sorted=x_sorted,
+            mean_ys=mean_ys,
+        )
+        ax_efficiency = ax.twinx()
+        (efficiency_line,) = ax_efficiency.plot(
+            x_sorted,
+            efficiency_ys,
+            color=EFFICIENCY_LINE_COLOR,
+            marker="D",
+            linestyle="--",
+            linewidth=1.2,
+            markersize=4.0,
+            label="Strong-scaling efficiency",
+        )
+        ax_efficiency.set_ylabel("Efficiency [%]")
+        ax_efficiency.set_ylim(bottom=0.0)
+        legend_handles.append(efficiency_line)
+        legend_labels.append("Strong-scaling efficiency")
+
     ax.set_xlabel("Target pods")
     ax.set_ylabel(METRIC_LABELS[args.metric])
     title = args.title if args.title is not None else METRIC_TITLES[args.metric]
@@ -182,7 +234,7 @@ def main() -> int:
         title = f"{title}: {', '.join(experiment_names)}"
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(legend_handles, legend_labels)
     fig.tight_layout()
 
     output_path = (

@@ -255,3 +255,16 @@ python scripts/plot_cloud_benchmark.py \
   --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv \
   --metric simulate_stage_elapsed_seconds
 ```
+
+The plot now also overlays a strong-scaling efficiency line by default. It uses
+the smallest plotted pod count as the baseline, so efficiency is computed as:
+
+`efficiency(p) = 100 * T_base * pods_base / (T_p * p)`
+
+Disable it with:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv \
+  --no-efficiency
+```
