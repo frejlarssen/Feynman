@@ -1,195 +1,96 @@
-import datetime
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import glob
 import os
-from collections import defaultdict
+from pathlib import Path
+import sys
 
-import plotly.express as px
-import requests
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from constants import (
-    AIRFLOW_BEARER_TOKEN,
-    AIRFLOW_PASSWORD,
-    AIRFLOW_SESSION_COOKIE,
-    AIRFLOW_USERNAME,
+from scripts.airflow_gantt import (  # noqa: E402
     BASE_URL,
-    DAG_ID as DEFAULT_DAG_ID,
-    POOL_ALIAS,
+    build_gantt_records,
+    fetch_task_instances,
+    load_task_instances_json,
+    render_gantt_multiexec,
 )
-
-DAG_ID = os.environ.get('AIRFLOW_DAG_ID', DEFAULT_DAG_ID)
-DAG_RUN_IDS = [
-    dag_run_id
-    for dag_run_id in os.environ.get(
-        'AIRFLOW_DAG_RUN_IDS',
-        'manual__2026-06-14T19:37:24.256773+00:00',
-    ).split(',')
-    if dag_run_id
-]
+from scripts.constants import DAG_ID as DEFAULT_DAG_ID  # noqa: E402
 
 
-def build_session():
-    session = requests.Session()
-    session.headers['Content-type'] = 'application/json'
-    session.headers['Accept'] = 'application/json'
-
-    auth_mode = 'none'
-
-    if AIRFLOW_BEARER_TOKEN:
-        session.headers['Authorization'] = f'Bearer {AIRFLOW_BEARER_TOKEN}'
-        auth_mode = 'bearer_token'
-    elif AIRFLOW_SESSION_COOKIE:
-        session.cookies.set('session', AIRFLOW_SESSION_COOKIE)
-        auth_mode = 'session_cookie'
-    elif AIRFLOW_USERNAME and AIRFLOW_PASSWORD:
-        session.auth = (AIRFLOW_USERNAME, AIRFLOW_PASSWORD)
-        auth_mode = 'basic_auth'
-
-    print('auth_mode:', auth_mode)
-
-    return session
-
-
-def get_json(session, url):
-    response = session.get(url, timeout=30)
-    if response.status_code == 401:
-        raise RuntimeError(
-            'Airflow API returned 401 Unauthorized. Set AIRFLOW_USERNAME and '
-            'AIRFLOW_PASSWORD, AIRFLOW_BEARER_TOKEN, or AIRFLOW_SESSION_COOKIE.'
-        )
-
-    response.raise_for_status()
-    return response.json()
-
-pool_sizes = dict()
-
-print('dag_id:', DAG_ID)
-print('dag_run_ids:', ', '.join(DAG_RUN_IDS))
-print('base_url:', BASE_URL)
-
-s = build_session()
-
-dates = []
-
-for dag_run_id in DAG_RUN_IDS:
-    print('run_id:', dag_run_id)
-
-    d = get_json(s, f'{BASE_URL}/dags/{DAG_ID}/dagRuns/{dag_run_id}/taskInstances')
-
-    """
-    Parse tasks from JSON
-    """
-    for i, ti in enumerate(d['task_instances']):
-
-        pool = ti['pool']
-        if pool not in pool_sizes:
-            pool_sizes[pool] = ti['pool_slots']
-        else:
-            assert pool_sizes[pool] == ti['pool_slots'], 'variable pool sizes during a DAG run is not supported'
-
-        #print(ti['task_id'], ti.get('map_index'), ti['duration'])
-
-        execution_date = datetime.datetime.fromisoformat(ti['start_date'])
-        end_date = datetime.datetime.fromisoformat(ti['end_date'])
-
-        dates.append((execution_date, ti, 'start'))
-        dates.append((end_date, ti, 'stop'))
-
-if not dates:
-    raise RuntimeError(
-        f'No task instances were returned for DAG {DAG_ID!r} and runs {DAG_RUN_IDS!r}.'
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Plot multiple Airflow DAG runs in one Gantt chart."
     )
+    parser.add_argument("--dag-id", default=os.environ.get("AIRFLOW_DAG_ID", DEFAULT_DAG_ID))
+    parser.add_argument(
+        "--run-id",
+        action="append",
+        dest="run_ids",
+        default=[],
+        help="Airflow run id to fetch. Can be repeated.",
+    )
+    parser.add_argument(
+        "--task-instances-json",
+        type=Path,
+        action="append",
+        default=[],
+        help="Saved Airflow taskInstances JSON payload. Can be repeated.",
+    )
+    parser.add_argument(
+        "--input-glob",
+        action="append",
+        default=[],
+        help="Glob pattern for saved taskInstances JSON payloads.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("figures/gantt_multiexec.svg"),
+        help="Output SVG path.",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=BASE_URL,
+        help="Airflow API base URL when fetching directly.",
+    )
+    return parser.parse_args()
 
-dates.sort(key=lambda e: e[0])
 
-pool_sizes = defaultdict(int)
+def main() -> int:
+    args = parse_args()
+    env_run_ids = [
+        run_id
+        for run_id in os.environ.get("AIRFLOW_DAG_RUN_IDS", "").split(",")
+        if run_id
+    ]
+    run_ids = args.run_ids or env_run_ids
 
-"""
-Create pool_sizes: pool_name -> pool_size
-"""
-tmp = defaultdict(int)
-for d, ti, event in dates:
+    json_paths = [path.resolve() for path in args.task_instances_json]
+    for pattern in args.input_glob:
+        for match in sorted(glob.glob(pattern)):
+            json_paths.append(Path(match).resolve())
 
-    pool, pool_slots = ti['pool'], ti['pool_slots']
+    payloads = [load_task_instances_json(path) for path in json_paths]
+    if run_ids:
+        print("dag_id:", args.dag_id)
+        print("dag_run_ids:", ", ".join(run_ids))
+        print("base_url:", args.base_url)
+    for run_id in run_ids:
+        print("run_id:", run_id)
+        payloads.append(fetch_task_instances(dag_id=args.dag_id, run_id=run_id, base_url=args.base_url))
 
-    if event == 'start':
-        tmp[pool] += pool_slots
-    else:
-        tmp[pool] -= pool_slots
+    if not payloads:
+        raise RuntimeError("Pass at least one --run-id or --task-instances-json input.")
 
-    # update the pool size
-    pool_sizes[pool] = max(pool_sizes[pool], tmp[pool])
-
-print('pool_sizes:', pool_sizes)
+    records = build_gantt_records(payloads)
+    output_path = render_gantt_multiexec(records, output_path=args.output.resolve())
+    print(f'wrote multi-run Gantt to "{output_path}"')
+    return 0
 
 
-"""
-Create the Gantt chart data
-"""
-# slots[slot_id] = (next_available, tasks)
-slots = {
-    pool: [None] * pool_size 
-    for pool, pool_size in pool_sizes.items()
-}
-df = []
-
-for t, ti, event in dates: 
-    pool = ti['pool']
-
-    # slots for the pool where the current task is running
-    ss = slots[pool]
-
-    # ignore 'stop' events
-    # TODO: remove those events entirely
-    if event != 'start': continue
-
-    # find first available pool
-    found = False
-    for i, next_available in enumerate(ss):
-        if next_available is None or next_available <= t:
-            found = True
-            break
-
-    if not found: raise ValueError('incoherent planning :(')
-    
-    t_start = t
-    # Airflow 3 duration can differ from the actual start/end timestamps.
-    # Use the recorded end_date so slot occupancy matches reality.
-    t_end = datetime.datetime.fromisoformat(ti['end_date'])
-    
-    # set the next availability of the current slot
-    ss[i] = t_end
-
-    # --- Transformation for displaying as a Gantt chart ---
-    map_index = None if ti['map_index'] == -1 else f'{ti["map_index"]}'
-
-    pool = POOL_ALIAS.get(pool, pool)
-    df.append({
-        'task': ti['task_id'], 'start': t_start, 'end': t_end, 
-        'resource': f'{pool}.{i}', 'map_index': map_index, 'dag_run_id': ti['dag_run_id']
-    })
-    # --- ---
-
-t0 = dates[0][0]
-delta = t0 - datetime.datetime.fromtimestamp(0, tz=t0.tzinfo)
-
-for d in df:
-    d['start'] = (d['start'] - delta)
-    d['end']   = (d['end'] - delta)
-
-df.sort(key=lambda e: e['resource'])
-
-fig = px.timeline(df,
-    x_start="start", x_end="end", y="resource", color="dag_run_id",
-    labels={
-        "resource": "Resources",
-        "task": "Task",
-        "map_index": "Batch ID",
-        "dag_run_id": "DAG run",
-    },
-    width=28 * 30, height=12 * 30,
-    color_discrete_sequence=px.colors.qualitative.G10
-)
-fig.update_xaxes(tickformat='%s', title='Time (s)')
-fig.update_traces(textposition='inside')
-os.makedirs("figures", exist_ok=True)
-fig.write_image("figures/gantt_multiexec.svg")
-# fig.show()
+if __name__ == "__main__":
+    raise SystemExit(main())

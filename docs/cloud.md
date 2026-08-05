@@ -179,7 +179,19 @@ Example with the quantum-walk benchmark case:
 
 The script runs pod counts sequentially, waits for each DAG run to finish, and
 prints the wall-clock time per run. By default it saves a timestamped summary
-CSV under `untracked/cloud_benchmarks/<timestamp>/summary.csv`.
+CSV under `data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv`.
+
+The benchmark output now follows the repo's experiment-artifact pattern more
+closely. By default it creates a directory named
+`data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/` with:
+
+- `summary.csv`
+- `benchmark_metadata.json` with git/provenance context
+- `git_diff_airflow_scripts_docs.patch`
+- one run directory per Airflow run under `runs/<run_id>/`
+- per-run `task_instances.json`, task/log summaries, and single-run Gantt SVGs
+- a sweep-level `gantt_multiexec.svg`
+- the usual cloud benchmark PDFs from `plot_cloud_benchmark.py`
 
 Each summary row now includes both:
 
@@ -224,7 +236,7 @@ garbage-collect unused task images out from under the benchmark.
 
 You can override the destination if you want:
 
-`RESULTS_FILE=untracked/cloud_benchmark_results.csv bash scripts/benchmark_cloud_pod_sweep.sh`
+`RESULTS_FILE=data/outputs/cloud_benchmark_results.csv bash scripts/benchmark_cloud_pod_sweep.sh`
 
 If you need to abort a running benchmark:
 
@@ -245,14 +257,14 @@ After the sweep, switch back to the `feynman` development environment and plot:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv
 ```
 
 To plot the parallel compute stage instead of the full DAG wall-clock time:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv \
   --metric simulate_stage_elapsed_seconds
 ```
 
@@ -265,6 +277,6 @@ Disable it with:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv untracked/cloud_benchmarks/<timestamp>/summary.csv \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv \
   --no-efficiency
 ```

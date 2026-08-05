@@ -41,20 +41,14 @@ K3D_NODE_WARNING_THRESHOLD_PERCENT="${K3D_NODE_WARNING_THRESHOLD_PERCENT:-80}"
 K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT="${K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT:-85}"
 CONFIG_RENDER_PYTHON="${CONFIG_RENDER_PYTHON:-}"
 BENCHMARK_STAMP="${BENCHMARK_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
-BENCHMARK_DIR="${BENCHMARK_DIR:-untracked/cloud_benchmarks/${BENCHMARK_STAMP}}"
-RESULTS_FILE="${RESULTS_FILE:-${BENCHMARK_DIR}/summary.csv}"
+BENCHMARK_DIR="${BENCHMARK_DIR:-}"
+RESULTS_FILE="${RESULTS_FILE:-}"
+CONFIG_EXPERIMENT_NAME="qft_n8_k2"
 
 if [ "$#" -eq 0 ]; then
   POD_COUNTS="1 2 4 8"
 else
   POD_COUNTS="$*"
-fi
-
-RESULTS_DIR=$(dirname "${RESULTS_FILE}")
-mkdir -p "${RESULTS_DIR}"
-
-if [ ! -f "${RESULTS_FILE}" ]; then
-  printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
 require_cluster_image() {
@@ -122,6 +116,7 @@ if [ -n "${CONFIG_PATH}" ]; then
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
+  CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", "qft_n8_k2"))' "${CONFIG_PATH}")"
   if [ "$#" -eq 0 ]; then
     CONFIG_POD_COUNTS="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
     if [ -n "${CONFIG_POD_COUNTS}" ]; then
@@ -130,6 +125,35 @@ if [ -n "${CONFIG_PATH}" ]; then
   fi
 fi
 
+if [ -z "${BENCHMARK_DIR}" ]; then
+  if [ -n "${RESULTS_FILE}" ]; then
+    BENCHMARK_DIR="$(dirname "${RESULTS_FILE}")"
+  else
+    BENCHMARK_DIR="data/outputs/cloud_benchmarks/${BENCHMARK_STAMP}_${CONFIG_EXPERIMENT_NAME}"
+  fi
+fi
+if [ -z "${RESULTS_FILE}" ]; then
+  RESULTS_FILE="${BENCHMARK_DIR}/summary.csv"
+fi
+
+RESULTS_DIR=$(dirname "${RESULTS_FILE}")
+mkdir -p "${RESULTS_DIR}"
+mkdir -p "${BENCHMARK_DIR}/runs"
+
+if [ ! -f "${RESULTS_FILE}" ]; then
+  printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
+fi
+
+python3 scripts/write_cloud_benchmark_metadata.py \
+  --benchmark-dir "${BENCHMARK_DIR}" \
+  --dag-id "${DAG_ID}" \
+  --config "${CONFIG_PATH}" \
+  --experiment-name "${CONFIG_EXPERIMENT_NAME}" \
+  --pod-counts ${POD_COUNTS} \
+  --invocation "bash scripts/benchmark_cloud_pod_sweep.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${POD_COUNTS}" \
+  >/dev/null
+
+echo "Benchmark directory: ${BENCHMARK_DIR}"
 echo "Benchmark results will be written to ${RESULTS_FILE}"
 echo "Pod counts: ${POD_COUNTS}"
 
@@ -145,6 +169,9 @@ do
     conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --target-num-pods "${pods}")"
     experiment_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("benchmark_case", {}).get("experiment_name", "unknown"))' "${conf_json}")"
   fi
+  run_dir="${BENCHMARK_DIR}/runs/${run_id}"
+  mkdir -p "${run_dir}"
+  printf "%s\n" "${conf_json}" > "${run_dir}/dag_run_conf.json"
 
   echo "Triggering ${DAG_ID} with target_num_pods=${pods} (run_id=${run_id})..."
   airflow dags trigger "${DAG_ID}" \
@@ -240,6 +267,14 @@ EOF
         printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
           "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
           >> "${RESULTS_FILE}"
+        if ! python3 scripts/archive_cloud_benchmark_run.py \
+          --dag-id "${DAG_ID}" \
+          --run-id "${run_id}" \
+          --output-dir "${run_dir}" \
+          >"${run_dir}/archive_stdout.log" 2>"${run_dir}/archive_stderr.log"; then
+          echo "WARNING: failed to archive benchmark artifacts for ${run_id}." >&2
+          echo "See ${run_dir}/archive_stderr.log" >&2
+        fi
         if [ "${state}" != "success" ]; then
           echo "Task states for failed run ${run_id}:"
           airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" || true
@@ -256,3 +291,15 @@ EOF
 done
 
 echo "Benchmark summary saved to ${RESULTS_FILE}"
+if ! python3 scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS_FILE}" >/dev/null; then
+  echo "WARNING: failed to generate default cloud benchmark plot." >&2
+fi
+if ! python3 scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS_FILE}" --metric simulate_stage_elapsed_seconds >/dev/null; then
+  echo "WARNING: failed to generate simulate-stage cloud benchmark plot." >&2
+fi
+if ! python3 scripts/plot_gantt_multiexec.py \
+  --input-glob "${BENCHMARK_DIR}/runs/*/task_instances.json" \
+  --output "${BENCHMARK_DIR}/gantt_multiexec.svg" \
+  >"${BENCHMARK_DIR}/gantt_multiexec_stdout.log" 2>"${BENCHMARK_DIR}/gantt_multiexec_stderr.log"; then
+  echo "WARNING: failed to generate multi-run Gantt plot." >&2
+fi

@@ -62,10 +62,17 @@ def _sha256_file(path: Path, chunk_size: int = 1 << 20) -> str:
     return digest.hexdigest()
 
 
-def _describe_file(path: Path, repo_root: Path) -> dict[str, Any]:
+def _path_for_metadata(path: Path, repo_root: Path) -> str:
+    try:
+        return str(path.relative_to(repo_root))
+    except ValueError:
+        return str(path)
+
+
+def describe_file(path: Path, repo_root: Path) -> dict[str, Any]:
     stat = path.stat()
     return {
-        "path": str(path.relative_to(repo_root)),
+        "path": _path_for_metadata(path, repo_root),
         "size_bytes": stat.st_size,
         "mtime_utc": dt.datetime.fromtimestamp(stat.st_mtime, tz=dt.timezone.utc).isoformat(
             timespec="seconds"
@@ -74,7 +81,7 @@ def _describe_file(path: Path, repo_root: Path) -> dict[str, Any]:
     }
 
 
-def _write_git_scope_snapshot(
+def write_git_scope_snapshot(
     repo_root: Path,
     sweep_dir: Path,
     scope_paths: list[str],
@@ -113,7 +120,7 @@ def _write_git_scope_snapshot(
         "staged_has_changes": bool(staged.strip()),
         "unstaged_has_changes": bool(unstaged.strip()),
         "untracked_count": len(untracked_files),
-        "diff_file": str(diff_path.relative_to(repo_root)),
+        "diff_file": _path_for_metadata(diff_path, repo_root),
         "diff_file_sha256": hashlib.sha256(payload_bytes).hexdigest(),
         "diff_file_bytes": len(payload_bytes),
     }
@@ -148,7 +155,7 @@ def _build_metadata(binary_path: Path, repo_root: Path) -> dict[str, Any]:
     if cache_path is None:
         return {
             "cmake_cache_found": False,
-            "binary": _describe_file(binary_path, repo_root),
+            "binary": describe_file(binary_path, repo_root),
         }
 
     cache = _parse_cmake_cache(cache_path)
@@ -158,7 +165,7 @@ def _build_metadata(binary_path: Path, repo_root: Path) -> dict[str, Any]:
         "cmake_cache_sha256": _sha256_file(cache_path),
         "cmake_cache_size_bytes": cache_path.stat().st_size,
         "cmake": {k: cache.get(k, "") for k in CMAKE_KEYS_OF_INTEREST},
-        "binary": _describe_file(binary_path, repo_root),
+        "binary": describe_file(binary_path, repo_root),
     }
 
 
@@ -251,13 +258,13 @@ def build_sweep_metadata(
     launcher_key: str,
     config_snapshot: dict[str, Any],
 ) -> dict[str, Any]:
-    git_scope_snapshot = _write_git_scope_snapshot(
+    git_scope_snapshot = write_git_scope_snapshot(
         repo_root=repo_root,
         sweep_dir=sweep_dir,
         scope_paths=git_scope_paths,
         filename=git_scope_filename,
     )
-    inputs_meta = {name: _describe_file(path, repo_root) for name, path in input_files.items()}
+    inputs_meta = {name: describe_file(path, repo_root) for name, path in input_files.items()}
 
     return {
         "created_at_utc": iso_utc(created_at),
@@ -272,7 +279,7 @@ def build_sweep_metadata(
         "provenance": {
             "build": _build_metadata(binary_path, repo_root),
             "inputs": inputs_meta,
-            "runner_script": _describe_file(runner_script_path.resolve(), repo_root),
+            "runner_script": describe_file(runner_script_path.resolve(), repo_root),
             launcher_key: _launcher_metadata(launcher_command, repo_root),
             "hardware": _hardware_metadata(repo_root),
         },
