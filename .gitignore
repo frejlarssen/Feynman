@@ -54,3 +54,6 @@ data/outputs/
 
 # Generated data
 data/generated/
+
+# Local script secrets
+scripts/constants_local.py
