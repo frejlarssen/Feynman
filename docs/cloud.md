@@ -181,6 +181,22 @@ The script runs pod counts sequentially, waits for each DAG run to finish, and
 prints the wall-clock time per run. By default it saves a timestamped summary
 CSV under `data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv`.
 
+If that directory exists with the wrong owner or mode, fix it before running
+the benchmark:
+
+```bash
+sudo mkdir -p data/outputs/cloud_benchmarks
+sudo chown -R "$USER:$USER" data/outputs/cloud_benchmarks
+chmod u+rwx data/outputs/cloud_benchmarks
+```
+
+If you prefer not to change the default directory, point the script elsewhere:
+
+```bash
+RESULTS_FILE=data/outputs/somewhere_else/summary.csv \
+  bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json
+```
+
 The benchmark output now follows the repo's experiment-artifact pattern more
 closely. By default it creates a directory named
 `data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/` with:
@@ -189,9 +205,13 @@ closely. By default it creates a directory named
 - `benchmark_metadata.json` with git/provenance context
 - `git_diff_airflow_scripts_docs.patch`
 - one run directory per Airflow run under `runs/<run_id>/`
-- per-run `task_instances.json`, task/log summaries, and single-run Gantt SVGs
+- per-run `task_states.json`, normalized `task_instances.json`, task/log summaries, and single-run Gantt SVGs
 - a sweep-level `gantt_multiexec.svg`
 - the usual cloud benchmark PDFs from `plot_cloud_benchmark.py`
+
+The sweep script captures `task_states.json` from the local Airflow CLI after
+each run finishes, then renders the archive/Gantt artifacts from that file.
+That keeps benchmark archiving independent of Airflow REST API credentials.
 
 Each summary row now includes both:
 

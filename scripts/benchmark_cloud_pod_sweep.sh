@@ -40,6 +40,7 @@ K3D_NODE_NAME="${K3D_NODE_NAME:-k3d-${K3D_CLUSTER_NAME}-server-0}"
 K3D_NODE_WARNING_THRESHOLD_PERCENT="${K3D_NODE_WARNING_THRESHOLD_PERCENT:-80}"
 K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT="${K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT:-85}"
 CONFIG_RENDER_PYTHON="${CONFIG_RENDER_PYTHON:-}"
+HELPER_PYTHON="${HELPER_PYTHON:-}"
 BENCHMARK_STAMP="${BENCHMARK_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 BENCHMARK_DIR="${BENCHMARK_DIR:-}"
 RESULTS_FILE="${RESULTS_FILE:-}"
@@ -67,6 +68,11 @@ node_root_usage_percent() {
 }
 
 default_config_render_python() {
+  if [ -n "${HELPER_PYTHON}" ]; then
+    printf "%s\n" "${HELPER_PYTHON}"
+    return 0
+  fi
+
   if [ -n "${CONFIG_RENDER_PYTHON}" ]; then
     printf "%s\n" "${CONFIG_RENDER_PYTHON}"
     return 0
@@ -79,6 +85,8 @@ default_config_render_python() {
 
   command -v python3
 }
+
+HELPER_PYTHON="$(default_config_render_python)"
 
 usage_percent="$(node_root_usage_percent)"
 if [ "${usage_percent}" -ge "${K3D_NODE_WARNING_THRESHOLD_PERCENT}" ]; then
@@ -102,7 +110,7 @@ require_cluster_image "feynman-split"
 require_cluster_image "feynman-concat"
 
 if [ -n "${CONFIG_PATH}" ]; then
-  CONFIG_RENDER_PYTHON="$(default_config_render_python)"
+  CONFIG_RENDER_PYTHON="${HELPER_PYTHON}"
   if [ ! -x "${CONFIG_RENDER_PYTHON}" ]; then
     echo "Could not find a usable Python interpreter for config rendering: ${CONFIG_RENDER_PYTHON}" >&2
     echo "Set CONFIG_RENDER_PYTHON to the Python from your feynman environment." >&2
@@ -137,14 +145,25 @@ if [ -z "${RESULTS_FILE}" ]; then
 fi
 
 RESULTS_DIR=$(dirname "${RESULTS_FILE}")
-mkdir -p "${RESULTS_DIR}"
+if ! mkdir -p "${RESULTS_DIR}" 2>/dev/null; then
+  echo "Could not create benchmark output directory: ${RESULTS_DIR}" >&2
+  echo "Ensure data/outputs/cloud_benchmarks is writable by your user." >&2
+  echo "See docs/cloud.md for the recommended permission fix." >&2
+  exit 1
+fi
+if [ ! -w "${RESULTS_DIR}" ]; then
+  echo "Benchmark output directory is not writable: ${RESULTS_DIR}" >&2
+  echo "Ensure data/outputs/cloud_benchmarks is writable by your user." >&2
+  echo "See docs/cloud.md for the recommended permission fix." >&2
+  exit 1
+fi
 mkdir -p "${BENCHMARK_DIR}/runs"
 
 if [ ! -f "${RESULTS_FILE}" ]; then
   printf "dag_id,experiment_name,run_id,target_num_pods,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
-python3 scripts/write_cloud_benchmark_metadata.py \
+"${HELPER_PYTHON}" scripts/write_cloud_benchmark_metadata.py \
   --benchmark-dir "${BENCHMARK_DIR}" \
   --dag-id "${DAG_ID}" \
   --config "${CONFIG_PATH}" \
@@ -210,7 +229,7 @@ do
         simulate_worker_full_seconds_sum=""
         simulate_worker_full_seconds_mean=""
         simulate_worker_full_seconds_max=""
-        if simulate_metrics_tsv="$(python3 scripts/summarize_airflow_task_timing.py \
+        if simulate_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_airflow_task_timing.py \
           --dag-id "${DAG_ID}" \
           --run-id "${run_id}" \
           --task-id simulate_batch \
@@ -228,7 +247,7 @@ EOF
             unset IFS
           fi
         fi
-        if simulate_log_metrics_tsv="$(python3 scripts/summarize_cloud_task_logs.py \
+        if simulate_log_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_cloud_task_logs.py \
           --dag-id "${DAG_ID}" \
           --run-id "${run_id}" \
           --task-id simulate_batch \
@@ -267,13 +286,21 @@ EOF
         printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
           "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
           >> "${RESULTS_FILE}"
-        if ! python3 scripts/archive_cloud_benchmark_run.py \
-          --dag-id "${DAG_ID}" \
-          --run-id "${run_id}" \
-          --output-dir "${run_dir}" \
-          >"${run_dir}/archive_stdout.log" 2>"${run_dir}/archive_stderr.log"; then
-          echo "WARNING: failed to archive benchmark artifacts for ${run_id}." >&2
-          echo "See ${run_dir}/archive_stderr.log" >&2
+        task_states_json="${run_dir}/task_states.json"
+        if airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" --output json \
+          >"${task_states_json}" 2>"${run_dir}/task_states_stderr.log"; then
+          if ! "${HELPER_PYTHON}" scripts/archive_cloud_benchmark_run.py \
+            --dag-id "${DAG_ID}" \
+            --run-id "${run_id}" \
+            --output-dir "${run_dir}" \
+            --task-states-json "${task_states_json}" \
+            >"${run_dir}/archive_stdout.log" 2>"${run_dir}/archive_stderr.log"; then
+            echo "WARNING: failed to archive benchmark artifacts for ${run_id}." >&2
+            echo "See ${run_dir}/archive_stderr.log" >&2
+          fi
+        else
+          echo "WARNING: failed to capture task-state JSON for ${run_id}." >&2
+          echo "See ${run_dir}/task_states_stderr.log" >&2
         fi
         if [ "${state}" != "success" ]; then
           echo "Task states for failed run ${run_id}:"
@@ -291,13 +318,13 @@ EOF
 done
 
 echo "Benchmark summary saved to ${RESULTS_FILE}"
-if ! python3 scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS_FILE}" >/dev/null; then
+if ! "${HELPER_PYTHON}" scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS_FILE}" >/dev/null; then
   echo "WARNING: failed to generate default cloud benchmark plot." >&2
 fi
-if ! python3 scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS_FILE}" --metric simulate_stage_elapsed_seconds >/dev/null; then
+if ! "${HELPER_PYTHON}" scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS_FILE}" --metric simulate_stage_elapsed_seconds >/dev/null; then
   echo "WARNING: failed to generate simulate-stage cloud benchmark plot." >&2
 fi
-if ! python3 scripts/plot_gantt_multiexec.py \
+if ! "${HELPER_PYTHON}" scripts/plot_gantt_multiexec.py \
   --input-glob "${BENCHMARK_DIR}/runs/*/task_instances.json" \
   --output "${BENCHMARK_DIR}/gantt_multiexec.svg" \
   >"${BENCHMARK_DIR}/gantt_multiexec_stdout.log" 2>"${BENCHMARK_DIR}/gantt_multiexec_stderr.log"; then

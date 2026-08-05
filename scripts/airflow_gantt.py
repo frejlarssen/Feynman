@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-import plotly.express as px
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 import requests
 
 from constants import (
@@ -19,17 +24,37 @@ from constants import (
 )
 
 
-def build_session() -> requests.Session:
+def _auth_candidates() -> list[tuple[str, dict[str, str]]]:
+    candidates: list[tuple[str, dict[str, str]]] = []
+    if AIRFLOW_BEARER_TOKEN:
+        candidates.append(("bearer_token", {"authorization": f"Bearer {AIRFLOW_BEARER_TOKEN}"}))
+    if AIRFLOW_SESSION_COOKIE:
+        candidates.append(("session_cookie", {"session_cookie": AIRFLOW_SESSION_COOKIE}))
+    if AIRFLOW_USERNAME and AIRFLOW_PASSWORD:
+        candidates.append(
+            (
+                "basic_auth",
+                {
+                    "username": AIRFLOW_USERNAME,
+                    "password": AIRFLOW_PASSWORD,
+                },
+            )
+        )
+    candidates.append(("none", {}))
+    return candidates
+
+
+def build_session(auth_mode: str, auth_payload: dict[str, str]) -> requests.Session:
     session = requests.Session()
     session.headers["Content-type"] = "application/json"
     session.headers["Accept"] = "application/json"
 
-    if AIRFLOW_BEARER_TOKEN:
-        session.headers["Authorization"] = f"Bearer {AIRFLOW_BEARER_TOKEN}"
-    elif AIRFLOW_SESSION_COOKIE:
-        session.cookies.set("session", AIRFLOW_SESSION_COOKIE)
-    elif AIRFLOW_USERNAME and AIRFLOW_PASSWORD:
-        session.auth = (AIRFLOW_USERNAME, AIRFLOW_PASSWORD)
+    if auth_mode == "bearer_token":
+        session.headers["Authorization"] = auth_payload["authorization"]
+    elif auth_mode == "session_cookie":
+        session.cookies.set("session", auth_payload["session_cookie"])
+    elif auth_mode == "basic_auth":
+        session.auth = (auth_payload["username"], auth_payload["password"])
 
     return session
 
@@ -37,10 +62,7 @@ def build_session() -> requests.Session:
 def get_json(session: requests.Session, url: str) -> dict[str, Any]:
     response = session.get(url, timeout=30)
     if response.status_code == 401:
-        raise RuntimeError(
-            "Airflow API returned 401 Unauthorized. Set AIRFLOW_USERNAME and "
-            "AIRFLOW_PASSWORD, AIRFLOW_BEARER_TOKEN, or AIRFLOW_SESSION_COOKIE."
-        )
+        raise RuntimeError("Airflow API returned 401 Unauthorized.")
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, dict):
@@ -49,18 +71,84 @@ def get_json(session: requests.Session, url: str) -> dict[str, Any]:
 
 
 def fetch_task_instances(*, dag_id: str, run_id: str, base_url: str = BASE_URL) -> dict[str, Any]:
-    session = build_session()
-    return get_json(session, f"{base_url}/dags/{dag_id}/dagRuns/{run_id}/taskInstances")
+    url = f"{base_url}/dags/{dag_id}/dagRuns/{run_id}/taskInstances"
+    unauthorized_modes: list[str] = []
+    last_error: Exception | None = None
+    for auth_mode, auth_payload in _auth_candidates():
+        session = build_session(auth_mode, auth_payload)
+        try:
+            return get_json(session, url)
+        except RuntimeError as err:
+            if "401 Unauthorized" not in str(err):
+                raise
+            unauthorized_modes.append(auth_mode)
+            last_error = err
+            continue
+    tried = ", ".join(unauthorized_modes) if unauthorized_modes else "none"
+    raise RuntimeError(
+        "Airflow API returned 401 Unauthorized for auth mode(s): "
+        f"{tried}. Set a working AIRFLOW_USERNAME/AIRFLOW_PASSWORD, "
+        "AIRFLOW_BEARER_TOKEN, or AIRFLOW_SESSION_COOKIE."
+    ) from last_error
+
+
+def _normalize_map_index(value: Any) -> int | str:
+    if value in (None, "", -1, "-1"):
+        return -1
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def normalize_task_instances_payload(
+    payload: dict[str, Any],
+    *,
+    default_run_id: str = "",
+    default_pool: str = "default_pool",
+    default_pool_slots: int = 1,
+) -> dict[str, Any]:
+    task_instances = payload.get("task_instances")
+    if not isinstance(task_instances, list):
+        raise ValueError("Expected payload with a task_instances array.")
+
+    normalized_task_instances: list[dict[str, Any]] = []
+    for task_instance in task_instances:
+        if not isinstance(task_instance, dict):
+            continue
+        normalized = dict(task_instance)
+        normalized["pool"] = str(task_instance.get("pool") or default_pool)
+        try:
+            normalized["pool_slots"] = int(task_instance.get("pool_slots", default_pool_slots))
+        except (TypeError, ValueError):
+            normalized["pool_slots"] = default_pool_slots
+        normalized["dag_run_id"] = str(task_instance.get("dag_run_id") or default_run_id)
+        normalized["map_index"] = _normalize_map_index(task_instance.get("map_index"))
+        normalized_task_instances.append(normalized)
+
+    return {"task_instances": normalized_task_instances}
 
 
 def load_task_instances_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"Expected JSON object in {path}, got {type(payload).__name__}.")
-    task_instances = payload.get("task_instances")
-    if not isinstance(task_instances, list):
-        raise ValueError(f"Expected key 'task_instances' with a JSON array in {path}.")
-    return payload
+    return normalize_task_instances_payload(payload)
+
+
+def load_task_states_json(path: Path) -> list[dict[str, Any]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"Expected JSON array in {path}, got {type(payload).__name__}.")
+    return [row for row in payload if isinstance(row, dict)]
+
+
+def task_states_to_task_instances_payload(
+    rows: list[dict[str, Any]],
+    *,
+    run_id: str,
+) -> dict[str, Any]:
+    return normalize_task_instances_payload({"task_instances": rows}, default_run_id=run_id)
 
 
 def _parse_dates(payload: dict[str, Any]) -> list[tuple[dt.datetime, dict[str, Any], str]]:
@@ -139,8 +227,8 @@ def build_gantt_records(
         end_time = dt.datetime.fromisoformat(str(ti["end_date"]))
         slot_pool[index] = end_time
 
-        map_index_raw = ti.get("map_index", -1)
-        map_index = None if int(map_index_raw) == -1 else str(map_index_raw)
+        map_index_raw = _normalize_map_index(ti.get("map_index", -1))
+        map_index = None if map_index_raw == -1 else str(map_index_raw)
         pool_alias = POOL_ALIAS.get(pool, pool)
         records.append(
             {
@@ -163,71 +251,117 @@ def build_gantt_records(
     return records
 
 
-def render_gantt_byresources(records: list[dict[str, Any]], *, output_path: Path) -> Path:
-    fig = px.timeline(
-        records,
-        x_start="start",
-        x_end="end",
-        y="resource",
-        color="task",
-        text="map_index",
-        labels={
-            "resource": "Resources",
-            "task": "Task",
-            "map_index": "Batch ID",
-        },
-        width=28 * 30,
-        height=12 * 30,
-        color_discrete_sequence=px.colors.qualitative.G10,
+def _seconds_from_relative_datetime(value: dt.datetime) -> float:
+    return value.timestamp()
+
+
+def _categorical_colors(values: list[str]) -> dict[str, tuple[float, float, float, float]]:
+    palette = list(plt.get_cmap("tab10").colors)
+    return {
+        value: palette[index % len(palette)]
+        for index, value in enumerate(values)
+    }
+
+
+def _render_timeline(
+    records: list[dict[str, Any]],
+    *,
+    y_key: str,
+    color_key: str,
+    output_path: Path,
+    x_label: str,
+) -> Path:
+    if not records:
+        raise RuntimeError("No records available to render.")
+
+    y_categories = list(dict.fromkeys(str(record[y_key]) for record in records))
+    color_categories = list(dict.fromkeys(str(record[color_key]) for record in records))
+    y_positions = {category: index for index, category in enumerate(y_categories)}
+    colors = _categorical_colors(color_categories)
+
+    fig_height = max(4.0, 0.8 * len(y_categories) + 1.5)
+    fig, ax = plt.subplots(figsize=(18, fig_height))
+
+    for record in records:
+        start = _seconds_from_relative_datetime(record["start"])
+        end = _seconds_from_relative_datetime(record["end"])
+        width = max(0.0, end - start)
+        y_value = str(record[y_key])
+        color_value = str(record[color_key])
+        y_position = y_positions[y_value]
+
+        ax.barh(
+            y_position,
+            width,
+            left=start,
+            height=0.7,
+            color=colors[color_value],
+            edgecolor="black",
+            linewidth=0.5,
+        )
+
+        label = str(record.get("map_index") or "").strip()
+        if label and width >= 0.25:
+            ax.text(
+                start + width / 2.0,
+                y_position,
+                label,
+                ha="center",
+                va="center",
+                fontsize=8,
+                color="black",
+            )
+
+    ax.set_yticks(range(len(y_categories)))
+    ax.set_yticklabels(y_categories)
+    ax.set_xlabel(x_label)
+    ax.grid(axis="x", linestyle="--", alpha=0.35)
+    ax.set_axisbelow(True)
+
+    legend_handles = [
+        Patch(facecolor=colors[value], edgecolor="black", label=value)
+        for value in color_categories
+    ]
+    ax.legend(
+        handles=legend_handles,
+        title=color_key.replace("_", " ").title(),
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        borderaxespad=0.0,
     )
-    fig.update_xaxes(tickformat="%s", title="Time (s)")
-    fig.update_traces(textposition="inside")
+
+    fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.write_image(output_path)
+    fig.savefig(output_path, format=output_path.suffix.lstrip(".") or "svg", bbox_inches="tight")
+    plt.close(fig)
     return output_path
+
+
+def render_gantt_byresources(records: list[dict[str, Any]], *, output_path: Path) -> Path:
+    return _render_timeline(
+        records,
+        y_key="resource",
+        color_key="task",
+        output_path=output_path,
+        x_label="Time (s)",
+    )
 
 
 def render_gantt_bytask(records: list[dict[str, Any]], *, output_path: Path) -> Path:
-    fig = px.timeline(
+    return _render_timeline(
         records,
-        x_start="start",
-        x_end="end",
-        y="task",
-        labels={
-            "resource": "Resources",
-            "task": "Task",
-            "map_index": "Batch ID",
-        },
-        width=28 * 30,
-        height=12 * 30,
-        color_discrete_sequence=px.colors.qualitative.G10,
+        y_key="task",
+        color_key="task",
+        output_path=output_path,
+        x_label="Time (s)",
     )
-    fig.update_xaxes(tickformat="%s", title="Time (s)")
-    fig.update_traces(textposition="inside")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.write_image(output_path)
-    return output_path
 
 
 def render_gantt_multiexec(records: list[dict[str, Any]], *, output_path: Path) -> Path:
-    fig = px.timeline(
+    return _render_timeline(
         records,
-        x_start="start",
-        x_end="end",
-        y="resource",
-        color="dag_run_id",
-        labels={
-            "resource": "Resources",
-            "task": "Task",
-            "map_index": "Batch ID",
-            "dag_run_id": "DAG run",
-        },
-        width=28 * 30,
-        height=12 * 30,
-        color_discrete_sequence=px.colors.qualitative.G10,
+        y_key="resource",
+        color_key="dag_run_id",
+        output_path=output_path,
+        x_label="Time (s)",
     )
-    fig.update_xaxes(tickformat="%s", title="Time (s)")
-    fig.update_traces(textposition="inside")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.write_image(output_path)
-    return output_path
