@@ -148,6 +148,24 @@ operation counts, then writes time, memory, and operation-count plots.
 
 ## Validation Workflows
 
+### Selected-Output Accuracy
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_smoke.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
+This workflow runs one exact selected-output reference and one or more
+approximate selected-output runs on the same output-bitstring set, then writes
+`summary.csv`, `comparison.csv`, `reference_outputs.csv`, and `summary.json`
+under `data/outputs/validation/`.
+
+Use this to tune `fraction` and `threshold` locally before moving to cloud
+benchmarks. When using the MPI binary, keep the launcher path above:
+`--binary build-release/sv_prefetcher_subset_mpi.x --ranks 1`. The validation
+driver will invoke `mpirun -n 1` for that binary.
+
 ### QWalk vs quimb
 
 ```bash

@@ -55,6 +55,14 @@ python scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/exploratory/perf/qft_batch_sweep.json
 ```
 
+Selected-output accuracy validation:
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_smoke.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
 ## Documentation Map
 
 - More utilities of experiment scripts: `docs/scripts.md`
