@@ -150,6 +150,8 @@ def render_conf(
     config_path: Path,
     target_num_pods: int | None,
     max_hexstrings_per_batch: int | None,
+    run_output_dir: str | None,
+    merged_output_file: str | None,
 ) -> dict[str, Any]:
     payload = _load_config(config_path)
 
@@ -176,6 +178,12 @@ def render_conf(
         "output_bitstrings_file": _host_to_mount_path(output_path),
         "source_config": str(config_path.relative_to(REPO_ROOT)),
     }
+    if run_output_dir is not None:
+        benchmark_case["run_output_dir"] = _host_to_mount_path(_resolve_config_path(run_output_dir))
+    if merged_output_file is not None:
+        benchmark_case["merged_output_file"] = _host_to_mount_path(
+            _resolve_config_path(merged_output_file)
+        )
 
     conf: dict[str, Any] = {"benchmark_case": benchmark_case}
     simulate_omp_num_threads = payload.get("simulate_omp_num_threads")
@@ -198,6 +206,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True, help="Path to cloud benchmark config JSON.")
     parser.add_argument("--target-num-pods", type=int, default=None)
     parser.add_argument("--max-hexstrings-per-batch", type=int, default=None)
+    parser.add_argument(
+        "--run-output-dir",
+        default=None,
+        help="Optional host-side output directory for one DAG run; converted to the /data mount path.",
+    )
+    parser.add_argument(
+        "--merged-output-file",
+        default=None,
+        help="Optional host-side merged output file path; converted to the /data mount path.",
+    )
     parser.add_argument(
         "--print-target-num-pods-list",
         action="store_true",
@@ -232,6 +250,8 @@ def main() -> int:
         config_path=config_path,
         target_num_pods=args.target_num_pods,
         max_hexstrings_per_batch=args.max_hexstrings_per_batch,
+        run_output_dir=args.run_output_dir,
+        merged_output_file=args.merged_output_file,
     )
     json.dump(conf, sys.stdout, separators=(",", ":"))
     sys.stdout.write("\n")

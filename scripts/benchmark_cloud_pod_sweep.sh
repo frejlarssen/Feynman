@@ -125,7 +125,7 @@ if [ -n "${CONFIG_PATH}" ]; then
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
-  CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", "qft_n8_k2"))' "${CONFIG_PATH}")"
+  CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" -c 'import json,sys; from pathlib import Path; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", Path(sys.argv[1]).stem or "qft_n8_k2"))' "${CONFIG_PATH}")"
   REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
   if [ "$#" -eq 0 ]; then
     CONFIG_POD_COUNTS="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
@@ -191,7 +191,11 @@ do
     conf_json="{\"target_num_pods\": ${pods}}"
     experiment_name="qft_n8_k2"
     if [ -n "${CONFIG_PATH}" ]; then
-      conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --target-num-pods "${pods}")"
+      conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
+        --config "${CONFIG_PATH}" \
+        --target-num-pods "${pods}" \
+        --run-output-dir "${BENCHMARK_DIR}/runs/${run_id}" \
+        --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_EXPERIMENT_NAME}_all_batches.hsv")"
       experiment_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("benchmark_case", {}).get("experiment_name", "unknown"))' "${conf_json}")"
     fi
     run_dir="${BENCHMARK_DIR}/runs/${run_id}"

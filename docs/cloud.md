@@ -210,6 +210,7 @@ closely. By default it creates a directory named
 - `benchmark_metadata.json` with git/provenance context
 - `git_diff_airflow_scripts_docs.patch`
 - one run directory per Airflow run under `runs/<run_id>/`
+- the raw simulator batch outputs and merged `.hsv` output for that run stored directly inside `runs/<run_id>/`
 - per-run `task_states.json`, normalized `task_instances.json`, task/log summaries, and single-run Gantt SVGs
 - a sweep-level `gantt_multiexec.svg`
 - the usual cloud benchmark PDFs from `plot_cloud_benchmark.py`
@@ -217,6 +218,8 @@ closely. By default it creates a directory named
 The sweep script captures `task_states.json` from the local Airflow CLI after
 each run finishes, then renders the archive/Gantt artifacts from that file.
 That keeps benchmark archiving independent of Airflow REST API credentials.
+For config-driven sweeps, this also avoids creating a second top-level
+`data/outputs/cloud_benchmarks/<experiment_name>/` runtime-output tree.
 
 Each summary row now includes both:
 

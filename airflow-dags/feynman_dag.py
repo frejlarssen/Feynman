@@ -35,10 +35,23 @@ BATCH_DIR_TEMPLATE = (
     f"{DATA_MOUNT_PATH}/generated/batches/" + EXPERIMENT_NAME_TEMPLATE + "/{{ run_id }}"
 )
 RUN_OUTPUT_DIR_TEMPLATE = (
-    f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/" + EXPERIMENT_NAME_TEMPLATE + "/{{ run_id }}"
+    "{% set benchmark_case = dag_run.conf.get('benchmark_case', {}) %}"
+    "{% if benchmark_case.get('run_output_dir') %}"
+    "{{ benchmark_case.get('run_output_dir') }}"
+    "{% else %}"
+    f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/"
+    "{{ benchmark_case.get('experiment_name', 'qft_n8_k2') }}/{{ run_id }}"
+    "{% endif %}"
 )
 MERGED_OUTPUT_FILE_TEMPLATE = (
-    RUN_OUTPUT_DIR_TEMPLATE + "/" + EXPERIMENT_NAME_TEMPLATE + "_all_batches.hsv"
+    "{% set benchmark_case = dag_run.conf.get('benchmark_case', {}) %}"
+    "{% if benchmark_case.get('merged_output_file') %}"
+    "{{ benchmark_case.get('merged_output_file') }}"
+    "{% else %}"
+    f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/"
+    "{{ benchmark_case.get('experiment_name', 'qft_n8_k2') }}/{{ run_id }}/"
+    "{{ benchmark_case.get('experiment_name', 'qft_n8_k2') }}_all_batches.hsv"
+    "{% endif %}"
 )
 
 
@@ -60,8 +73,10 @@ def _resolved_benchmark_case_from_context() -> dict[str, str]:
     case["experiment_name"] = experiment_name
     run_id = str(dag_run.run_id)
     case["batch_dir"] = f"{DATA_MOUNT_PATH}/generated/batches/{experiment_name}/{run_id}"
-    case["run_output_dir"] = f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/{experiment_name}/{run_id}"
-    case["merged_output_file"] = f"{case['run_output_dir']}/{experiment_name}_all_batches.hsv"
+    if not case.get("run_output_dir"):
+        case["run_output_dir"] = f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/{experiment_name}/{run_id}"
+    if not case.get("merged_output_file"):
+        case["merged_output_file"] = f"{case['run_output_dir']}/{experiment_name}_all_batches.hsv"
     return case
 
 DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
