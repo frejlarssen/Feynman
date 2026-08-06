@@ -17,6 +17,7 @@ MAX_HEXSTRINGS_PER_BATCH_TEMPLATE = (
     "{{ dag_run.conf.get('max_hexstrings_per_batch', " + str(MAX_HEXSTRINGS_PER_BATCH) + ") }}"
 )
 SIMULATE_OMP_NUM_THREADS_TEMPLATE = "{{ dag_run.conf.get('simulate_omp_num_threads', 1) }}"
+SIMULATE_THRESHOLD_TEMPLATE = "{{ dag_run.conf.get('threshold', 0.0) }}"
 DEFAULT_BENCHMARK_CASE = {
     "experiment_name": "qft_n8_k2",
     "circuit_file": f"{DATA_MOUNT_PATH}/generated/circuits/qft/qft_n8_k2.qasm",
@@ -133,7 +134,7 @@ def feynman():
                     "-o",
                     simulator_output_file,
                     "-t",
-                    "0.0",
+                    SIMULATE_THRESHOLD_TEMPLATE,
                     "-v",
                     "1",
                 ]

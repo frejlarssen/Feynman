@@ -192,6 +192,12 @@ def render_conf(
         if simulate_omp_num_threads <= 0:
             raise ValueError("simulate_omp_num_threads must be > 0.")
         conf["simulate_omp_num_threads"] = simulate_omp_num_threads
+    threshold = payload.get("threshold")
+    if threshold is not None:
+        threshold = float(threshold)
+        if threshold < 0.0:
+            raise ValueError("threshold must be >= 0.")
+        conf["threshold"] = threshold
     if target_num_pods is not None:
         conf["target_num_pods"] = int(target_num_pods)
     if max_hexstrings_per_batch is not None:

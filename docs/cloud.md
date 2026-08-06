@@ -137,6 +137,18 @@ in the benchmark JSON:
 }
 ```
 
+Cloud benchmark configs may also set the simulator pruning threshold passed as
+`-t` to `cloud_task.x`:
+
+```json
+{
+  "experiment_name": "qwalk_n64_it4",
+  "threshold": 1e-8
+}
+```
+
+If omitted, the cloud workflow keeps the historical default of `0.0`.
+
 You can still override it explicitly in `dag_run.conf` for ad hoc manual
 triggers:
 
