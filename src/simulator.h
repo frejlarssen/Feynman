@@ -17,7 +17,8 @@
 
 #define fLIMIT 0.9999999 // If fraction > fLIMIT, we make an exact simulation.
 
-complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
+complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
+                                  float threshold2 = 0.0f) {
   complex<float> contribution = 1.0;
   for (const shared_ptr<Gate> &gateptr : chunk.gates) {
     Gate &gate = *gateptr;
@@ -184,6 +185,13 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
       cerr << "Gate not implemented!" << '\n';
       exit(1);
     }
+
+    // Each gate contributes a single matrix element whose magnitude is at most
+    // 1. Once the running product falls below threshold, the rest of the chunk
+    // cannot bring it back above threshold.
+    if (threshold2 > 0.0f && std::norm(contribution) < threshold2) {
+      return 0.0f;
+    }
   }
   return contribution;
 }
@@ -262,7 +270,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
     }
 
     complex<float> contribution2 =
-        input_amp * chunk_contribution(chunk2, thread_ind);
+        input_amp * chunk_contribution(chunk2, thread_ind, threshold2);
 
     // Check if amplitude so far is small enough to neglect.
     if (std::norm(contribution2) < threshold2) {
@@ -295,7 +303,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
       }
 
       const std::complex<float> contribution1 =
-          contribution2 * chunk_contribution(chunk1, thread_ind);
+          contribution2 * chunk_contribution(chunk1, thread_ind, threshold2);
       if (std::norm(contribution1) < threshold2)
         continue;
 
@@ -321,7 +329,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
         // contribution1.imag());
 
         complex<float> contribution0 =
-            contribution1 * chunk_contribution(chunk0, thread_ind);
+            contribution1 * chunk_contribution(chunk0, thread_ind, threshold2);
 
         // std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n",
         // history0, history1, history2, contribution0.real(),
