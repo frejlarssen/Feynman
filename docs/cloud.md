@@ -149,6 +149,18 @@ Cloud benchmark configs may also set the simulator pruning threshold passed as
 
 If omitted, the cloud workflow keeps the historical default of `0.0`.
 
+Cloud benchmark configs may also set the chunk-2 sampling fraction passed as
+`-f` to `cloud_task.x`:
+
+```json
+{
+  "experiment_name": "qwalk_n64_it4",
+  "fraction": 0.1
+}
+```
+
+If omitted, the cloud workflow keeps the historical default of `1.0`.
+
 You can still override it explicitly in `dag_run.conf` for ad hoc manual
 triggers:
 

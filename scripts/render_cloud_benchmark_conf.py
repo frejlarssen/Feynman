@@ -192,6 +192,12 @@ def render_conf(
         if simulate_omp_num_threads <= 0:
             raise ValueError("simulate_omp_num_threads must be > 0.")
         conf["simulate_omp_num_threads"] = simulate_omp_num_threads
+    fraction = payload.get("fraction")
+    if fraction is not None:
+        fraction = float(fraction)
+        if fraction <= 0.0 or fraction > 1.0:
+            raise ValueError("fraction must satisfy 0 < fraction <= 1.")
+        conf["fraction"] = fraction
     threshold = payload.get("threshold")
     if threshold is not None:
         threshold = float(threshold)
