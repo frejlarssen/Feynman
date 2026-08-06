@@ -1,5 +1,5 @@
 {
-  "experiment_name": "google_rqc_selected_accuracy",
+  "experiment_name": "google_rqc_selected_accuracy_threshold",
   "repo_root": ".",
   "output_root": "data/outputs/validation",
   "binary": "build-cloud/cloud_task.x",
