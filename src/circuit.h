@@ -622,6 +622,20 @@ struct Circuit {
   static int last_autotune_step_size;
   static TypeLongInt last_autotune_best_gate_ops;
 
+  static void validate_chunk_history_capacity(const std::string &context) {
+    for (int chunk_id = 0; chunk_id < NUM_CHUNKS; ++chunk_id) {
+      const int num_artificial = chunks.at(chunk_id).num_artificial;
+      if (num_artificial > max_exact_pow2_exponent()) {
+        throw std::runtime_error(
+            context + ": chunk " + std::to_string(chunk_id) + " has " +
+            std::to_string(num_artificial) +
+            " artificial sources, but scalar TypeLongInt histories support at "
+            "most " + std::to_string(max_exact_pow2_exponent()) +
+            " exact history bits.");
+      }
+    }
+  }
+
   static void clear_circuit() {
     all_internal_wires.clear();
     input_sources.clear();
@@ -785,6 +799,8 @@ struct Circuit {
       chunks.at(i).num_artificial = chunks.at(i).right_to_left_fake();
     }
 
+    validate_chunk_history_capacity("Circuit build");
+
     // cout << "Fake run done" << '\n';
 
     if (for_autotuning) { // TODO: Debug why it's out of memory in autotuning
@@ -870,11 +886,22 @@ struct Circuit {
         int a2 = chunks.at(2).num_artificial;
 
         // Calculate number of gate applications over all histories and nodes.
-        TypeLongInt nr_app =
-            (TypeLongInt(1) << a2) *
-            (num_chunk2 +
-             (TypeLongInt(1) << a1) *
-                 (num_chunk1 + (TypeLongInt(1) << a0) * num_chunk0));
+        const TypeLongInt term0 = mul_checked(
+            pow2_checked(a0, "Autotuning chunk-0 history count"),
+            static_cast<TypeLongInt>(num_chunk0),
+            "Autotuning chunk-0 gate-op estimate");
+        const TypeLongInt inner = add_checked(
+            static_cast<TypeLongInt>(num_chunk1), term0,
+            "Autotuning inner gate-op estimate");
+        const TypeLongInt term1 = mul_checked(
+            pow2_checked(a1, "Autotuning chunk-1 history count"), inner,
+            "Autotuning chunk-1 gate-op estimate");
+        const TypeLongInt middle = add_checked(
+            static_cast<TypeLongInt>(num_chunk2), term1,
+            "Autotuning middle gate-op estimate");
+        TypeLongInt nr_app = mul_checked(
+            pow2_checked(a2, "Autotuning chunk-2 history count"), middle,
+            "Autotuning total gate-op estimate");
 
         if (nr_app < min_nr_app) {
           opt_num_chunk1 = num_chunk1;

@@ -191,6 +191,7 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
 complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
                         complex<float> input_amp, float fraction,
                         float threshold = 0.0, int verbosity = 1) {
+  Circuit::validate_chunk_history_capacity("Simulation");
 
   // Debugging that should be printed only by one rank.
   bool print_rank0_timings = (verbosity >= 1);
@@ -219,7 +220,8 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
     return 0.0;
   }
 
-  TypeLongInt num_histories_c2 = TypeLongInt(1) << num_artificial2;
+  TypeLongInt num_histories_c2 =
+      pow2_checked(num_artificial2, "Chunk-2 history count");
 
   size_t num_par_histories =
       static_cast<size_t>(static_cast<double>(num_histories_c2) * fraction);
@@ -277,7 +279,9 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
     // printf("  Number of artificial sources in chunk 2: %d\n",
     // num_artificial1);
 
-    for (TypeLongInt history1 = 0; history1 < TypeLongInt(1) << num_artificial1;
+    const TypeLongInt num_histories_c1 =
+        pow2_checked(num_artificial1, "Chunk-1 history count");
+    for (TypeLongInt history1 = 0; history1 < num_histories_c1;
          history1++) {
       // cout << "  In history1: " << history1 << '\n';
       // histories.at(1) = history1;
@@ -303,8 +307,9 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
       // printf("    Number of artificial sources in chunk 0: %d\n",
       // num_artificial0);
 
-      for (TypeLongInt history0 = 0;
-           history0 < TypeLongInt(1) << num_artificial0; history0++) {
+      const TypeLongInt num_histories_c0 =
+          pow2_checked(num_artificial0, "Chunk-0 history count");
+      for (TypeLongInt history0 = 0; history0 < num_histories_c0; history0++) {
         // cout << "    In history0: " << history0 << '\n';
 
         chunk0.reset_values(thread_ind);

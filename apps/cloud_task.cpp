@@ -138,21 +138,36 @@ void run(Options &opts) {
     printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
     printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
 
-    const TypeLongInt num_histories_total =
-        (TypeLongInt(1) << Circuit::chunks.at(0).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(1).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(2).num_artificial);
-
     printf("For each simulate call we simulate over: \n");
-    printf("  %lld histories in total.\n", num_histories_total);
-    printf("  %d histories in parallel.\n",
-           (1 << Circuit::chunks.at(2).num_artificial));
+    try {
+      const TypeLongInt num_histories_total = mul_checked(
+          mul_checked(
+              pow2_checked(Circuit::chunks.at(0).num_artificial,
+                           "Chunk-0 history count"),
+              pow2_checked(Circuit::chunks.at(1).num_artificial,
+                           "Chunk-1 history count"),
+              "Total history count partial product"),
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count"),
+          "Total history count");
+      const TypeLongInt num_histories_parallel =
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count");
+      std::cout << "  " << type_long_int_to_string(num_histories_total)
+                << " histories in total.\n";
+      std::cout << "  " << type_long_int_to_string(num_histories_parallel)
+                << " histories in parallel.\n";
+    } catch (const std::runtime_error &err) {
+      std::cout << "  exact total history count unavailable: " << err.what()
+                << '\n';
+    }
     if (use_autotune) {
-      printf(
-          "Autotuning time: %.6f seconds (candidates=%d, step_size=%d, "
-          "best_gate_ops_estimate=%lld, mode=autotuned)\n",
-          Circuit::last_autotune_seconds, Circuit::last_autotune_candidates,
-          Circuit::last_autotune_step_size, Circuit::last_autotune_best_gate_ops);
+      std::cout << "Autotuning time: " << Circuit::last_autotune_seconds
+                << " seconds (candidates=" << Circuit::last_autotune_candidates
+                << ", step_size=" << Circuit::last_autotune_step_size
+                << ", best_gate_ops_estimate="
+                << type_long_int_to_string(Circuit::last_autotune_best_gate_ops)
+                << ", mode=autotuned)\n";
     } else {
       printf(
           "Autotuning time: 0.000000 seconds (candidates=0, step_size=0, "
@@ -176,7 +191,7 @@ void run(Options &opts) {
   // #endif
   if (opts.verbosity >= 1)
     std::cout << "Total output bitstrings to simulate: "
-              << static_cast<std::size_t>(total_output_bitstrings) << '\n';
+              << type_long_int_to_string(total_output_bitstrings) << '\n';
 
   const fs::path output_path(opts.output_statevector_file);
   if (output_path.has_parent_path()) {
@@ -196,11 +211,10 @@ void run(Options &opts) {
   local_buf_timing.reserve(1 << 16);
 
   if (opts.verbosity >= 1) {
-    printf(
-        "Starting simulation over all input-output pairs:\n -- Total output "
-        "bitstrings = %lld - OMP_THREADS per worker = "
-        "%d --:\n",
-        total_output_bitstrings, t_omp);
+    std::cout << "Starting simulation over all input-output pairs:\n"
+              << " -- Total output bitstrings = "
+              << type_long_int_to_string(total_output_bitstrings)
+              << " - OMP_THREADS per worker = " << t_omp << " --:\n";
   }
 
   duration<double> total_clocktime_simulate = zero_duration();
@@ -300,10 +314,11 @@ void run(Options &opts) {
         const double eta_seconds =
             (rate > 0.0) ? ((total - processed) / rate) : 0.0;
         printf(
-            "Progress: processed %zu / %lld output bitstrings (%.1f%%, "
+            "Progress: processed %zu / %s output bitstrings (%.1f%%, "
             "elapsed %.1fs, rate %.2f bitstrings/s, eta %.1fs)\n",
-            count_processed_bitstrings, total_output_bitstrings, percent_done,
-            elapsed_seconds, rate, eta_seconds);
+            count_processed_bitstrings,
+            type_long_int_to_string(total_output_bitstrings).c_str(),
+            percent_done, elapsed_seconds, rate, eta_seconds);
       }
     }
 #endif

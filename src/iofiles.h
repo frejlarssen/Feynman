@@ -38,8 +38,26 @@ static inline string input_bitstring_to_string(const InputBitstrings &ib) {
 // static_assert(std::is_trivially_copyable_v<InputBitstrings>);
 
 static inline bool parse_int(const char *b, const char *e, TypeLongInt &out) {
-  auto res = std::from_chars(b, e, out, 10);
-  return res.ec == std::errc{} && res.ptr == e;
+  if (b == e) {
+    return false;
+  }
+  bool negative = false;
+  if (*b == '-') {
+    negative = true;
+    ++b;
+  }
+  if (b == e) {
+    return false;
+  }
+  TypeLongInt value = 0;
+  for (const char *p = b; p != e; ++p) {
+    if (*p < '0' || *p > '9') {
+      return false;
+    }
+    value = value * 10 + static_cast<TypeLongInt>(*p - '0');
+  }
+  out = negative ? -value : value;
+  return true;
 }
 
 // Load & parse once
@@ -167,9 +185,7 @@ read_output_bitstrings(const std::string &path) {
     TypeLongInt tmp = 0;
     const char *first = sv.data();
     const char *last = sv.data() + sv.size();
-    auto [ptr, ec] = std::from_chars(first, last, tmp, 10);
-
-    if (ec != std::errc{} || ptr != last) {
+    if (!parse_int(first, last, tmp)) {
       throw std::runtime_error("Invalid integer line in " + path + ": \"" +
                                std::string(sv) + "\"");
     }

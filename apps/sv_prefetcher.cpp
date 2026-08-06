@@ -148,21 +148,36 @@ void run(Options &opts, const int world_rank, const int world_size,
     printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
     printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
 
-    const TypeLongInt num_histories_total =
-        (TypeLongInt(1) << Circuit::chunks.at(0).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(1).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(2).num_artificial);
-
     printf("For each simulate call we simulate over: \n");
-    printf("  %lld histories in total.\n", num_histories_total);
-    printf("  %d histories in parallel.\n",
-           (1 << Circuit::chunks.at(2).num_artificial));
+    try {
+      const TypeLongInt num_histories_total = mul_checked(
+          mul_checked(
+              pow2_checked(Circuit::chunks.at(0).num_artificial,
+                           "Chunk-0 history count"),
+              pow2_checked(Circuit::chunks.at(1).num_artificial,
+                           "Chunk-1 history count"),
+              "Total history count partial product"),
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count"),
+          "Total history count");
+      const TypeLongInt num_histories_parallel =
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count");
+      std::cout << "  " << type_long_int_to_string(num_histories_total)
+                << " histories in total.\n";
+      std::cout << "  " << type_long_int_to_string(num_histories_parallel)
+                << " histories in parallel.\n";
+    } catch (const std::runtime_error &err) {
+      std::cout << "  exact total history count unavailable: " << err.what()
+                << '\n';
+    }
     if (use_autotune) {
-      printf(
-          "Autotuning time: %.6f seconds (candidates=%d, step_size=%d, "
-          "best_gate_ops_estimate=%lld, mode=autotuned)\n",
-          Circuit::last_autotune_seconds, Circuit::last_autotune_candidates,
-          Circuit::last_autotune_step_size, Circuit::last_autotune_best_gate_ops);
+      std::cout << "Autotuning time: " << Circuit::last_autotune_seconds
+                << " seconds (candidates=" << Circuit::last_autotune_candidates
+                << ", step_size=" << Circuit::last_autotune_step_size
+                << ", best_gate_ops_estimate="
+                << type_long_int_to_string(Circuit::last_autotune_best_gate_ops)
+                << ", mode=autotuned)\n";
     } else {
       printf(
           "Autotuning time: 0.000000 seconds (candidates=0, step_size=0, "
@@ -186,7 +201,7 @@ void run(Options &opts, const int world_rank, const int world_size,
   // #endif
   if (print_rank0_timings)
     std::cout << "Total output bitstrings to simulate: "
-              << static_cast<std::size_t>(total_output_bitstrings) << '\n';
+              << type_long_int_to_string(total_output_bitstrings) << '\n';
 
   // Loop through all input-output pairs. Start with amplitude depending on
   // input statevector.
@@ -204,11 +219,12 @@ void run(Options &opts, const int world_rank, const int world_size,
           : ((total_output_bitstrings + num_workers - 1) / num_workers);
 
   if (print_rank0_timings && opts.verbosity >= 1) {
-    printf(
-        "Starting simulation over all input-output pairs:\n -- Total output "
-        "bitstrings = %lld -- active workers = %zu - OMP_THREADS per worker = "
-        "%d - batch_size = %zu --:\n",
-        total_output_bitstrings, num_workers, t_omp, batch_size);
+    std::cout << "Starting simulation over all input-output pairs:\n"
+              << " -- Total output bitstrings = "
+              << type_long_int_to_string(total_output_bitstrings)
+              << " -- active workers = " << num_workers
+              << " - OMP_THREADS per worker = " << t_omp
+              << " - batch_size = " << batch_size << " --:\n";
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -338,8 +354,10 @@ void run(Options &opts, const int world_rank, const int world_size,
   if (opts.verbosity >= 1) {
     fflush(stdin);
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("Worker %zu - processed %zu / %lld bitstrings\n", my_worker,
-           count_processed_bitstrings, total_output_bitstrings);
+    std::cout << "Worker " << my_worker << " - processed "
+              << count_processed_bitstrings << " / "
+              << type_long_int_to_string(total_output_bitstrings)
+              << " bitstrings\n";
   }
 
   // out_file.close();

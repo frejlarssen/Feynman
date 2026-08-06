@@ -142,15 +142,29 @@ int main(int argc, char *argv[]) {
     printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
     printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
 
-    const TypeLongInt num_histories_total =
-        (TypeLongInt(1) << Circuit::chunks.at(0).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(1).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(2).num_artificial);
-
     printf("For each simulate call we simulate over: \n");
-    printf("  %lu histories in total.\n", num_histories_total);
-    printf("  %lu histories in parallel.\n",
-           (1 << Circuit::chunks.at(2).num_artificial));
+    try {
+      const TypeLongInt num_histories_total = mul_checked(
+          mul_checked(
+              pow2_checked(Circuit::chunks.at(0).num_artificial,
+                           "Chunk-0 history count"),
+              pow2_checked(Circuit::chunks.at(1).num_artificial,
+                           "Chunk-1 history count"),
+              "Total history count partial product"),
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count"),
+          "Total history count");
+      const TypeLongInt num_histories_parallel =
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count");
+      std::cout << "  " << type_long_int_to_string(num_histories_total)
+                << " histories in total.\n";
+      std::cout << "  " << type_long_int_to_string(num_histories_parallel)
+                << " histories in parallel.\n";
+    } catch (const std::runtime_error &err) {
+      std::cout << "  exact total history count unavailable: " << err.what()
+                << '\n';
+    }
   }
 
   // Loop through all input-output pairs. Start with amplitude depending on
@@ -158,8 +172,8 @@ int main(int argc, char *argv[]) {
 
   // ofstream out_file(opts.output_statevector_file);
 
-  TypeLongInt total_output_bitstrings = 1ULL
-                                        << Circuit::n; // overflow if n >= 128
+  TypeLongInt total_output_bitstrings =
+      pow2_checked(Circuit::n, "Full output-state enumeration");
   TypeLongInt num_batches =
       (total_output_bitstrings + world_size - 1) / world_size;
   std::size_t num_workers = world_size;
@@ -234,7 +248,7 @@ int main(int argc, char *argv[]) {
     if (opts.dense || (std::abs(output_amp) > opts.threshold))
       writeFlag = 1;
     if (writeFlag) {
-      local_buf += std::to_string(output_int);
+      local_buf += type_long_int_to_string(static_cast<TypeLongInt>(output_int));
       local_buf += ":";
       local_buf += std::to_string(output_amp.real());
       local_buf += "+";
