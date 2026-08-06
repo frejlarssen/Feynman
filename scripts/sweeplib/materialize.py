@@ -12,6 +12,10 @@ from generators.circuits.aa_iter_generator import (
     DEFAULT_OUTPUT_DIR as AA_DEFAULT_OUTPUT_DIR,
     generate_aa,
 )
+from generators.circuits.google_rqc_generator import (
+    DEFAULT_OUTPUT_DIR as GOOGLE_RQC_DEFAULT_OUTPUT_DIR,
+    generate_google_rqc,
+)
 from generators.circuits.qaoa_maxcut_generator import (
     DEFAULT_OUTPUT_DIR as QAOA_MAXCUT_DEFAULT_OUTPUT_DIR,
     generate_qaoa_maxcut,
@@ -26,6 +30,7 @@ from generators.circuits.quantum_walk_generator import (
 )
 from generators.hexstrings.hexstring_set_generator import (
     DEFAULT_OUTPUT_DIR as HEXSTR_DEFAULT_OUTPUT_DIR,
+    write_random_uniform,
     write_one_interval,
     write_two_intervals,
 )
@@ -190,6 +195,36 @@ def resolve_circuit_input(circuit_cfg: str | dict[str, Any], repo_root: Path) ->
             "output_dir": str(out_dir),
         }
 
+    if generator in {"google_rqc", "google_style_rqc", "rqc"}:
+        rows = _require_int(circuit_cfg, "rows", "circuit")
+        cols = _require_int(circuit_cfg, "cols", "circuit")
+        cycles = _require_int(circuit_cfg, "cycles", "circuit")
+        seed = int(circuit_cfg.get("seed", 0))
+        variant = str(circuit_cfg.get("variant", "sycamore_cz"))
+        name_raw = circuit_cfg.get("name")
+        name = str(name_raw) if name_raw is not None else None
+        out_dir = _resolve_output_dir(circuit_cfg, repo_root, GOOGLE_RQC_DEFAULT_OUTPUT_DIR)
+        path = generate_google_rqc(
+            rows=rows,
+            cols=cols,
+            cycles=cycles,
+            seed=seed,
+            out_dir=out_dir,
+            variant=variant,
+            name=name,
+        ).resolve()
+        return path, {
+            "generator": generator,
+            "rows": rows,
+            "cols": cols,
+            "cycles": cycles,
+            "seed": seed,
+            "variant": variant,
+            "name": name,
+            "n": rows * cols,
+            "output_dir": str(out_dir),
+        }
+
     raise ValueError(f"Unsupported circuit generator: {generator!r}")
 
 
@@ -341,6 +376,26 @@ def resolve_output_bitstrings_input(
             "size": size,
             "interval1_count": len(interval1),
             "interval2_count": len(interval2),
+            "output_dir": str(out_dir),
+        }
+
+    if generator in {"random_uniform", "uniform_random", "random"}:
+        size = _require_int(output_cfg, "size", "output_bitstrings")
+        count = int(output_cfg.get("count", output_cfg.get("nr_hexstrings", 0)))
+        seed = int(output_cfg.get("seed", 0))
+        if count <= 0:
+            raise ValueError("output_bitstrings random_uniform requires count > 0.")
+        path = write_random_uniform(
+            size=size,
+            nr_hexstrings=count,
+            seed=seed,
+            out_dir=out_dir,
+        ).resolve()
+        return path, {
+            "generator": generator,
+            "size": size,
+            "count": count,
+            "seed": seed,
             "output_dir": str(out_dir),
         }
 

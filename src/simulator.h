@@ -75,6 +75,38 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread) {
         contribution *= exp_i(gate.params.at(0));
       }
       break;
+    case FSIM: {
+      const auto wire_left_value_2 =
+          gate.qubits.at(num_ctrl + 1)->wire_left->get_val(thread);
+      const auto wire_right_value_2 =
+          gate.qubits.at(num_ctrl + 1)->wire_right->get_val(thread);
+      const float theta = gate.params.at(0);
+      const float phi = gate.params.at(1);
+      const uint8_t in_state =
+          (static_cast<uint8_t>(wire_left_value) << 1) |
+          static_cast<uint8_t>(wire_left_value_2);
+      const uint8_t out_state =
+          (static_cast<uint8_t>(wire_right_value) << 1) |
+          static_cast<uint8_t>(wire_right_value_2);
+      const float cos_theta = std::cos(theta);
+      const float sin_theta = std::sin(theta);
+
+      if (in_state == 0 && out_state == 0) {
+        contribution *= 1.0f;
+      } else if (in_state == 1 && out_state == 1) {
+        contribution *= cos_theta;
+      } else if (in_state == 2 && out_state == 2) {
+        contribution *= cos_theta;
+      } else if ((in_state == 1 && out_state == 2) ||
+                 (in_state == 2 && out_state == 1)) {
+        contribution *= complex<float>(0.0f, -sin_theta);
+      } else if (in_state == 3 && out_state == 3) {
+        contribution *= exp_i(-phi);
+      } else {
+        contribution = 0.0f;
+      }
+      break;
+    }
     case T:
       if (wire_left_value) {
         contribution *= exp_i(static_cast<float>(PI) / 4.0f);

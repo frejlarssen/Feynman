@@ -82,6 +82,10 @@ def parse_repeat_count(payload: dict[str, Any]) -> int:
 def _infer_circuit_qubits(circuit_cfg: Any) -> int | None:
     if not isinstance(circuit_cfg, dict):
         return None
+    rows_raw = circuit_cfg.get("rows")
+    cols_raw = circuit_cfg.get("cols")
+    if rows_raw is not None and cols_raw is not None:
+        return int(rows_raw) * int(cols_raw)
     n_raw = circuit_cfg.get("n")
     return int(n_raw) if n_raw is not None else None
 

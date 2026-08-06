@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import random
 from pathlib import Path
 
 DEFAULT_OUTPUT_DIR = (
@@ -99,6 +100,39 @@ def write_two_intervals(size: int, interval1: list[int], interval2: list[int], o
     return out_path
 
 
+def write_random_uniform(
+    size: int,
+    nr_hexstrings: int,
+    seed: int,
+    out_dir: Path,
+) -> Path:
+    if size <= 0:
+        raise ValueError("size must be > 0")
+    if nr_hexstrings <= 0:
+        raise ValueError("nr_hexstrings must be > 0")
+
+    max_states = 1 << (size * 8)
+    if nr_hexstrings > max_states:
+        raise ValueError(
+            f"nr_hexstrings={nr_hexstrings} exceeds the {max_states} distinct values "
+            f"available for size={size} byte(s)."
+        )
+
+    nr_nibbles = size * 2
+    out_dir.mkdir(parents=True, exist_ok=True)
+    values = random.Random(seed).sample(range(max_states), nr_hexstrings)
+
+    filename = f"randhex{nr_hexstrings}_size{size}_seed{seed}.hs"
+    out_path = out_dir / filename
+    with out_path.open("w", encoding="utf-8") as f:
+        f.write(f"{nr_hexstrings}\n")
+        f.write(f"{size}\n")
+        for value in values:
+            f.write(f"0x{value:0{nr_nibbles}X}\n")
+
+    return out_path
+
+
 def bulk_generate(out_dir: Path) -> list[Path]:
     created: list[Path] = []
 
@@ -124,7 +158,7 @@ def bulk_generate(out_dir: Path) -> list[Path]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate full bulk .hs hexstring preset set."
+        description="Generate .hs output-bitstring sets."
     )
     parser.add_argument(
         "--output-dir",
@@ -132,11 +166,93 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_DIR,
         help=f"Output directory (default: {DEFAULT_OUTPUT_DIR}).",
     )
+    parser.add_argument(
+        "--single",
+        action="store_true",
+        help="Generate one set instead of the preset bulk collection.",
+    )
+    parser.add_argument(
+        "--generator",
+        choices=["one_interval", "two_intervals", "random_uniform"],
+        default="one_interval",
+        help="Generator to use with --single.",
+    )
+    parser.add_argument("--size", type=int, help="Output bitstring width in bytes.")
+    parser.add_argument(
+        "--count",
+        type=int,
+        help="Number of bitstrings to generate for --single.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Seed for --generator random_uniform.",
+    )
+    parser.add_argument(
+        "--interval1",
+        type=str,
+        help="Comma-separated values for two_intervals interval1.",
+    )
+    parser.add_argument(
+        "--interval2",
+        type=str,
+        help="Comma-separated values for two_intervals interval2.",
+    )
     return parser.parse_args()
+
+
+def _parse_interval_arg(raw: str | None, label: str) -> list[int]:
+    if raw is None:
+        raise ValueError(f"{label} is required.")
+    values = [int(token.strip(), 0) for token in raw.split(",") if token.strip()]
+    if not values:
+        raise ValueError(f"{label} must not be empty.")
+    if min(values) < 0:
+        raise ValueError(f"{label} contains negative values.")
+    return values
 
 
 def main() -> None:
     args = parse_args()
+    if args.single:
+        if args.size is None:
+            raise SystemExit("--single requires --size.")
+        if args.generator == "one_interval":
+            if args.count is None:
+                raise SystemExit("--generator one_interval requires --count.")
+            print(
+                write_one_interval(
+                    size=args.size,
+                    nr_hexstrings=args.count,
+                    out_dir=args.output_dir,
+                )
+            )
+            return
+        if args.generator == "two_intervals":
+            print(
+                write_two_intervals(
+                    size=args.size,
+                    interval1=_parse_interval_arg(args.interval1, "--interval1"),
+                    interval2=_parse_interval_arg(args.interval2, "--interval2"),
+                    out_dir=args.output_dir,
+                )
+            )
+            return
+        if args.generator == "random_uniform":
+            if args.count is None:
+                raise SystemExit("--generator random_uniform requires --count.")
+            print(
+                write_random_uniform(
+                    size=args.size,
+                    nr_hexstrings=args.count,
+                    seed=args.seed,
+                    out_dir=args.output_dir,
+                )
+            )
+            return
+        raise SystemExit(f"Unsupported generator: {args.generator}")
+
     for path in bulk_generate(out_dir=args.output_dir):
         print(path)
 

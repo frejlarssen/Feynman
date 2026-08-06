@@ -1,0 +1,40 @@
+{
+  "experiment_name": "google_rqc_r4_c4_m12_batch_sweep",
+  "repo_root": ".",
+  "vary": "batch_size",
+  "values": [
+    8,
+    16,
+    32,
+    64,
+    128
+  ],
+  "repeat": 3,
+  "ranks": 8,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "4"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 4,
+    "cols": 4,
+    "cycles": 12,
+    "seed": 11,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 2
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "size": 2,
+    "count": 256,
+    "seed": 17
+  },
+  "p": 8,
+  "r": 4,
+  "output_root": "data/outputs/experiments",
+  "notes": "Sweep batch size for a byte-aligned 4x4 Google-style RQC with seeded random selected outputs.",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+}
