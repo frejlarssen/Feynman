@@ -3,6 +3,8 @@
   "target_num_pods_list": [1],
   "repeat": 1,
   "simulate_omp_num_threads": 1,
+  "fraction": 1.0,
+  "threshold": 0.0,
   "circuit": {
     "generator": "google_rqc",
     "rows": 2,
