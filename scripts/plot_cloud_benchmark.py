@@ -33,8 +33,8 @@ METRIC_LABELS = {
 }
 
 METRIC_TITLES = {
-    "elapsed_seconds": "Cloud benchmark wall-clock time",
-    "simulate_stage_elapsed_seconds": "Cloud benchmark simulate stage span",
+    "elapsed_seconds": "Wall-clock time",
+    "simulate_stage_elapsed_seconds": "simulate_batch span",
     "simulate_task_instance_seconds_sum": "Cloud benchmark summed simulate task time",
     "simulate_autotuning_seconds_sum": "Cloud benchmark summed worker autotuning time",
     "simulate_autotuning_seconds_mean": "Cloud benchmark mean worker autotuning time",
