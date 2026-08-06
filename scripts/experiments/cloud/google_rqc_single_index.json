@@ -1,13 +1,13 @@
 {
-  "experiment_name": "google_rqc_r4_c4_m1_single_index",
+  "experiment_name": "google_rqc_r5_c4_m1_single_index",
   "target_num_pods_list": [1],
   "repeat": 1,
   "simulate_omp_num_threads": 1,
-  "fraction": 0.0001,
-  "threshold": 0.99,
+  "fraction": 0.1,
+  "threshold": 0.49,
   "circuit": {
     "generator": "google_rqc",
-    "rows": 4,
+    "rows": 5,
     "cols": 4,
     "cycles": 1,
     "seed": 1,
@@ -15,7 +15,11 @@
   },
   "input_statevector": {
     "generator": "ket0",
-    "size": 2
+    "size": 3
   },
-  "output_bitstrings": "data/generated/hexstring_sets/google_rqc_r4_c4_m1_single_index_size2_0x1234.hs"
+  "output_bitstrings": {
+    "generator": "explicit",
+    "size": 3,
+    "values": ["0x001234"]
+  }
 }
