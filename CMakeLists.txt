@@ -30,7 +30,7 @@ endfunction()
 function(add_feynman_target target_name source_file)
   add_executable(${target_name} ${source_file})
   target_compile_options(${target_name} PRIVATE)
-  target_compile_definitions(bitstr_omp PRIVATE USE_MPI)
+  target_compile_definitions(${target_name} PRIVATE USE_MPI)
   target_link_libraries(${target_name} PRIVATE MPI::MPI_CXX)
 endfunction()
 

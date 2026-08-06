@@ -1,0 +1,55 @@
+{
+  "experiment_name": "google_rqc_selected_accuracy_smoke",
+  "repo_root": ".",
+  "output_root": "data/outputs/validation",
+  "binary": "build-cloud/cloud_task.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 4,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "size": 1,
+    "count": 256
+  },
+  "reference": {
+    "name": "exact_reference",
+    "fraction": 1.0,
+    "threshold": 0.0,
+    "verbosity": 1
+  },
+  "cases": [
+    {
+      "name": "fraction_1e-2",
+      "fraction": 0.01,
+      "threshold": 0.0,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-4",
+      "fraction": 1.0,
+      "threshold": 0.0001,
+      "verbosity": 1
+    },
+    {
+      "name": "combo_fraction_1e-2_threshold_1e-4",
+      "fraction": 0.01,
+      "threshold": 0.0001,
+      "verbosity": 1
+    }
+  ],
+  "nonzero_eps": 1e-12
+}

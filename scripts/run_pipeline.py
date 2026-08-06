@@ -141,6 +141,15 @@ def build_parser() -> argparse.ArgumentParser:
     qwalk_quimb.add_argument("--repo-root", default="", help="Optional repo root override.")
     qwalk_quimb.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
 
+    selected_accuracy = validation_sub.add_parser(
+        "selected-output-accuracy",
+        help="Run exact-vs-approx selected-output accuracy validation.",
+    )
+    selected_accuracy.add_argument("--config", required=True, help="Path to validation config JSON.")
+    selected_accuracy.add_argument("--output-root", default="", help="Optional output root override.")
+    selected_accuracy.add_argument("--repo-root", default="", help="Optional repo root override.")
+    selected_accuracy.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
+
     plot = sub.add_parser("plot", help="Plot from existing summary/output artifacts.")
     plot_sub = plot.add_subparsers(dest="plot_kind", required=True)
 
@@ -689,6 +698,16 @@ def _detect_experiment_mode(config_path: Path) -> str:
         return "perf-sweep"
     if config_type == "validation":
         stem = config_path.stem.lower()
+        if (
+            "selected_accuracy" in stem
+            or "selected_output_accuracy" in stem
+            or (
+                isinstance(payload.get("cases"), list)
+                and isinstance(payload.get("reference", {}), dict)
+                and "output_bitstrings" in payload
+            )
+        ):
+            return "validation:selected-output-accuracy"
         if "quimb" in stem or str(payload.get("backend", "")).lower() == "quimb":
             return "validation:qwalk-quimb"
         if "qiskit_validation" in stem or "qiskit" in stem:
@@ -722,6 +741,15 @@ def _build_run_all_command(script_path: Path, cfg: Path, mode: str) -> list[str]
         return [sys.executable, str(script_path), "validation", "qaoa-qiskit", "--config", str(cfg)]
     if mode == "validation:qwalk-quimb":
         return [sys.executable, str(script_path), "validation", "qwalk-quimb", "--config", str(cfg)]
+    if mode == "validation:selected-output-accuracy":
+        return [
+            sys.executable,
+            str(script_path),
+            "validation",
+            "selected-output-accuracy",
+            "--config",
+            str(cfg),
+        ]
     if mode == "validation:qft-demo":
         return [sys.executable, str(script_path), "validation", "qft-demo", "--config", str(cfg)]
     raise ValueError(f"Unsupported run-all mode: {mode}")
@@ -821,6 +849,10 @@ def main(argv: list[str] | None = None) -> int:
             from tensor_comparison.qwalk_quimb import main as qwalk_quimb_main
 
             return qwalk_quimb_main(val_argv)
+        if args.validation_kind == "selected-output-accuracy":
+            from validation.selected_output_accuracy import main as selected_output_accuracy_main
+
+            return selected_output_accuracy_main(val_argv)
         if args.validation_kind == "qft-demo":
             from validation.qft_demo import main as qft_demo_main
 

@@ -449,6 +449,9 @@ def _run_sv_prefetcher(
     r: int | None,
     feynman_env: dict[str, str] | None,
 ) -> tuple[list[str], int, str, str]:
+    def _binary_requires_mpirun(path: Path) -> bool:
+        return "mpi" in path.name
+
     run_args = [
         str(binary),
         "-c",
@@ -473,8 +476,7 @@ def _run_sv_prefetcher(
     if dense:
         run_args.append("-D")
 
-    # Running single-rank directly avoids fragile PMIx startup in constrained envs.
-    if ranks == 1:
+    if ranks == 1 and not _binary_requires_mpirun(binary):
         cmd = run_args
     else:
         cmd = [mpirun, "-n", str(ranks), *run_args]
