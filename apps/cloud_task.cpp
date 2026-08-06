@@ -4,6 +4,7 @@
 #include "../src/simulator.h"
 #include "../src/typedef.h"
 #include "../src/utils.h"
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #ifdef USE_OPENMP
@@ -98,6 +99,13 @@ Options get_options(int argc, char *argv[]) {
   return opts;
 }
 
+void configure_logging() {
+  std::cout << std::unitbuf;
+  std::cerr << std::unitbuf;
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  std::setvbuf(stderr, nullptr, _IOLBF, 0);
+}
+
 void run(Options &opts) {
   auto start_svcc_all = get_time();
 #ifdef USE_OPENMP
@@ -106,19 +114,58 @@ void run(Options &opts) {
   const int t_omp = 0;
 #endif
 
+  const fs::path output_path(opts.output_statevector_file);
+  if (output_path.has_parent_path()) {
+    fs::create_directories(output_path.parent_path());
+  }
+  const fs::path timing_file_path =
+      replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
+  if (timing_file_path.has_parent_path()) {
+    fs::create_directories(timing_file_path.parent_path());
+  }
+
+  if (opts.verbosity >= 1) {
+    std::cout << "cloud_task: starting run\n"
+              << "  circuit_file=" << opts.circuit_file << '\n'
+              << "  input_statevector_file=" << opts.input_statevector_file
+              << '\n'
+              << "  batch_file=" << opts.batch_file << '\n'
+              << "  output_statevector_file=" << opts.output_statevector_file
+              << '\n'
+              << "  verbosity=" << opts.verbosity << '\n'
+              << "  dense=" << opts.dense << '\n'
+              << "  fraction=" << opts.fraction << '\n'
+              << "  threshold=" << opts.threshold << '\n'
+              << "  output directories prepared\n";
+  }
+
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: parsing circuit\n";
   ParsedCircuit::parse_circuit(opts.circuit_file);
+  if (opts.verbosity >= 1) {
+    std::cout << "cloud_task: parsed circuit with n=" << ParsedCircuit::n
+              << " qubits and " << ParsedCircuit::nr_gates << " gates\n";
+  }
   const bool use_autotune = (opts.num_chunk1 == -1 && opts.num_chunk2 == -1);
 
   if (use_autotune) {
     // Autotune if checkpoints not given. (This takes longer time initially.)
+    if (opts.verbosity >= 1)
+      std::cout << "cloud_task: starting autotuned circuit build\n";
     Circuit::build_autotuned_circuit();
   } else if (opts.num_chunk1 > -1 && opts.num_chunk2 > -1) {
+    if (opts.verbosity >= 1) {
+      std::cout << "cloud_task: building fixed circuit with checkpoints ("
+                << opts.num_chunk1 << ", " << opts.num_chunk2 << ")\n";
+    }
     Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
   } else {
     cerr << "Both -p and -r must be set, or none of them for autotuning."
          << '\n';
     exit(1);
   }
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: circuit build complete\n";
 
   if (opts.verbosity >= 3)
     printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
@@ -176,11 +223,19 @@ void run(Options &opts) {
   }
 
   // Load input bitstrings
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: loading input statevector file\n";
   vector<InputBitstrings> input_bitstrings = read_input_bitstrings_from_file(
       opts.input_statevector_file, opts.dense);
+  if (opts.verbosity >= 1) {
+    std::cout << "cloud_task: loaded " << input_bitstrings.size()
+              << " input basis amplitudes\n";
+  }
 
   // Load output bitstrings to simulate (if the option is ON)
   // #ifdef USE_SUBSET_OUTBITSTRINGS
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: loading output bitstrings batch\n";
   vector<vector<bool>> output_bitstrings = load_output_bitvectors_from_file(
       opts.batch_file);
   const TypeLongInt total_output_bitstrings =
@@ -192,16 +247,6 @@ void run(Options &opts) {
   if (opts.verbosity >= 1)
     std::cout << "Total output bitstrings to simulate: "
               << type_long_int_to_string(total_output_bitstrings) << '\n';
-
-  const fs::path output_path(opts.output_statevector_file);
-  if (output_path.has_parent_path()) {
-    fs::create_directories(output_path.parent_path());
-  }
-  const fs::path timing_file_path =
-      replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
-  if (timing_file_path.has_parent_path()) {
-    fs::create_directories(timing_file_path.parent_path());
-  }
 
   // Loop through all input-output pairs. Start with amplitude depending on
   // input statevector.
@@ -368,6 +413,7 @@ int main(int argc, char *argv[]) {
   int fd =
       open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
 #endif
+  configure_logging();
 
   Options opts = get_options(argc, argv);
 
