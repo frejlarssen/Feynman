@@ -33,21 +33,21 @@
   },
   "cases": [
     {
-      "name": "fraction_1e-2",
-      "fraction": 0.01,
+      "name": "fraction_0.5",
+      "fraction": 0.5,
       "threshold": 0.0,
       "verbosity": 1
     },
     {
-      "name": "threshold_1e-4",
+      "name": "threshold_1e-1",
       "fraction": 1.0,
-      "threshold": 0.0001,
+      "threshold": 0.1,
       "verbosity": 1
     },
     {
-      "name": "combo_fraction_1e-2_threshold_1e-4",
-      "fraction": 0.01,
-      "threshold": 0.0001,
+      "name": "combo_fraction_0.5_threshold_1e-1",
+      "fraction": 0.5,
+      "threshold": 0.1,
       "verbosity": 1
     }
   ],

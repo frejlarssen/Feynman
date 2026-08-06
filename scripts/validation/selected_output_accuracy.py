@@ -403,6 +403,25 @@ def _compute_metrics(
     }
 
 
+def _build_summary_row(
+    *,
+    case_name: str,
+    run_result: dict[str, Any],
+    metrics: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "case_name": case_name,
+        "fraction": run_result["fraction"],
+        "threshold": run_result["threshold"],
+        "wall_time_s": run_result["wall_time_s"],
+        "internal_runtime_s": run_result["internal_runtime_s"],
+        **metrics,
+        "output_file": str(run_result["output_file"]),
+        "stdout_log": str(run_result["dir"] / "stdout.log"),
+        "stderr_log": str(run_result["dir"] / "stderr.log"),
+    }
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
@@ -599,6 +618,19 @@ def main(argv: list[str] | None = None) -> int:
 
     case_vectors: dict[str, np.ndarray] = {}
     case_rows: list[dict[str, Any]] = []
+    reference_metrics = _compute_metrics(
+        subset_indices=subset_indices,
+        reference_vec=reference_vec,
+        approx_vec=reference_vec,
+        nonzero_eps=float(cfg["nonzero_eps"]),
+    )
+    case_rows.append(
+        _build_summary_row(
+            case_name=reference_run["name"],
+            run_result=reference_run,
+            metrics=reference_metrics,
+        )
+    )
     for case in cfg["cases"]:
         case_run = _run_case(
             repo_root=repo_root,
@@ -621,17 +653,11 @@ def main(argv: list[str] | None = None) -> int:
             nonzero_eps=float(cfg["nonzero_eps"]),
         )
         case_rows.append(
-            {
-                "case_name": case["name"],
-                "fraction": case_run["fraction"],
-                "threshold": case_run["threshold"],
-                "wall_time_s": case_run["wall_time_s"],
-                "internal_runtime_s": case_run["internal_runtime_s"],
-                **metrics,
-                "output_file": str(case_run["output_file"]),
-                "stdout_log": str(case_run["dir"] / "stdout.log"),
-                "stderr_log": str(case_run["dir"] / "stderr.log"),
-            }
+            _build_summary_row(
+                case_name=case["name"],
+                run_result=case_run,
+                metrics=metrics,
+            )
         )
 
     reference_csv = run_dir / "reference_outputs.csv"
