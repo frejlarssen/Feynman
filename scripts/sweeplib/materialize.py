@@ -30,6 +30,7 @@ from generators.circuits.quantum_walk_generator import (
 )
 from generators.hexstrings.hexstring_set_generator import (
     DEFAULT_OUTPUT_DIR as HEXSTR_DEFAULT_OUTPUT_DIR,
+    write_explicit_values,
     write_random_uniform,
     write_one_interval,
     write_two_intervals,
@@ -109,6 +110,17 @@ def _build_interval(interval_spec: Any, label: str) -> list[int]:
     else:
         raise ValueError(f"{label} must be an object or an array of integers.")
 
+    if not values:
+        raise ValueError(f"{label} must not be empty.")
+    if min(values) < 0:
+        raise ValueError(f"{label} contains negative values.")
+    return values
+
+
+def _build_values(values_spec: Any, label: str) -> list[int]:
+    if not isinstance(values_spec, list):
+        raise ValueError(f"{label} must be an array of integers or integer-like strings.")
+    values = [int(v, 0) if isinstance(v, str) else int(v) for v in values_spec]
     if not values:
         raise ValueError(f"{label} must not be empty.")
     if min(values) < 0:
@@ -396,6 +408,17 @@ def resolve_output_bitstrings_input(
             "size": size,
             "count": count,
             "seed": seed,
+            "output_dir": str(out_dir),
+        }
+
+    if generator in {"explicit", "values"}:
+        size = _require_int(output_cfg, "size", "output_bitstrings")
+        values = _build_values(output_cfg.get("values"), "output_bitstrings.values")
+        path = write_explicit_values(size=size, values=values, out_dir=out_dir).resolve()
+        return path, {
+            "generator": generator,
+            "size": size,
+            "count": len(values),
             "output_dir": str(out_dir),
         }
 

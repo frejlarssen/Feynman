@@ -133,6 +133,43 @@ def write_random_uniform(
     return out_path
 
 
+def write_explicit_values(
+    size: int,
+    values: list[int],
+    out_dir: Path,
+) -> Path:
+    if size <= 0:
+        raise ValueError("size must be > 0")
+    if not values:
+        raise ValueError("values must be non-empty")
+
+    max_states = 1 << (size * 8)
+    if min(values) < 0:
+        raise ValueError("values must be >= 0")
+    if max(values) >= max_states:
+        raise ValueError(
+            f"explicit value 0x{max(values):X} exceeds the {max_states} distinct values "
+            f"available for size={size} byte(s)."
+        )
+
+    nr_hexstrings = len(values)
+    nr_nibbles = size * 2
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if nr_hexstrings == 1:
+        filename = f"explicithex1_size{size}_0x{values[0]:0{nr_nibbles}X}.hs"
+    else:
+        filename = f"explicithex{nr_hexstrings}_size{size}.hs"
+    out_path = out_dir / filename
+    with out_path.open("w", encoding="utf-8") as f:
+        f.write(f"{nr_hexstrings}\n")
+        f.write(f"{size}\n")
+        for value in values:
+            f.write(f"0x{value:0{nr_nibbles}X}\n")
+
+    return out_path
+
+
 def bulk_generate(out_dir: Path) -> list[Path]:
     created: list[Path] = []
 
@@ -173,7 +210,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--generator",
-        choices=["one_interval", "two_intervals", "random_uniform"],
+        choices=["one_interval", "two_intervals", "random_uniform", "explicit"],
         default="one_interval",
         help="Generator to use with --single.",
     )
@@ -198,6 +235,11 @@ def parse_args() -> argparse.Namespace:
         "--interval2",
         type=str,
         help="Comma-separated values for two_intervals interval2.",
+    )
+    parser.add_argument(
+        "--values",
+        type=str,
+        help="Comma-separated explicit values for --generator explicit.",
     )
     return parser.parse_args()
 
@@ -247,6 +289,15 @@ def main() -> None:
                     size=args.size,
                     nr_hexstrings=args.count,
                     seed=args.seed,
+                    out_dir=args.output_dir,
+                )
+            )
+            return
+        if args.generator == "explicit":
+            print(
+                write_explicit_values(
+                    size=args.size,
+                    values=_parse_interval_arg(args.values, "--values"),
                     out_dir=args.output_dir,
                 )
             )
