@@ -1,0 +1,110 @@
+{
+  "experiment_name": "google_rqc_selected_accuracy",
+  "repo_root": ".",
+  "output_root": "data/outputs/validation",
+  "binary": "build-cloud/cloud_task.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 4,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "size": 1,
+    "count": 64,
+    "seed": 11
+  },
+  "reference": {
+    "name": "exact_reference",
+    "fraction": 1.0,
+    "threshold": 0.0,
+    "verbosity": 1
+  },
+  "cases": [
+    {
+      "name": "threshold_1e-1",
+      "fraction": 1.0,
+      "threshold": 0.1,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-3",
+      "fraction": 1.0,
+      "threshold": 0.001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-5",
+      "fraction": 1.0,
+      "threshold": 0.00001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-8",
+      "fraction": 1.0,
+      "threshold": 0.00000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-11",
+      "fraction": 1.0,
+      "threshold": 0.00000000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-14",
+      "fraction": 1.0,
+      "threshold": 0.00000000000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-17",
+      "fraction": 1.0,
+      "threshold": 0.00000000000000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-20",
+      "fraction": 1.0,
+      "threshold": 0.00000000000000000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-21",
+      "fraction": 1.0,
+      "threshold": 0.000000000000000000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-22",
+      "fraction": 1.0,
+      "threshold": 0.0000000000000000000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-23",
+      "fraction": 1.0,
+      "threshold": 0.00000000000000000000001,
+      "verbosity": 1
+    },
+    {
+      "name": "threshold_1e-26",
+      "fraction": 1.0,
+      "threshold": 0.00000000000000000000000001,
+      "verbosity": 1
+    }
+  ],
+  "nonzero_eps": 1e-26
+}
