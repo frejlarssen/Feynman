@@ -29,6 +29,11 @@ def _num_qubits(rows: int, cols: int) -> int:
     return rows * cols
 
 
+def _padded_num_qubits(rows: int, cols: int) -> int:
+    num_qubits = _num_qubits(rows, cols)
+    return ((num_qubits + 7) // 8) * 8
+
+
 def _append_gate(lines: list[str], name: str, qubit: int) -> None:
     lines.append(f"{name} q[{qubit}];")
 
@@ -166,11 +171,6 @@ def generate_google_rqc(
     if rows <= 0 or cols <= 0 or cycles <= 0:
         raise ValueError("rows, cols, and cycles must all be > 0.")
     num_qubits = _num_qubits(rows, cols)
-    if num_qubits % 8 != 0:
-        raise ValueError(
-            "Google-style RQC generator requires rows * cols to be a multiple of 8 "
-            "for compatibility with this repo's byte-aligned simulator I/O."
-        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
