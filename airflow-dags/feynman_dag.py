@@ -10,6 +10,8 @@ from airflow.sdk import dag, get_current_context, task
 
 KUBECONFIG = os.environ.get("KUBECONFIG", "/home/frej/.kube/config")
 DATA_MOUNT_PATH = "/data"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DATA_HOST_ROOT = REPO_ROOT / "data"
 DATA_PVC_NAME = "feynman-data-pvc"
 SPLIT_IMAGE = "feynman-split:latest"
 SIMULATE_IMAGE = "feynman-simulate:latest"
@@ -83,6 +85,16 @@ def _resolved_benchmark_case_from_context() -> dict[str, str]:
     if not case.get("merged_output_file"):
         case["merged_output_file"] = f"{case['run_output_dir']}/{experiment_name}_all_batches.hsv"
     return case
+
+
+def _mount_path_to_host_path(path_like: str) -> Path:
+    path = Path(path_like)
+    mount_root = Path(DATA_MOUNT_PATH)
+    try:
+        relative = path.relative_to(mount_root)
+    except ValueError:
+        return path
+    return DATA_HOST_ROOT / relative
 
 DATA_VOLUME_MOUNT = k8s.V1VolumeMount(
     name="feynman-data",
@@ -223,7 +235,7 @@ def feynman():
 
     @task()
     def postprocessing() -> bool:
-        merged_simulator_output_file = Path(
+        merged_simulator_output_file = _mount_path_to_host_path(
             _resolved_benchmark_case_from_context()["merged_output_file"]
         )
         if not merged_simulator_output_file.exists():
