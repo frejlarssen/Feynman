@@ -10,8 +10,6 @@ from airflow.sdk import dag, get_current_context, task
 
 KUBECONFIG = os.environ.get("KUBECONFIG", "/home/frej/.kube/config")
 DATA_MOUNT_PATH = "/data"
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DATA_HOST_ROOT = REPO_ROOT / "data"
 DATA_PVC_NAME = "feynman-data-pvc"
 SPLIT_IMAGE = "feynman-split:latest"
 SIMULATE_IMAGE = "feynman-simulate:latest"
@@ -62,6 +60,34 @@ MERGED_OUTPUT_FILE_TEMPLATE = (
 )
 
 
+def _resolve_repo_root() -> Path:
+    candidates: list[Path] = []
+
+    repo_root_env = os.environ.get("FEYNMAN_REPO_ROOT", "").strip()
+    if repo_root_env:
+        candidates.append(Path(repo_root_env).expanduser().resolve())
+
+    candidates.append(Path(__file__).resolve().parents[1])
+    candidates.append(Path.home() / "projects" / "feynman" / "Feynman")
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if (resolved / "data").exists() and (resolved / "scripts").exists():
+            return resolved
+
+    raise FileNotFoundError(
+        "Could not resolve the Feynman repo root. Set FEYNMAN_REPO_ROOT to the repo path."
+    )
+
+
+REPO_ROOT = _resolve_repo_root()
+DATA_HOST_ROOT = REPO_ROOT / "data"
+
+
 def _resolved_benchmark_case_from_context() -> dict[str, str]:
     context = get_current_context()
     dag_run = context["dag_run"]
@@ -85,6 +111,22 @@ def _resolved_benchmark_case_from_context() -> dict[str, str]:
     if not case.get("merged_output_file"):
         case["merged_output_file"] = f"{case['run_output_dir']}/{experiment_name}_all_batches.hsv"
     return case
+
+
+def _resolved_simulate_params_from_context() -> dict[str, str]:
+    context = get_current_context()
+    dag_run = context["dag_run"]
+    conf = dag_run.conf or {}
+    fraction = float(conf.get("fraction", 1.0))
+    threshold = float(conf.get("threshold", 0.0))
+    if fraction <= 0.0 or fraction > 1.0:
+        raise ValueError(f"dag_run.conf.fraction must satisfy 0 < fraction <= 1, got {fraction}")
+    if threshold < 0.0:
+        raise ValueError(f"dag_run.conf.threshold must be >= 0, got {threshold}")
+    return {
+        "fraction": str(fraction),
+        "threshold": str(threshold),
+    }
 
 
 def _mount_path_to_host_path(path_like: str) -> Path:
@@ -136,6 +178,7 @@ def feynman():
     @task()
     def build_batch_arguments(num_batches: int) -> list[list[str]]:
         benchmark_case = _resolved_benchmark_case_from_context()
+        simulate_params = _resolved_simulate_params_from_context()
         batch_arguments = []
 
         for batch_id in range(num_batches):
@@ -154,9 +197,9 @@ def feynman():
                     "-o",
                     simulator_output_file,
                     "-f",
-                    SIMULATE_FRACTION_TEMPLATE,
+                    simulate_params["fraction"],
                     "-t",
-                    SIMULATE_THRESHOLD_TEMPLATE,
+                    simulate_params["threshold"],
                     "-v",
                     "1",
                 ]
