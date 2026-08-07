@@ -23,8 +23,9 @@
   "output_bitstrings": {
     "generator": "random_uniform",
     "size": 1,
-    "count": 64,
-    "seed": 11
+    "count": 256,
+    "seed": 11,
+    "n_qubits": 8
   },
   "reference": {
     "name": "exact_reference",
