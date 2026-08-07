@@ -185,6 +185,32 @@ seed pairs. In `summary.csv`, `fidelity_to_reference` remains the primary
 one-number score; for cross-seeded cases it is the selected-population
 Bhattacharyya fidelity rather than amplitude-overlap fidelity.
 
+Google-RQC scaling ladder configs are available for fixed `m=1` at:
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c5_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c6_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c7_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c8_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
+These keep a fixed `1024`-bitstring probe set and compare cross-seeded
+fractions `0.5`, `0.25`, and `0.10` against one exact selected-output
+reference at each size. They are meant as a calibration ladder: stop when the
+exact reference becomes too slow, then carry the last acceptable fraction into
+larger benchmark-only runs.
+
 ### QWalk vs quimb
 
 ```bash
