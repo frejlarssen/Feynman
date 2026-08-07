@@ -16,7 +16,7 @@
 
 struct InputBitstrings {
   vector<bool> index;      // basis-state index
-  std::complex<float> amp; // amplitude
+  TypeAmp amp; // amplitude
 };
 
 static inline string input_bitstring_to_string(const InputBitstrings &ib) {

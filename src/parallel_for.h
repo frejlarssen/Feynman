@@ -52,16 +52,16 @@ inline void parallel_for(size_t start, size_t end, F &&func) {
 
 // sum complex values across all indices
 template <typename F>
-inline std::complex<float> parallel_reduce(size_t start, size_t end, F &&func) {
+inline TypeAmp parallel_reduce(size_t start, size_t end, F &&func) {
 #ifdef USE_OPENMP
-  float re = 0.0f, im = 0.0f;
+  TypeAmpReal re = 0.0, im = 0.0;
 #pragma omp parallel for reduction(+ : re, im)
   for (size_t i = start; i < end; ++i) {
     auto v = func(i);
     re += v.real();
     im += v.imag();
   }
-  std::complex<float> result(re, im);
+  TypeAmp result(re, im);
   return result;
 
 #elif defined(USE_THREADS)
@@ -71,13 +71,13 @@ inline std::complex<float> parallel_reduce(size_t start, size_t end, F &&func) {
 
   size_t chunk_size = (end - start + num_threads - 1) / num_threads;
   vector<thread> threads;
-  vector<complex<float>> partial(num_threads, {0.0f, 0.0f});
+  vector<TypeAmp> partial(num_threads, {0.0, 0.0});
 
   for (unsigned int t = 0; t < num_threads; ++t) {
     threads.emplace_back([=, &func, &partial]() {
       size_t chunk_start = start + t * chunk_size;
       size_t chunk_end = min(chunk_start + chunk_size, end);
-      complex<float> local(0.0f, 0.0f);
+      TypeAmp local(0.0, 0.0);
       for (size_t i = chunk_start; i < chunk_end; ++i)
         local += func(i);
       partial[t] = local;
@@ -86,18 +86,18 @@ inline std::complex<float> parallel_reduce(size_t start, size_t end, F &&func) {
   for (auto &th : threads)
     th.join();
 
-  std::complex<float> total(0.0f, 0.0f);
+  TypeAmp total(0.0, 0.0);
   for (auto &val : partial)
     total += val;
   return total;
 #else
-  float re = 0.0f, im = 0.0f;
+  TypeAmpReal re = 0.0, im = 0.0;
   for (size_t i = start; i < end; ++i) {
     auto v = func(i);
     re += v.real();
     im += v.imag();
   }
-  std::complex<float> result(re, im);
+  TypeAmp result(re, im);
   return result;
 #endif
 }

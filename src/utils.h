@@ -187,16 +187,17 @@ const vector<bool> bit_array_from_int(TypeLongInt value, int n) {
   return bits;
 }
 
-const complex<float> string_to_complex(const string &s) {
+const TypeAmp string_to_complex(const string &s) {
   size_t plus_pos = s.find('+', 1); // start at 1 to avoid leading +
   size_t i_pos = s.find('i', 1);
   if (plus_pos == string::npos || i_pos == string::npos) {
     cerr << "Invalid complex string: " << s << '\n';
     exit(1);
   }
-  float real_part = std::stof(s.substr(0, plus_pos));
-  float imag_part = std::stof(s.substr(plus_pos + 1, i_pos - plus_pos - 1));
-  return complex<float>(real_part, imag_part);
+  TypeAmpReal real_part = std::stod(s.substr(0, plus_pos));
+  TypeAmpReal imag_part =
+      std::stod(s.substr(plus_pos + 1, i_pos - plus_pos - 1));
+  return TypeAmp(real_part, imag_part);
 }
 
 template <typename Tdata> string int128_to_string(Tdata value) {

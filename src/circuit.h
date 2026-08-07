@@ -1,5 +1,6 @@
 #include "parsed_circuit.h"
 #include "typedef.h"
+#include "utils.h"
 #include <algorithm>
 #include <chrono>
 #include <climits>

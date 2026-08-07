@@ -23,8 +23,8 @@ struct Options {
   int num_chunk1 = -1;
   int num_chunk2 = -1;
   std::size_t batch_size = 32;
-  float fraction = 1.0;
-  float threshold = CLOSE_TO_ZERO;
+  TypeAmpReal fraction = 1.0;
+  TypeAmpReal threshold = CLOSE_TO_ZERO;
   int verbosity = 1;
   bool dense = false;
 };
@@ -48,8 +48,8 @@ Options get_options(int argc, char *argv[]) {
     return std::atoi(word.c_str());
   };
 
-  auto to_float = [](const std::string &word) -> float {
-    return float(std::atof(word.c_str()));
+  auto to_real = [](const std::string &word) -> TypeAmpReal {
+    return std::atof(word.c_str());
   };
 
   for (int i = 0; i < argc; i++) {
@@ -81,10 +81,10 @@ Options get_options(int argc, char *argv[]) {
       opts.batch_size = to_int(optarg);
       break;
     case 'f':
-      opts.fraction = to_float(optarg);
+      opts.fraction = to_real(optarg);
       break;
     case 't':
-      opts.threshold = to_float(optarg);
+      opts.threshold = to_real(optarg);
       break;
     case 'v':
       opts.verbosity = to_int(optarg);
@@ -250,13 +250,13 @@ void run(Options &opts, const int world_rank, const int world_size,
       auto start_simulate_bitstring = get_time();
       ++count_processed_bitstrings;
 
-      std::complex<float> output_amp(0, 0);
+      TypeAmp output_amp(0.0, 0.0);
 
       // Loop through the input bitstrings specified in input file
       for (const auto &input : input_bitstrings) {
         std::vector<bool> input_bits = input.index;
 
-        std::complex<float> amp_in = input.amp;
+        TypeAmp amp_in = input.amp;
 
         auto start_simulate = get_time();
         output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction,

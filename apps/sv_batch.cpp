@@ -10,6 +10,10 @@
 #include "../src/utils.h"
 #include <iostream>
 
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
+
 #define CLOSE_TO_ZERO 1e-8
 
 using namespace std;
@@ -20,8 +24,8 @@ struct Options {
   string output_statevector_file;
   int num_chunk1 = -1;
   int num_chunk2 = -1;
-  float fraction = 1.0;
-  float threshold = CLOSE_TO_ZERO;
+  TypeAmpReal fraction = 1.0;
+  TypeAmpReal threshold = CLOSE_TO_ZERO;
   int verbosity = 1;
   bool dense = false;
 };
@@ -45,7 +49,7 @@ Options get_options(int argc, char *argv[]) {
     return std::atoi(word.c_str());
   };
 
-  auto to_float = [](const std::string &word) -> float {
+  auto to_real = [](const std::string &word) -> TypeAmpReal {
     return std::atof(word.c_str());
   };
 
@@ -72,10 +76,10 @@ Options get_options(int argc, char *argv[]) {
       opts.num_chunk1 = to_int(optarg);
       break;
     case 'f':
-      opts.fraction = to_float(optarg);
+      opts.fraction = to_real(optarg);
       break;
     case 't':
-      opts.threshold = to_float(optarg);
+      opts.threshold = to_real(optarg);
       break;
     case 'v':
       opts.verbosity = to_int(optarg);
@@ -194,7 +198,7 @@ int main(int argc, char *argv[]) {
        output_int += num_workers) {
 
     vector<bool> output_bits = bit_array_from_int(output_int, Circuit::n);
-    complex<float> output_amp(0, 0);
+    TypeAmp output_amp(0.0, 0.0);
 
     ifstream in_file(opts.input_statevector_file);
 
@@ -205,7 +209,7 @@ int main(int argc, char *argv[]) {
       vector<bool> input_bits;
 
       // Parse input bitstring and amplitude
-      complex<float> amp_in;
+      TypeAmp amp_in;
       if (opts.dense) {
         input_bits = bit_array_from_int(input_int++, Circuit::n);
         amp_in = string_to_complex(in_line);

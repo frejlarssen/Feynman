@@ -95,9 +95,9 @@ inline unsigned int history_sampling_seed() {
   return seed;
 }
 
-complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
-                                  float threshold2 = 0.0f) {
-  complex<float> contribution = 1.0;
+TypeAmp chunk_contribution(const Chunk &chunk, TypeLongInt thread,
+                           TypeAmpReal threshold2 = 0.0) {
+  TypeAmp contribution(1.0, 0.0);
   for (const shared_ptr<Gate> &gateptr : chunk.gates) {
     Gate &gate = *gateptr;
     const auto &qubits_vector = gate.qubits;
@@ -136,9 +136,9 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
         gate.qubits.at(num_ctrl)->wire_left->get_val(thread);
     const auto wire_right_value =
         gate.qubits.at(num_ctrl)->wire_right->get_val(thread);
-    const float inv_over_sqrt2 = 1.0f / sqrt(2.0f);
-    const auto exp_i = [](float theta) {
-      return std::exp(complex<float>(0.0f, theta));
+    const TypeAmpReal inv_over_sqrt2 = 1.0 / sqrt(2.0);
+    const auto exp_i = [](TypeAmpReal theta) {
+      return std::exp(TypeAmp(0.0, theta));
     };
     // Activate gate
     switch (gate.type) {
@@ -159,41 +159,41 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
           gate.qubits.at(num_ctrl + 1)->wire_left->get_val(thread);
       const auto wire_right_value_2 =
           gate.qubits.at(num_ctrl + 1)->wire_right->get_val(thread);
-      const float theta = gate.params.at(0);
-      const float phi = gate.params.at(1);
+      const TypeAmpReal theta = gate.params.at(0);
+      const TypeAmpReal phi = gate.params.at(1);
       const uint8_t in_state =
           (static_cast<uint8_t>(wire_left_value) << 1) |
           static_cast<uint8_t>(wire_left_value_2);
       const uint8_t out_state =
           (static_cast<uint8_t>(wire_right_value) << 1) |
           static_cast<uint8_t>(wire_right_value_2);
-      const float cos_theta = std::cos(theta);
-      const float sin_theta = std::sin(theta);
+      const TypeAmpReal cos_theta = std::cos(theta);
+      const TypeAmpReal sin_theta = std::sin(theta);
 
       if (in_state == 0 && out_state == 0) {
-        contribution *= 1.0f;
+        contribution *= 1.0;
       } else if (in_state == 1 && out_state == 1) {
         contribution *= cos_theta;
       } else if (in_state == 2 && out_state == 2) {
         contribution *= cos_theta;
       } else if ((in_state == 1 && out_state == 2) ||
                  (in_state == 2 && out_state == 1)) {
-        contribution *= complex<float>(0.0f, -sin_theta);
+        contribution *= TypeAmp(0.0, -sin_theta);
       } else if (in_state == 3 && out_state == 3) {
         contribution *= exp_i(-phi);
       } else {
-        contribution = 0.0f;
+        contribution = 0.0;
       }
       break;
     }
     case T:
       if (wire_left_value) {
-        contribution *= exp_i(static_cast<float>(PI) / 4.0f);
+        contribution *= exp_i(static_cast<TypeAmpReal>(PI) / 4.0);
       }
       break;
     case TDG:
       if (wire_left_value) {
-        contribution *= exp_i(-static_cast<float>(PI) / 4.0f);
+        contribution *= exp_i(-static_cast<TypeAmpReal>(PI) / 4.0);
       }
       break;
     case PAULIZ:
@@ -202,20 +202,20 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
       }
       break;
     case RX: {
-      const float theta = gate.params.at(0);
-      const float cos_half = std::cos(theta * 0.5f);
-      const float sin_half = std::sin(theta * 0.5f);
+      const TypeAmpReal theta = gate.params.at(0);
+      const TypeAmpReal cos_half = std::cos(theta * 0.5);
+      const TypeAmpReal sin_half = std::sin(theta * 0.5);
       if (wire_left_value == wire_right_value) {
         contribution *= cos_half;
       } else {
-        contribution *= complex<float>(0.0f, -sin_half); // -i sin(theta/2)
+        contribution *= TypeAmp(0.0, -sin_half); // -i sin(theta/2)
       }
       break;
     }
     case RY: {
-      const float theta = gate.params.at(0);
-      const float cos_half = std::cos(theta * 0.5f);
-      const float sin_half = std::sin(theta * 0.5f);
+      const TypeAmpReal theta = gate.params.at(0);
+      const TypeAmpReal cos_half = std::cos(theta * 0.5);
+      const TypeAmpReal sin_half = std::sin(theta * 0.5);
       if (wire_left_value == wire_right_value) {
         contribution *= cos_half;
       } else if (!wire_left_value && wire_right_value) {
@@ -226,8 +226,8 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
       break;
     }
     case U2: {
-      const float phi = gate.params.at(0);
-      const float lambda = gate.params.at(1);
+      const TypeAmpReal phi = gate.params.at(0);
+      const TypeAmpReal lambda = gate.params.at(1);
       if (!wire_left_value && !wire_right_value) {
         contribution *= inv_over_sqrt2;
       } else if (wire_left_value && !wire_right_value) {
@@ -240,11 +240,11 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
       break;
     }
     case U3: {
-      const float theta = gate.params.at(0);
-      const float phi = gate.params.at(1);
-      const float lambda = gate.params.at(2);
-      const float cos_half = std::cos(theta * 0.5f);
-      const float sin_half = std::sin(theta * 0.5f);
+      const TypeAmpReal theta = gate.params.at(0);
+      const TypeAmpReal phi = gate.params.at(1);
+      const TypeAmpReal lambda = gate.params.at(2);
+      const TypeAmpReal cos_half = std::cos(theta * 0.5);
+      const TypeAmpReal sin_half = std::sin(theta * 0.5);
       if (!wire_left_value && !wire_right_value) {
         contribution *= cos_half;
       } else if (wire_left_value && !wire_right_value) {
@@ -267,16 +267,16 @@ complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
     // Each gate contributes a single matrix element whose magnitude is at most
     // 1. Once the running product falls below threshold, the rest of the chunk
     // cannot bring it back above threshold.
-    if (threshold2 > 0.0f && std::norm(contribution) < threshold2) {
-      return 0.0f;
+    if (threshold2 > 0.0 && std::norm(contribution) < threshold2) {
+      return TypeAmp(0.0, 0.0);
     }
   }
   return contribution;
 }
 
-complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
-                        complex<float> input_amp, float fraction,
-                        float threshold = 0.0, int verbosity = 1) {
+TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
+                 TypeAmp input_amp, TypeAmpReal fraction,
+                 TypeAmpReal threshold = 0.0, int verbosity = 1) {
   Circuit::validate_chunk_history_capacity("Simulation");
 
   // Debugging that should be printed only by one rank.
@@ -289,7 +289,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
 
   for (const std::shared_ptr<InternalWire> &w : Circuit::input_sources) {
     if (!w->set_safe_all(1, input_bits.at(w->wire))) {
-      return false;
+      return TypeAmp(0.0, 0.0);
     }
   }
 
@@ -303,7 +303,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
 #endif
   // Propagate the determinism from the output.
   if (!chunk2.right_to_left_natural_all(t_omp)) {
-    return 0.0;
+    return TypeAmp(0.0, 0.0);
   }
 
   TypeLongInt num_histories_c2 =
@@ -314,7 +314,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
 
   vector<TypeLongInt> par_histories(num_par_histories);
 
-  vector<complex<float>> amplitudes(num_par_histories);
+  vector<TypeAmp> amplitudes(num_par_histories);
 
   std::srand(history_sampling_seed());
 
@@ -322,9 +322,9 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
       sample_histories_without_replacement(num_histories_c2, num_par_histories);
 
   // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
-  const float threshold2 = threshold * threshold;
+  const TypeAmpReal threshold2 = threshold * threshold;
   parallel_for(0, num_par_histories, [&](TypeLongInt history2_ind, int t_idx) {
-    std::complex<float> local_sum(0, 0);
+    TypeAmp local_sum(0, 0);
 
     const int thread_ind = t_idx;
     const TypeLongInt history2 =
@@ -339,16 +339,16 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
     if (!chunk2.right_to_left_vals(history2, thread_ind)) {
       // Input, output and artificial not compatible with deterministic gates.
       // The history is rejected.
-      amplitudes[history2_ind] = std::complex<float>{0.f, 0.f};
+      amplitudes[history2_ind] = TypeAmp{0.0, 0.0};
       return;
     }
 
-    complex<float> contribution2 =
+    TypeAmp contribution2 =
         input_amp * chunk_contribution(chunk2, thread_ind, threshold2);
 
     // Check if amplitude so far is small enough to neglect.
     if (std::norm(contribution2) < threshold2) {
-      amplitudes[history2_ind] = std::complex<float>{0.f, 0.f};
+      amplitudes[history2_ind] = TypeAmp{0.0, 0.0};
       return;
     }
 
@@ -376,7 +376,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
         continue;
       }
 
-      const std::complex<float> contribution1 =
+      const TypeAmp contribution1 =
           contribution2 * chunk_contribution(chunk1, thread_ind, threshold2);
       if (std::norm(contribution1) < threshold2)
         continue;
@@ -402,7 +402,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
         // printf("    contribution1: %f + i%f\n", contribution1.real(),
         // contribution1.imag());
 
-        complex<float> contribution0 =
+        TypeAmp contribution0 =
             contribution1 * chunk_contribution(chunk0, thread_ind, threshold2);
 
         // std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n",
@@ -426,8 +426,8 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
   auto total_amplitude = parallel_reduce(
       0, num_par_histories, [&](size_t i) { return amplitudes[i]; });
 
-  complex<float> retval =
-      total_amplitude * (float)num_histories_c2 / (float)num_par_histories;
+  TypeAmp retval = total_amplitude * static_cast<TypeAmpReal>(num_histories_c2) /
+                   static_cast<TypeAmpReal>(num_par_histories);
 
   // cout << "  Simulator returning amplitude: " << retval.real() << " + i" <<
   // retval.imag() << '\n';
