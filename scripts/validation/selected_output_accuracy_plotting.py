@@ -34,13 +34,24 @@ def _load_summary_rows(summary_csv: Path) -> list[dict[str, str]]:
 def _load_run_title(summary_csv: Path) -> str:
     summary_json = summary_csv.parent / "summary.json"
     if not summary_json.exists():
-        return summary_csv.parent.name
+        return "Selected-output Google-RQC validation"
     try:
         payload = json.loads(summary_json.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return summary_csv.parent.name
-    experiment_name = payload.get("experiment_name")
-    return str(experiment_name) if isinstance(experiment_name, str) and experiment_name else summary_csv.parent.name
+        return "Selected-output Google-RQC validation"
+
+    config = payload.get("config", {})
+    if isinstance(config, dict):
+        circuit_spec = config.get("circuit")
+        if isinstance(circuit_spec, dict):
+            generator = str(circuit_spec.get("generator", "")).lower()
+            rows = circuit_spec.get("rows")
+            cols = circuit_spec.get("cols")
+            cycles = circuit_spec.get("cycles")
+            if generator == "google_rqc" and rows is not None and cols is not None and cycles is not None:
+                return f"Google-RQC selected-output tradeoff ({rows}x{cols}, m={cycles})"
+
+    return "Selected-output Google-RQC validation"
 
 
 def _comparison_grouped_by_case(
@@ -122,6 +133,16 @@ def load_fraction_tradeoff_rows(
 
 def default_output(summary_csv: Path) -> Path:
     return summary_csv.parent / "fraction_tradeoff.pdf"
+
+
+def _format_fraction_tick(value: float, *, has_reference_one: bool) -> str:
+    if has_reference_one and abs(value - 1.0) < 1e-12:
+        return "1"
+    if has_reference_one and 0.98 <= value < 1.0:
+        return ""
+    if abs(value - round(value)) < 1e-12:
+        return str(int(round(value)))
+    return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
 def plot_fraction_tradeoff(
@@ -208,6 +229,10 @@ def plot_fraction_tradeoff(
 
     all_fractions = sorted({float(row["fraction"]) for row in rows})
     ax_fidelity.set_xticks(all_fractions)
+    has_reference_one = any(abs(value - 1.0) < 1e-12 for value in all_fractions)
+    ax_fidelity.set_xticklabels(
+        [_format_fraction_tick(value, has_reference_one=has_reference_one) for value in all_fractions]
+    )
     ax_fidelity.set_xlim(min(all_fractions) - 0.02, max(all_fractions) + 0.02)
 
     ax_time.set_title(plot_title)
