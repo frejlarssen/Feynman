@@ -395,6 +395,8 @@ def resolve_output_bitstrings_input(
         size = _require_int(output_cfg, "size", "output_bitstrings")
         count = int(output_cfg.get("count", output_cfg.get("nr_hexstrings", 0)))
         seed = int(output_cfg.get("seed", 0))
+        n_qubits_raw = output_cfg.get("n_qubits", output_cfg.get("active_qubits"))
+        n_qubits = None if n_qubits_raw is None else int(n_qubits_raw)
         if count <= 0:
             raise ValueError("output_bitstrings random_uniform requires count > 0.")
         path = write_random_uniform(
@@ -402,12 +404,14 @@ def resolve_output_bitstrings_input(
             nr_hexstrings=count,
             seed=seed,
             out_dir=out_dir,
+            n_qubits=n_qubits,
         ).resolve()
         return path, {
             "generator": generator,
             "size": size,
             "count": count,
             "seed": seed,
+            "n_qubits": n_qubits,
             "output_dir": str(out_dir),
         }
 

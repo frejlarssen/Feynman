@@ -105,24 +105,38 @@ def write_random_uniform(
     nr_hexstrings: int,
     seed: int,
     out_dir: Path,
+    n_qubits: int | None = None,
 ) -> Path:
     if size <= 0:
         raise ValueError("size must be > 0")
     if nr_hexstrings <= 0:
         raise ValueError("nr_hexstrings must be > 0")
 
-    max_states = 1 << (size * 8)
+    max_bits = size * 8
+    sample_bits = max_bits if n_qubits is None else n_qubits
+    if sample_bits <= 0:
+        raise ValueError("n_qubits must be > 0")
+    if sample_bits > max_bits:
+        raise ValueError(
+            f"n_qubits={sample_bits} exceeds the {max_bits} bit capacity "
+            f"available for size={size} byte(s)."
+        )
+
+    max_states = 1 << sample_bits
     if nr_hexstrings > max_states:
         raise ValueError(
             f"nr_hexstrings={nr_hexstrings} exceeds the {max_states} distinct values "
-            f"available for size={size} byte(s)."
+            f"available for n_qubits={sample_bits}."
         )
 
     nr_nibbles = size * 2
     out_dir.mkdir(parents=True, exist_ok=True)
     values = random.Random(seed).sample(range(max_states), nr_hexstrings)
 
-    filename = f"randhex{nr_hexstrings}_size{size}_seed{seed}.hs"
+    filename = f"randhex{nr_hexstrings}_size{size}_seed{seed}"
+    if n_qubits is not None:
+        filename += f"_nq{n_qubits}"
+    filename += ".hs"
     out_path = out_dir / filename
     with out_path.open("w", encoding="utf-8") as f:
         f.write(f"{nr_hexstrings}\n")
@@ -227,6 +241,11 @@ def parse_args() -> argparse.Namespace:
         help="Seed for --generator random_uniform.",
     )
     parser.add_argument(
+        "--n-qubits",
+        type=int,
+        help="Optional active-qubit width for --generator random_uniform; samples stay below 2^n_qubits while output remains byte-aligned by --size.",
+    )
+    parser.add_argument(
         "--interval1",
         type=str,
         help="Comma-separated values for two_intervals interval1.",
@@ -290,6 +309,7 @@ def main() -> None:
                     nr_hexstrings=args.count,
                     seed=args.seed,
                     out_dir=args.output_dir,
+                    n_qubits=args.n_qubits,
                 )
             )
             return
