@@ -78,6 +78,23 @@ sample_histories_without_replacement(TypeLongInt total_histories,
   return sampled_histories;
 }
 
+inline unsigned int history_sampling_seed() {
+  static const unsigned int seed = []() {
+    const char *env_value = std::getenv("FEYNMAN_HISTORY_SEED");
+    if (env_value == nullptr || *env_value == '\0') {
+      return 0u;
+    }
+
+    char *end_ptr = nullptr;
+    const unsigned long long parsed = std::strtoull(env_value, &end_ptr, 10);
+    if (end_ptr == env_value) {
+      return 0u;
+    }
+    return static_cast<unsigned int>(parsed);
+  }();
+  return seed;
+}
+
 complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
                                   float threshold2 = 0.0f) {
   complex<float> contribution = 1.0;
@@ -299,9 +316,7 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
 
   vector<complex<float>> amplitudes(num_par_histories);
 
-  // TODO: Random seed or fixed for reproducibility?
-  // srand(time({}));
-  srand(0);
+  std::srand(history_sampling_seed());
 
   par_histories =
       sample_histories_without_replacement(num_histories_c2, num_par_histories);

@@ -38,37 +38,49 @@
       "name": "fraction_0.99",
       "fraction": 0.99,
       "threshold": 0.0,
-      "verbosity": 1
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
     },
     {
       "name": "fraction_0.9",
       "fraction": 0.9,
       "threshold": 0.0,
-      "verbosity": 1
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
     },
     {
       "name": "fraction_0.75",
       "fraction": 0.75,
       "threshold": 0.0,
-      "verbosity": 1
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
     },
     {
       "name": "fraction_0.5",
       "fraction": 0.5,
       "threshold": 0.0,
-      "verbosity": 1
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
     },
     {
       "name": "fraction_0.25",
       "fraction": 0.25,
       "threshold": 0.0,
-      "verbosity": 1
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
     },
     {
       "name": "fraction_0.10",
       "fraction": 0.10,
       "threshold": 0.0,
-      "verbosity": 1
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
     }
   ],
   "nonzero_eps": 1e-26

@@ -76,6 +76,17 @@ def _normalize_run_case(
     batch_size_raw = raw_case.get("batch_size", defaults["batch_size"])
     batch_size = None if batch_size_raw is None else int(batch_size_raw)
     dense = bool(raw_case.get("dense", defaults["dense"]))
+    population_estimator = str(
+        raw_case.get("population_estimator", defaults["population_estimator"])
+    )
+    history_seed_raw = raw_case.get("history_seed", defaults["history_seed"])
+    history_seed = None if history_seed_raw is None else int(history_seed_raw)
+    history_seeds_raw = raw_case.get("history_seeds", defaults["history_seeds"])
+    history_seeds = None
+    if history_seeds_raw is not None:
+        if not isinstance(history_seeds_raw, list) or not history_seeds_raw:
+            raise ValueError(f"case {name!r}: history_seeds must be a non-empty array.")
+        history_seeds = [int(seed) for seed in history_seeds_raw]
 
     if fraction <= 0.0 or fraction > 1.0:
         raise ValueError(f"case {name!r}: fraction must satisfy 0 < fraction <= 1")
@@ -85,6 +96,31 @@ def _normalize_run_case(
         raise ValueError(f"case {name!r}: verbosity must be >= 0")
     if batch_size is not None and batch_size < 0:
         raise ValueError(f"case {name!r}: batch_size must be >= 0")
+    if population_estimator not in ("amplitude_square", "cross_seeded"):
+        raise ValueError(
+            f"case {name!r}: population_estimator must be one of "
+            "'amplitude_square', 'cross_seeded'"
+        )
+    if history_seed is not None and history_seeds is not None:
+        raise ValueError(f"case {name!r}: use either history_seed or history_seeds, not both.")
+
+    normalized_history_seeds: list[int] = []
+    if history_seed is not None:
+        normalized_history_seeds = [history_seed]
+    elif history_seeds is not None:
+        normalized_history_seeds = history_seeds
+
+    if population_estimator == "cross_seeded":
+        if not normalized_history_seeds:
+            normalized_history_seeds = [1, 2]
+        if len(normalized_history_seeds) < 2:
+            raise ValueError(
+                f"case {name!r}: cross_seeded requires at least two history seeds."
+            )
+    elif len(normalized_history_seeds) > 1:
+        raise ValueError(
+            f"case {name!r}: amplitude_square accepts at most one history seed."
+        )
 
     return {
         "name": name,
@@ -93,6 +129,9 @@ def _normalize_run_case(
         "verbosity": verbosity,
         "batch_size": batch_size,
         "dense": dense,
+        "population_estimator": population_estimator,
+        "history_seed": normalized_history_seeds[0] if normalized_history_seeds else None,
+        "history_seeds": normalized_history_seeds,
     }
 
 
@@ -107,6 +146,9 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "verbosity": int(_pick(cfg, "verbosity", args.verbosity, 1)),
         "batch_size": _pick(cfg, "batch_size", args.batch_size, None),
         "dense": bool(_pick(cfg, "dense", args.dense, False)),
+        "population_estimator": str(_pick(cfg, "population_estimator", None, "amplitude_square")),
+        "history_seed": _pick(cfg, "history_seed", None, None),
+        "history_seeds": _pick(cfg, "history_seeds", None, None),
     }
     if defaults["batch_size"] is not None:
         defaults["batch_size"] = int(defaults["batch_size"])
@@ -122,6 +164,8 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         defaults=reference_defaults,
         fallback_name="exact_reference",
     )
+    if reference["population_estimator"] != "amplitude_square":
+        raise ValueError("Reference run must use population_estimator='amplitude_square'.")
 
     cases_raw = cfg.get("cases")
     if not isinstance(cases_raw, list) or not cases_raw:
@@ -276,8 +320,11 @@ def _run_case(
     run_dir: Path,
 ) -> dict[str, Any]:
     case_dir = run_dir / "cases" / case["name"]
-    case_dir.mkdir(parents=True, exist_ok=False)
-    output_file = case_dir / "output.hsv"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    component_label = "output"
+    if case.get("history_seed") is not None:
+        component_label = f"seed_{int(case['history_seed'])}"
+    output_file = case_dir / f"{component_label}.hsv"
     cmd = _build_command(
         binary=binary,
         mpirun=mpirun,
@@ -294,6 +341,8 @@ def _run_case(
     )
     env = os.environ.copy()
     env.update({str(key): str(value) for key, value in feynman_env.items()})
+    if case.get("history_seed") is not None:
+        env["FEYNMAN_HISTORY_SEED"] = str(case["history_seed"])
 
     t0 = time.perf_counter()
     proc = subprocess.run(
@@ -306,18 +355,21 @@ def _run_case(
     )
     wall_time_s = float(time.perf_counter() - t0)
 
-    (case_dir / "stdout.log").write_text(proc.stdout, encoding="utf-8")
-    (case_dir / "stderr.log").write_text(proc.stderr, encoding="utf-8")
-    (case_dir / "command.txt").write_text(shlex.join(cmd) + "\n", encoding="utf-8")
+    stdout_log = case_dir / f"{component_label}.stdout.log"
+    stderr_log = case_dir / f"{component_label}.stderr.log"
+    command_log = case_dir / f"{component_label}.command.txt"
+    stdout_log.write_text(proc.stdout, encoding="utf-8")
+    stderr_log.write_text(proc.stderr, encoding="utf-8")
+    command_log.write_text(shlex.join(cmd) + "\n", encoding="utf-8")
     if proc.returncode != 0:
         raise RuntimeError(
             f"Run case {case['name']!r} failed with return code {proc.returncode}. "
-            f"See {case_dir / 'stderr.log'}"
+            f"See {stderr_log}"
         )
     if not output_file.exists():
         raise RuntimeError(
             f"Run case {case['name']!r} did not produce {output_file}. "
-            f"See {case_dir / 'stdout.log'} and {case_dir / 'stderr.log'}"
+            f"See {stdout_log} and {stderr_log}"
         )
 
     return {
@@ -329,6 +381,10 @@ def _run_case(
         "dense": bool(case["dense"]),
         "dir": case_dir,
         "output_file": output_file,
+        "stdout_log": stdout_log,
+        "stderr_log": stderr_log,
+        "command_log": command_log,
+        "history_seed": case.get("history_seed"),
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "wall_time_s": wall_time_s,
@@ -341,29 +397,44 @@ def _compute_metrics(
     *,
     subset_indices: list[int],
     reference_vec: np.ndarray,
-    approx_vec: np.ndarray,
+    approx_vec: np.ndarray | None,
+    approx_pop: np.ndarray,
     nonzero_eps: float,
 ) -> dict[str, Any]:
     ref_abs = np.abs(reference_vec)
-    cur_abs = np.abs(approx_vec)
     ref_pop = ref_abs**2
-    cur_pop = cur_abs**2
-    diff = approx_vec - reference_vec
-    abs_amp_err = np.abs(diff)
+    cur_pop = approx_pop
+    pop_nonzero_eps = nonzero_eps * nonzero_eps
     abs_pop_err = np.abs(cur_pop - ref_pop)
 
     ref_norm = float(np.vdot(reference_vec, reference_vec).real)
-    cur_norm = float(np.vdot(approx_vec, approx_vec).real)
-    l2_abs_error = float(np.linalg.norm(diff))
-    weighted_relative_l2_error = None if ref_norm <= 0.0 else float(l2_abs_error / np.sqrt(ref_norm))
+    approx_selected_mass = float(np.sum(cur_pop))
 
-    fidelity = None
-    if ref_norm > 0.0 and cur_norm > 0.0:
-        overlap = np.vdot(reference_vec, approx_vec)
-        fidelity = float((abs(overlap) ** 2) / (ref_norm * cur_norm))
+    cur_abs = None
+    abs_amp_err = None
+    cur_norm = None
+    l2_abs_error = None
+    weighted_relative_l2_error = None
+    amplitude_fidelity = None
+    mean_relative_abs_amp_error_on_reference_support = None
+    if approx_vec is not None:
+        cur_abs = np.abs(approx_vec)
+        diff = approx_vec - reference_vec
+        abs_amp_err = np.abs(diff)
+        cur_norm = float(np.vdot(approx_vec, approx_vec).real)
+        l2_abs_error = float(np.linalg.norm(diff))
+        weighted_relative_l2_error = (
+            None if ref_norm <= 0.0 else float(l2_abs_error / np.sqrt(ref_norm))
+        )
+        if ref_norm > 0.0 and cur_norm > 0.0:
+            overlap = np.vdot(reference_vec, approx_vec)
+            amplitude_fidelity = float((abs(overlap) ** 2) / (ref_norm * cur_norm))
 
     ref_mask = ref_abs > nonzero_eps
-    cur_mask = cur_abs > nonzero_eps
+    if cur_abs is not None:
+        cur_mask = cur_abs > nonzero_eps
+    else:
+        cur_mask = cur_pop > pop_nonzero_eps
     ref_nonzero_count = int(np.count_nonzero(ref_mask))
     cur_nonzero_count = int(np.count_nonzero(cur_mask))
     support_intersection = int(np.count_nonzero(ref_mask & cur_mask))
@@ -374,13 +445,24 @@ def _compute_metrics(
         None if cur_nonzero_count == 0 else float(support_intersection / cur_nonzero_count)
     )
 
-    rel_amp_err_nonzero = None
-    if ref_nonzero_count > 0:
-        rel_amp_err_nonzero = float(np.mean(abs_amp_err[ref_mask] / ref_abs[ref_mask]))
+    if abs_amp_err is not None and ref_nonzero_count > 0:
+        mean_relative_abs_amp_error_on_reference_support = float(
+            np.mean(abs_amp_err[ref_mask] / ref_abs[ref_mask])
+        )
 
     ref_selected_mass = float(np.sum(ref_pop))
-    approx_selected_mass = float(np.sum(cur_pop))
     mass_retention = None if ref_selected_mass <= 0.0 else float(approx_selected_mass / ref_selected_mass)
+    population_fidelity = None
+    if ref_selected_mass > 0.0 and approx_selected_mass > 0.0:
+        population_fidelity = float(
+            (np.sum(np.sqrt(np.clip(ref_pop, 0.0, None) * np.clip(cur_pop, 0.0, None))) ** 2)
+            / (ref_selected_mass * approx_selected_mass)
+        )
+
+    fidelity_metric = "amplitude_overlap" if amplitude_fidelity is not None else "selected_population_bhattacharyya"
+    fidelity_to_reference = (
+        amplitude_fidelity if amplitude_fidelity is not None else population_fidelity
+    )
 
     return {
         "subset_size": len(subset_indices),
@@ -392,14 +474,23 @@ def _compute_metrics(
         "reference_selected_mass": ref_selected_mass,
         "approx_selected_mass": approx_selected_mass,
         "mass_retention": mass_retention,
-        "fidelity_to_reference": fidelity,
+        "fidelity_metric": fidelity_metric,
+        "fidelity_to_reference": fidelity_to_reference,
+        "amplitude_fidelity_to_reference": amplitude_fidelity,
+        "selected_population_fidelity_to_reference": population_fidelity,
         "l2_abs_error": l2_abs_error,
         "weighted_relative_l2_error": weighted_relative_l2_error,
-        "max_abs_amp_error": float(np.max(abs_amp_err)) if abs_amp_err.size else 0.0,
-        "mean_abs_amp_error": float(np.mean(abs_amp_err)) if abs_amp_err.size else 0.0,
+        "max_abs_amp_error": (
+            float(np.max(abs_amp_err)) if abs_amp_err is not None and abs_amp_err.size else None
+        ),
+        "mean_abs_amp_error": (
+            float(np.mean(abs_amp_err)) if abs_amp_err is not None and abs_amp_err.size else None
+        ),
         "max_abs_population_error": float(np.max(abs_pop_err)) if abs_pop_err.size else 0.0,
         "mean_abs_population_error": float(np.mean(abs_pop_err)) if abs_pop_err.size else 0.0,
-        "mean_relative_abs_amp_error_on_reference_support": rel_amp_err_nonzero,
+        "mean_relative_abs_amp_error_on_reference_support": (
+            mean_relative_abs_amp_error_on_reference_support
+        ),
     }
 
 
@@ -413,12 +504,15 @@ def _build_summary_row(
         "case_name": case_name,
         "fraction": run_result["fraction"],
         "threshold": run_result["threshold"],
+        "population_estimator": run_result["population_estimator"],
+        "history_seeds": ",".join(str(seed) for seed in run_result["history_seeds"]),
+        "component_runs": len(run_result["component_runs"]),
         "wall_time_s": run_result["wall_time_s"],
         "internal_runtime_s": run_result["internal_runtime_s"],
         **metrics,
         "output_file": str(run_result["output_file"]),
-        "stdout_log": str(run_result["dir"] / "stdout.log"),
-        "stderr_log": str(run_result["dir"] / "stderr.log"),
+        "stdout_log": str(run_result["stdout_log"]),
+        "stderr_log": str(run_result["stderr_log"]),
     }
 
 
@@ -467,7 +561,7 @@ def _write_comparison_csv(
     subset_indices: list[int],
     size_bytes: int,
     reference_vec: np.ndarray,
-    case_vectors: dict[str, np.ndarray],
+    case_records: dict[str, dict[str, Any]],
     nonzero_eps: float,
 ) -> None:
     with path.open("w", newline="", encoding="utf-8") as fh:
@@ -475,6 +569,7 @@ def _write_comparison_csv(
         writer.writerow(
             [
                 "case_name",
+                "population_estimator",
                 "ordinal",
                 "bitstring_hex",
                 "reference_real",
@@ -492,31 +587,38 @@ def _write_comparison_csv(
         )
         ref_abs = np.abs(reference_vec)
         ref_pop = ref_abs**2
-        for case_name, case_vec in case_vectors.items():
-            cur_abs = np.abs(case_vec)
-            cur_pop = cur_abs**2
-            abs_amp_err = np.abs(case_vec - reference_vec)
+        pop_nonzero_eps = nonzero_eps * nonzero_eps
+        for case_name, case_record in case_records.items():
+            case_vec = case_record["approx_vec"]
+            cur_pop = case_record["approx_pop"]
+            cur_abs = None if case_vec is None else np.abs(case_vec)
+            abs_amp_err = None if case_vec is None else np.abs(case_vec - reference_vec)
             abs_pop_err = np.abs(cur_pop - ref_pop)
             for ordinal, idx in enumerate(subset_indices):
                 rel_err = ""
-                if ref_abs[ordinal] > nonzero_eps:
+                if abs_amp_err is not None and ref_abs[ordinal] > nonzero_eps:
                     rel_err = f"{float(abs_amp_err[ordinal] / ref_abs[ordinal]):.18e}"
                 writer.writerow(
                     [
                         case_name,
+                        case_record["population_estimator"],
                         ordinal,
                         f"0x{idx:0{size_bytes * 2}X}",
                         f"{reference_vec[ordinal].real:.18e}",
                         f"{reference_vec[ordinal].imag:.18e}",
                         f"{float(ref_pop[ordinal]):.18e}",
-                        f"{case_vec[ordinal].real:.18e}",
-                        f"{case_vec[ordinal].imag:.18e}",
+                        "" if case_vec is None else f"{case_vec[ordinal].real:.18e}",
+                        "" if case_vec is None else f"{case_vec[ordinal].imag:.18e}",
                         f"{float(cur_pop[ordinal]):.18e}",
-                        f"{float(abs_amp_err[ordinal]):.18e}",
+                        "" if abs_amp_err is None else f"{float(abs_amp_err[ordinal]):.18e}",
                         f"{float(abs_pop_err[ordinal]):.18e}",
                         rel_err,
                         int(ref_abs[ordinal] > nonzero_eps),
-                        int(cur_abs[ordinal] > nonzero_eps),
+                        int(
+                            (cur_abs[ordinal] > nonzero_eps)
+                            if cur_abs is not None
+                            else (cur_pop[ordinal] > pop_nonzero_eps)
+                        ),
                     ]
                 )
 
@@ -528,6 +630,9 @@ def _write_summary_csv(path: Path, case_rows: list[dict[str, Any]]) -> None:
         "case_name",
         "fraction",
         "threshold",
+        "population_estimator",
+        "history_seeds",
+        "component_runs",
         "wall_time_s",
         "internal_runtime_s",
         "subset_size",
@@ -539,7 +644,10 @@ def _write_summary_csv(path: Path, case_rows: list[dict[str, Any]]) -> None:
         "reference_selected_mass",
         "approx_selected_mass",
         "mass_retention",
+        "fidelity_metric",
         "fidelity_to_reference",
+        "amplitude_fidelity_to_reference",
+        "selected_population_fidelity_to_reference",
         "weighted_relative_l2_error",
         "l2_abs_error",
         "max_abs_amp_error",
@@ -556,6 +664,134 @@ def _write_summary_csv(path: Path, case_rows: list[dict[str, Any]]) -> None:
         writer.writeheader()
         for row in case_rows:
             writer.writerow({key: _jsonable(row.get(key, "")) for key in fieldnames})
+
+
+def _cross_seeded_population(component_vectors: list[np.ndarray]) -> np.ndarray:
+    if len(component_vectors) < 2:
+        raise ValueError("cross_seeded population estimator requires at least two amplitude vectors.")
+    accum = np.zeros(component_vectors[0].shape, dtype=np.float64)
+    pair_count = 0
+    for i in range(len(component_vectors)):
+        for j in range(i + 1, len(component_vectors)):
+            accum += np.real(component_vectors[i] * np.conjugate(component_vectors[j]))
+            pair_count += 1
+    if pair_count == 0:
+        raise ValueError("cross_seeded population estimator found zero seed pairs.")
+    return accum / float(pair_count)
+
+
+def _run_case_estimator(
+    *,
+    repo_root: Path,
+    binary: Path,
+    mpirun: str,
+    ranks: int,
+    circuit: Path,
+    input_statevector: Path,
+    output_bitstrings: Path,
+    feynman_env: dict[str, str],
+    case: dict[str, Any],
+    run_dir: Path,
+    subset_indices: list[int],
+    size_bytes: int,
+) -> dict[str, Any]:
+    estimator = str(case["population_estimator"])
+    history_seeds = list(case["history_seeds"])
+    component_runs: list[dict[str, Any]] = []
+
+    if estimator == "cross_seeded":
+        for history_seed in history_seeds:
+            component_case = dict(case)
+            component_case["history_seed"] = history_seed
+            component_case["history_seeds"] = [history_seed]
+            component_runs.append(
+                _run_case(
+                    repo_root=repo_root,
+                    binary=binary,
+                    mpirun=mpirun,
+                    ranks=ranks,
+                    circuit=circuit,
+                    input_statevector=input_statevector,
+                    output_bitstrings=output_bitstrings,
+                    feynman_env=feynman_env,
+                    case=component_case,
+                    run_dir=run_dir,
+                )
+            )
+        component_vectors = [
+            _ordered_vector(component_run["sparse"], subset_indices)
+            for component_run in component_runs
+        ]
+        approx_pop = _cross_seeded_population(component_vectors)
+        case_dir = component_runs[0]["dir"]
+        population_file = case_dir / "population_estimate.csv"
+        with population_file.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["ordinal", "bitstring_hex", "approx_population"])
+            for ordinal, idx in enumerate(subset_indices):
+                writer.writerow(
+                    [
+                        ordinal,
+                        f"0x{idx:0{size_bytes * 2}X}",
+                        f"{float(approx_pop[ordinal]):.18e}",
+                    ]
+                )
+        return {
+            "name": case["name"],
+            "fraction": float(case["fraction"]),
+            "threshold": float(case["threshold"]),
+            "verbosity": int(case["verbosity"]),
+            "batch_size": case["batch_size"],
+            "dense": bool(case["dense"]),
+            "population_estimator": estimator,
+            "history_seeds": history_seeds,
+            "component_runs": component_runs,
+            "dir": case_dir,
+            "output_file": population_file,
+            "stdout_log": component_runs[0]["stdout_log"],
+            "stderr_log": component_runs[0]["stderr_log"],
+            "approx_vec": None,
+            "approx_pop": approx_pop,
+            "wall_time_s": float(sum(run["wall_time_s"] for run in component_runs)),
+            "internal_runtime_s": (
+                float(sum(run["internal_runtime_s"] for run in component_runs))
+                if all(run["internal_runtime_s"] is not None for run in component_runs)
+                else None
+            ),
+        }
+
+    single_run = _run_case(
+        repo_root=repo_root,
+        binary=binary,
+        mpirun=mpirun,
+        ranks=ranks,
+        circuit=circuit,
+        input_statevector=input_statevector,
+        output_bitstrings=output_bitstrings,
+        feynman_env=feynman_env,
+        case=case,
+        run_dir=run_dir,
+    )
+    approx_vec = _ordered_vector(single_run["sparse"], subset_indices)
+    return {
+        "name": case["name"],
+        "fraction": float(case["fraction"]),
+        "threshold": float(case["threshold"]),
+        "verbosity": int(case["verbosity"]),
+        "batch_size": case["batch_size"],
+        "dense": bool(case["dense"]),
+        "population_estimator": estimator,
+        "history_seeds": history_seeds,
+        "component_runs": [single_run],
+        "dir": single_run["dir"],
+        "output_file": single_run["output_file"],
+        "stdout_log": single_run["stdout_log"],
+        "stderr_log": single_run["stderr_log"],
+        "approx_vec": approx_vec,
+        "approx_pop": np.abs(approx_vec) ** 2,
+        "wall_time_s": single_run["wall_time_s"],
+        "internal_runtime_s": single_run["internal_runtime_s"],
+    }
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -602,7 +838,7 @@ def main(argv: list[str] | None = None) -> int:
 
     subset_indices, size_bytes = parse_hs(output_bitstrings)
 
-    reference_run = _run_case(
+    reference_run = _run_case_estimator(
         repo_root=repo_root,
         binary=binary,
         mpirun=str(cfg["mpirun"]),
@@ -613,15 +849,20 @@ def main(argv: list[str] | None = None) -> int:
         feynman_env={str(k): str(v) for k, v in cfg["feynman_env"].items()},
         case=cfg["reference"],
         run_dir=run_dir,
+        subset_indices=subset_indices,
+        size_bytes=size_bytes,
     )
-    reference_vec = _ordered_vector(reference_run["sparse"], subset_indices)
+    reference_vec = reference_run["approx_vec"]
+    if reference_vec is None:
+        raise RuntimeError("Reference run must produce amplitudes.")
 
-    case_vectors: dict[str, np.ndarray] = {}
+    case_records: dict[str, dict[str, Any]] = {}
     case_rows: list[dict[str, Any]] = []
     reference_metrics = _compute_metrics(
         subset_indices=subset_indices,
         reference_vec=reference_vec,
         approx_vec=reference_vec,
+        approx_pop=np.abs(reference_vec) ** 2,
         nonzero_eps=float(cfg["nonzero_eps"]),
     )
     case_rows.append(
@@ -632,7 +873,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     for case in cfg["cases"]:
-        case_run = _run_case(
+        case_run = _run_case_estimator(
             repo_root=repo_root,
             binary=binary,
             mpirun=str(cfg["mpirun"]),
@@ -643,13 +884,19 @@ def main(argv: list[str] | None = None) -> int:
             feynman_env={str(k): str(v) for k, v in cfg["feynman_env"].items()},
             case=case,
             run_dir=run_dir,
+            subset_indices=subset_indices,
+            size_bytes=size_bytes,
         )
-        case_vec = _ordered_vector(case_run["sparse"], subset_indices)
-        case_vectors[case["name"]] = case_vec
+        case_records[case["name"]] = {
+            "approx_vec": case_run["approx_vec"],
+            "approx_pop": case_run["approx_pop"],
+            "population_estimator": case_run["population_estimator"],
+        }
         metrics = _compute_metrics(
             subset_indices=subset_indices,
             reference_vec=reference_vec,
-            approx_vec=case_vec,
+            approx_vec=case_run["approx_vec"],
+            approx_pop=case_run["approx_pop"],
             nonzero_eps=float(cfg["nonzero_eps"]),
         )
         case_rows.append(
@@ -674,7 +921,7 @@ def main(argv: list[str] | None = None) -> int:
         subset_indices=subset_indices,
         size_bytes=size_bytes,
         reference_vec=reference_vec,
-        case_vectors=case_vectors,
+        case_records=case_records,
         nonzero_eps=float(cfg["nonzero_eps"]),
     )
     _write_summary_csv(summary_csv, case_rows)

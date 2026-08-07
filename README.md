@@ -63,6 +63,14 @@ python scripts/run_pipeline.py validation selected-output-accuracy \
   -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
 ```
 
+Cross-seeded selected-population validation:
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_cross_seeded_smoke.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
 ## Documentation Map
 
 - More utilities of experiment scripts: `docs/scripts.md`

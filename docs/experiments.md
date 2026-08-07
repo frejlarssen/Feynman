@@ -166,6 +166,25 @@ benchmarks. When using the MPI binary, keep the launcher path above:
 `--binary build-release/sv_prefetcher_subset_mpi.x --ranks 1`. The validation
 driver will invoke `mpirun -n 1` for that binary.
 
+Each case defaults to the usual `|A_hat|^2` population estimate. For fraction
+experiments you can instead request a cross-seeded population estimator:
+
+```json
+{
+  "name": "fraction_0.9_cross_seeded",
+  "fraction": 0.9,
+  "threshold": 0.0,
+  "population_estimator": "cross_seeded",
+  "history_seeds": [1, 2]
+}
+```
+
+That runs the same approximate amplitude job once per seed, then scores the
+selected-output populations using the average of `Re(A_i conj(A_j))` over all
+seed pairs. In `summary.csv`, `fidelity_to_reference` remains the primary
+one-number score; for cross-seeded cases it is the selected-population
+Bhattacharyya fidelity rather than amplitude-overlap fidelity.
+
 ### QWalk vs quimb
 
 ```bash
