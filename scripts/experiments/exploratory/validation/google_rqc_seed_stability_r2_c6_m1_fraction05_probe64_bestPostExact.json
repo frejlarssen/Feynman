@@ -1,0 +1,43 @@
+{
+  "experiment_name": "google_rqc_seed_stability_r2_c6_m1_fraction05_probe64",
+  "repo_root": ".",
+  "output_root": "data/outputs/validation",
+  "binary": "build-cloud/cloud_task.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 6,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 2
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "size": 2,
+    "count": 64,
+    "seed": 11,
+    "n_qubits": 12
+  },
+  "fraction": 0.5,
+  "threshold": 0.0,
+  "verbosity": 1,
+  "seed_groups": [
+    {
+      "name": "pair_12",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "pair_34",
+      "history_seeds": [3, 4]
+    }
+  ]
+}

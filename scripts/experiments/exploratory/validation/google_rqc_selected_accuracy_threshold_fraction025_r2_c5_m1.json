@@ -1,0 +1,79 @@
+{
+  "experiment_name": "google_rqc_selected_accuracy_threshold_fraction025_r2_c5_m1",
+  "repo_root": ".",
+  "output_root": "data/outputs/validation",
+  "binary": "build-cloud/cloud_task.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 5,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 2
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "size": 2,
+    "count": 1024,
+    "seed": 11,
+    "n_qubits": 10
+  },
+  "reference": {
+    "name": "exact_reference",
+    "fraction": 1.0,
+    "threshold": 0.0,
+    "verbosity": 1
+  },
+  "cases": [
+    {
+      "name": "fraction_0.25_threshold_0",
+      "fraction": 0.25,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.25_threshold_1e-6",
+      "fraction": 0.25,
+      "threshold": 0.000001,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.25_threshold_1e-5",
+      "fraction": 0.25,
+      "threshold": 0.00001,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.25_threshold_1e-4",
+      "fraction": 0.25,
+      "threshold": 0.0001,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.25_threshold_1e-3",
+      "fraction": 0.25,
+      "threshold": 0.001,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    }
+  ],
+  "nonzero_eps": 1e-26
+}
