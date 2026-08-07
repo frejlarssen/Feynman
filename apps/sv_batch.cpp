@@ -254,10 +254,8 @@ int main(int argc, char *argv[]) {
     if (writeFlag) {
       local_buf += type_long_int_to_string(static_cast<TypeLongInt>(output_int));
       local_buf += ":";
-      local_buf += std::to_string(output_amp.real());
-      local_buf += "+";
-      local_buf += std::to_string(output_amp.imag());
-      local_buf += "i\n";
+      local_buf += complex_to_string(output_amp);
+      local_buf += "\n";
     }
   }
 

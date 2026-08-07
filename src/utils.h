@@ -6,8 +6,10 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <sys/syscall.h>
@@ -187,16 +189,40 @@ const vector<bool> bit_array_from_int(TypeLongInt value, int n) {
   return bits;
 }
 
+inline std::string real_to_string(TypeAmpReal value) {
+  std::ostringstream oss;
+  oss << std::scientific
+      << std::setprecision(std::numeric_limits<TypeAmpReal>::max_digits10)
+      << value;
+  return oss.str();
+}
+
+inline std::string complex_to_string(const TypeAmp &value) {
+  return real_to_string(value.real()) + "+" + real_to_string(value.imag()) +
+         "i";
+}
+
 const TypeAmp string_to_complex(const string &s) {
-  size_t plus_pos = s.find('+', 1); // start at 1 to avoid leading +
-  size_t i_pos = s.find('i', 1);
-  if (plus_pos == string::npos || i_pos == string::npos) {
+  const size_t i_pos = s.find_last_of('i');
+  if (i_pos == string::npos || i_pos != s.size() - 1) {
     cerr << "Invalid complex string: " << s << '\n';
     exit(1);
   }
-  TypeAmpReal real_part = std::stod(s.substr(0, plus_pos));
-  TypeAmpReal imag_part =
-      std::stod(s.substr(plus_pos + 1, i_pos - plus_pos - 1));
+
+  size_t split_pos = string::npos;
+  for (size_t pos = 1; pos < i_pos; ++pos) {
+    const char ch = s[pos];
+    if ((ch == '+' || ch == '-') && s[pos - 1] != 'e' && s[pos - 1] != 'E') {
+      split_pos = pos;
+    }
+  }
+  if (split_pos == string::npos) {
+    cerr << "Invalid complex string: " << s << '\n';
+    exit(1);
+  }
+
+  TypeAmpReal real_part = std::stod(s.substr(0, split_pos));
+  TypeAmpReal imag_part = std::stod(s.substr(split_pos, i_pos - split_pos));
   return TypeAmp(real_part, imag_part);
 }
 

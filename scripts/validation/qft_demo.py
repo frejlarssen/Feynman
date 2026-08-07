@@ -65,11 +65,16 @@ def _strip_timestamp_prefix(run_dir_name: str) -> str:
 
 def _parse_complex_token(token: str) -> complex:
     s = token.strip()
-    plus = s.find("+", 1)
-    i_pos = s.find("i", 1)
-    if plus == -1 or i_pos == -1:
+    i_pos = s.rfind("i")
+    if i_pos != len(s) - 1:
         raise ValueError(f"Invalid complex token: {token!r}")
-    return complex(float(s[:plus]), float(s[plus + 1 : i_pos]))
+    split = -1
+    for pos in range(1, i_pos):
+      if s[pos] in "+-" and s[pos - 1] not in "eE":
+        split = pos
+    if split == -1:
+        raise ValueError(f"Invalid complex token: {token!r}")
+    return complex(float(s[:split]), float(s[split:i_pos]))
 
 
 def _load_json(path: Path) -> dict[str, Any]:

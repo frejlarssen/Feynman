@@ -292,8 +292,7 @@ void run(Options &opts, const int world_rank, const int world_size,
       bool writeFlag = (opts.dense || (std::abs(output_amp) > opts.threshold));
       if (writeFlag) {
         local_buf += bitvector_to_hexstring(output_bits) + ":" +
-                     std::to_string(output_amp.real()) + "+" +
-                     std::to_string(output_amp.imag()) + "i\n";
+                     complex_to_string(output_amp) + "\n";
       }
     }
   };

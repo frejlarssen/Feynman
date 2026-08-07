@@ -340,8 +340,7 @@ void run(Options &opts) {
       bool writeFlag = (opts.dense || (std::abs(output_amp) > opts.threshold));
       if (writeFlag) {
         local_buf += bitvector_to_hexstring(output_bits) + ":" +
-                     std::to_string(output_amp.real()) + "+" +
-                     std::to_string(output_amp.imag()) + "i\n";
+                     complex_to_string(output_amp) + "\n";
       }
 
       const bool should_report_progress =
