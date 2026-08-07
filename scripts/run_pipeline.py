@@ -145,7 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
         "selected-output-accuracy",
         help="Run exact-vs-approx selected-output accuracy validation.",
     )
-    selected_accuracy.add_argument("--config", required=True, help="Path to validation config JSON.")
+    selected_accuracy.add_argument("--config", required=False, default="", help="Path to validation config JSON.")
     selected_accuracy.add_argument("--output-root", default="", help="Optional output root override.")
     selected_accuracy.add_argument("--repo-root", default="", help="Optional repo root override.")
     selected_accuracy.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
@@ -251,11 +251,39 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_qaoa_val.add_argument("--output", default="")
     p_qaoa_val.add_argument("--label-fontsize", type=float, default=None)
+
+    p_selected = plot_sub.add_parser(
+        "selected-output-accuracy",
+        help="Plot selected-output fraction/runtime tradeoff from validation artifacts.",
+    )
+    p_selected_input = p_selected.add_mutually_exclusive_group(required=True)
+    p_selected_input.add_argument("--summary-csv", default="")
+    p_selected_input.add_argument(
+        "--latest",
+        action="store_true",
+        help="Use newest matching validation run directory and read summary.csv from it.",
+    )
+    p_selected.add_argument(
+        "--latest-name-contains",
+        default="selected_accuracy",
+        help="Substring filter for selecting latest selected-output validation run directory.",
+    )
+    p_selected.add_argument(
+        "--comparison-csv",
+        default="",
+        help="Optional comparison.csv override. Defaults to the one next to summary.csv.",
+    )
+    p_selected.add_argument("--time-column", default="internal_runtime_s")
+    p_selected.add_argument("--output", default="")
+    p_selected.add_argument("--title", default="")
+    p_selected.add_argument("--label-fontsize", type=float, default=None)
     return parser
 
 
 def _validation_argv(args: argparse.Namespace) -> list[str]:
-    argv = ["--config", args.config]
+    argv: list[str] = []
+    if args.config:
+        argv.extend(["--config", args.config])
     if args.repo_root:
         argv.extend(["--repo-root", args.repo_root])
     if args.output_root:
@@ -683,6 +711,31 @@ def _plot_qaoa_qiskit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plot_selected_output_accuracy(args: argparse.Namespace) -> int:
+    from validation.selected_output_accuracy_plotting import plot_fraction_tradeoff
+
+    summary_csv = _resolve_summary_csv_arg(args=args, run_type="validation")
+    if not summary_csv.exists():
+        raise FileNotFoundError(f"Summary CSV not found: {summary_csv}")
+    comparison_csv = Path(args.comparison_csv).resolve() if args.comparison_csv else None
+    output = Path(args.output).resolve() if args.output else _default_plot_path(
+        artifact_path=summary_csv,
+        run_type="validation",
+        current_stem="fraction_tradeoff",
+        multiple_plots_for_config=False,
+    )
+    saved = plot_fraction_tradeoff(
+        summary_csv=summary_csv,
+        comparison_csv=comparison_csv,
+        output=output,
+        time_column=args.time_column,
+        title=args.title or None,
+        label_fontsize=args.label_fontsize,
+    )
+    print(f"Saved plot: {saved}")
+    return 0
+
+
 def _detect_experiment_mode(config_path: Path) -> str:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -869,6 +922,8 @@ def main(argv: list[str] | None = None) -> int:
             return _plot_qaoa_pruning(args)
         if args.plot_kind == "qaoa-qiskit":
             return _plot_qaoa_qiskit(args)
+        if args.plot_kind == "selected-output-accuracy":
+            return _plot_selected_output_accuracy(args)
         parser.error(f"Unknown plot kind: {args.plot_kind}")
     parser.error(f"Unknown command: {args.command}")
     return 2

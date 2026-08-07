@@ -11,9 +11,14 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
+
+SCRIPT_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 import numpy as np
 from sweeplib.materialize import (
@@ -21,6 +26,7 @@ from sweeplib.materialize import (
     resolve_output_bitstrings_input,
     resolve_statevector_input,
 )
+from validation.selected_output_accuracy_plotting import plot_fraction_tradeoff
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -828,11 +834,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--verbosity", type=int, default=None)
     parser.add_argument("--dense", action="store_true", default=None)
     parser.add_argument("--nonzero-eps", type=float, default=None)
+    parser.add_argument(
+        "--plot-only",
+        action="store_true",
+        help="Regenerate the fraction tradeoff plot from an existing summary/comparison pair.",
+    )
+    parser.add_argument("--summary-csv", type=Path, default=None)
+    parser.add_argument("--comparison-csv", type=Path, default=None)
+    parser.add_argument("--plot-output", type=Path, default=None)
+    parser.add_argument("--plot-title", default=None)
+    parser.add_argument("--label-fontsize", type=float, default=None)
+    parser.add_argument("--time-column", default="internal_runtime_s")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.plot_only:
+        if args.summary_csv is None:
+            raise ValueError("--plot-only requires --summary-csv.")
+        saved_path = plot_fraction_tradeoff(
+            summary_csv=args.summary_csv,
+            comparison_csv=args.comparison_csv,
+            output=args.plot_output,
+            time_column=args.time_column,
+            title=args.plot_title,
+            label_fontsize=args.label_fontsize,
+        )
+        print(f"Saved plot: {saved_path}")
+        return 0
+
     cfg = _merge_config(args)
     config_stem = Path(args.config).resolve().stem if args.config else _sanitize(str(cfg["experiment_name"]))
 
@@ -939,6 +970,16 @@ def main(argv: list[str] | None = None) -> int:
         nonzero_eps=float(cfg["nonzero_eps"]),
     )
     _write_summary_csv(summary_csv, case_rows)
+    fraction_plot_path: Path | None = None
+    try:
+        fraction_plot_path = plot_fraction_tradeoff(
+            summary_csv=summary_csv,
+            comparison_csv=comparison_csv,
+            time_column=args.time_column,
+            label_fontsize=args.label_fontsize,
+        )
+    except ValueError:
+        fraction_plot_path = None
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -955,6 +996,7 @@ def main(argv: list[str] | None = None) -> int:
             "reference_outputs_csv": str(reference_csv),
             "comparison_csv": str(comparison_csv),
             "summary_csv": str(summary_csv),
+            "fraction_tradeoff_plot": str(fraction_plot_path) if fraction_plot_path else None,
         },
         "generated_inputs": {
             "circuit": circuit_generated,
@@ -980,6 +1022,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Run directory: {run_dir}")
     print(f"Summary CSV: {summary_csv}")
     print(f"Comparison CSV: {comparison_csv}")
+    if fraction_plot_path is not None:
+        print(f"Fraction plot: {fraction_plot_path}")
     return 0
 
 
