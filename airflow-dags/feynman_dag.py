@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import pendulum
 from kubernetes.client import models as k8s
 
@@ -5,7 +8,7 @@ from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperato
 from airflow.sdk import dag, get_current_context, task
 
 
-KUBECONFIG = "/home/frej/.kube/config"
+KUBECONFIG = os.environ.get("KUBECONFIG", "/home/frej/.kube/config")
 DATA_MOUNT_PATH = "/data"
 DATA_PVC_NAME = "feynman-data-pvc"
 SPLIT_IMAGE = "feynman-split:latest"
@@ -106,6 +109,10 @@ SIMULATE_ENV_VARS = [
     start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
     tags=["feynman"],
+    default_args={
+        "retries": 1,
+        "retry_delay": pendulum.duration(minutes=1),
+    },
 )
 def feynman():
     """
@@ -184,7 +191,7 @@ def feynman():
         image_pull_policy="Never",
         config_file=KUBECONFIG,
         get_logs=True,
-        on_finish_action="delete_pod",
+        on_finish_action="delete_succeeded_pod",
         env_vars=SIMULATE_ENV_VARS,
         volume_mounts=[DATA_VOLUME_MOUNT],
         volumes=[DATA_VOLUME],
@@ -197,7 +204,7 @@ def feynman():
         image_pull_policy="Never",
         config_file=KUBECONFIG,
         get_logs=True,
-        on_finish_action="delete_pod",
+        on_finish_action="delete_succeeded_pod",
         volume_mounts=[DATA_VOLUME_MOUNT],
         volumes=[DATA_VOLUME],
         arguments=[
@@ -216,10 +223,22 @@ def feynman():
 
     @task()
     def postprocessing() -> bool:
-        merged_simulator_output_file = _resolved_benchmark_case_from_context()[
-            "merged_output_file"
-        ]
-        print(f"Post-processing succeeded for {merged_simulator_output_file}.")
+        merged_simulator_output_file = Path(
+            _resolved_benchmark_case_from_context()["merged_output_file"]
+        )
+        if not merged_simulator_output_file.exists():
+            raise FileNotFoundError(
+                f"Merged simulator output file not found: {merged_simulator_output_file}"
+            )
+        file_size = merged_simulator_output_file.stat().st_size
+        if file_size <= 0:
+            raise ValueError(
+                f"Merged simulator output file is empty: {merged_simulator_output_file}"
+            )
+        print(
+            "Post-processing verified merged output "
+            f"{merged_simulator_output_file} ({file_size} bytes)."
+        )
         return True
 
     split_hexstrings >> batch_arguments
