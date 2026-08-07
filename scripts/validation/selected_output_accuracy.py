@@ -406,9 +406,12 @@ def _compute_metrics(
     cur_pop = approx_pop
     pop_nonzero_eps = nonzero_eps * nonzero_eps
     abs_pop_err = np.abs(cur_pop - ref_pop)
+    cur_pop_nonnegative = np.clip(cur_pop, 0.0, None)
 
     ref_norm = float(np.vdot(reference_vec, reference_vec).real)
     approx_selected_mass = float(np.sum(cur_pop))
+    approx_nonnegative_selected_mass = float(np.sum(cur_pop_nonnegative))
+    negative_population_count = int(np.count_nonzero(cur_pop < 0.0))
 
     cur_abs = None
     abs_amp_err = None
@@ -452,11 +455,16 @@ def _compute_metrics(
 
     ref_selected_mass = float(np.sum(ref_pop))
     mass_retention = None if ref_selected_mass <= 0.0 else float(approx_selected_mass / ref_selected_mass)
+    nonnegative_mass_retention = (
+        None
+        if ref_selected_mass <= 0.0
+        else float(approx_nonnegative_selected_mass / ref_selected_mass)
+    )
     population_fidelity = None
-    if ref_selected_mass > 0.0 and approx_selected_mass > 0.0:
+    if ref_selected_mass > 0.0 and approx_nonnegative_selected_mass > 0.0:
         population_fidelity = float(
-            (np.sum(np.sqrt(np.clip(ref_pop, 0.0, None) * np.clip(cur_pop, 0.0, None))) ** 2)
-            / (ref_selected_mass * approx_selected_mass)
+            (np.sum(np.sqrt(ref_pop * cur_pop_nonnegative)) ** 2)
+            / (ref_selected_mass * approx_nonnegative_selected_mass)
         )
 
     fidelity_metric = "amplitude_overlap" if amplitude_fidelity is not None else "selected_population_bhattacharyya"
@@ -473,7 +481,10 @@ def _compute_metrics(
         "support_precision": support_precision,
         "reference_selected_mass": ref_selected_mass,
         "approx_selected_mass": approx_selected_mass,
+        "approx_nonnegative_selected_mass": approx_nonnegative_selected_mass,
         "mass_retention": mass_retention,
+        "nonnegative_mass_retention": nonnegative_mass_retention,
+        "negative_population_count": negative_population_count,
         "fidelity_metric": fidelity_metric,
         "fidelity_to_reference": fidelity_to_reference,
         "amplitude_fidelity_to_reference": amplitude_fidelity,
@@ -643,7 +654,10 @@ def _write_summary_csv(path: Path, case_rows: list[dict[str, Any]]) -> None:
         "support_precision",
         "reference_selected_mass",
         "approx_selected_mass",
+        "approx_nonnegative_selected_mass",
         "mass_retention",
+        "nonnegative_mass_retention",
+        "negative_population_count",
         "fidelity_metric",
         "fidelity_to_reference",
         "amplitude_fidelity_to_reference",
