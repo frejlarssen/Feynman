@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <unistd.h>
 #include <vector>
 
@@ -16,6 +17,66 @@
 #endif
 
 #define fLIMIT 0.9999999 // If fraction > fLIMIT, we make an exact simulation.
+
+inline TypeLongInt random_below(TypeLongInt upper) {
+  if (upper <= 0) {
+    return 0;
+  }
+
+  using UnsignedLongInt = unsigned __int128;
+  constexpr UnsignedLongInt rand_base =
+      static_cast<UnsignedLongInt>(RAND_MAX) + 1u;
+
+  UnsignedLongInt candidate = 0;
+  UnsignedLongInt place_value = 1;
+  const UnsignedLongInt unsigned_upper = static_cast<UnsignedLongInt>(upper);
+  while (place_value < unsigned_upper) {
+    candidate +=
+        static_cast<UnsignedLongInt>(std::rand()) * place_value;
+    place_value *= rand_base;
+  }
+
+  return static_cast<TypeLongInt>(candidate % unsigned_upper);
+}
+
+inline vector<TypeLongInt>
+sample_histories_without_replacement(TypeLongInt total_histories,
+                                     size_t sample_count) {
+  vector<TypeLongInt> sampled_histories(sample_count);
+  if (sample_count == 0 || total_histories <= 0) {
+    return sampled_histories;
+  }
+
+  if (static_cast<TypeLongInt>(sample_count) >= total_histories) {
+    for (TypeLongInt i = 0; i < total_histories; ++i) {
+      sampled_histories.at(static_cast<size_t>(i)) = i;
+    }
+    return sampled_histories;
+  }
+
+  // Sample without replacement using a virtual Fisher-Yates shuffle over
+  // [0, total_histories) backed by a sparse map of swaps.
+  std::map<TypeLongInt, TypeLongInt> swaps;
+  for (size_t i = 0; i < sample_count; ++i) {
+    const TypeLongInt remaining =
+        total_histories - static_cast<TypeLongInt>(i);
+    const TypeLongInt picked_index = random_below(remaining);
+    const TypeLongInt last_index = remaining - 1;
+
+    const auto picked_it = swaps.find(picked_index);
+    const TypeLongInt picked_value =
+        (picked_it == swaps.end()) ? picked_index : picked_it->second;
+
+    const auto last_it = swaps.find(last_index);
+    const TypeLongInt last_value =
+        (last_it == swaps.end()) ? last_index : last_it->second;
+
+    sampled_histories.at(i) = picked_value;
+    swaps[picked_index] = last_value;
+  }
+
+  return sampled_histories;
+}
 
 complex<float> chunk_contribution(const Chunk &chunk, TypeLongInt thread,
                                   float threshold2 = 0.0f) {
@@ -242,10 +303,8 @@ complex<float> simulate(vector<bool> output_bits, vector<bool> input_bits,
   // srand(time({}));
   srand(0);
 
-  // TODO: Check if non-unique histories is ok.
-  for (TypeLongInt i = 0; i < num_par_histories; i++) {
-    par_histories.at(i) = std::rand() % num_histories_c2;
-  }
+  par_histories =
+      sample_histories_without_replacement(num_histories_c2, num_par_histories);
 
   // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
   const float threshold2 = threshold * threshold;
