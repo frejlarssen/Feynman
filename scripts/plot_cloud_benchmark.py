@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-#TODO: Use colwidth 252.0pt
+
 import argparse
 import csv
 import math
@@ -244,11 +244,12 @@ def main() -> int:
         fig.legend(
             legend_handles,
             legend_labels,
-            loc="center left",
-            bbox_to_anchor=(1.01, 0.5),
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.02),
             frameon=False,
+            ncol=min(2, len(legend_labels)),
         )
-        fig.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
+        fig.tight_layout(rect=(0.0, 0.12, 0.96, 1.0))
     else:
         ax.legend(legend_handles, legend_labels, loc="best", frameon=False)
         fig.tight_layout()
