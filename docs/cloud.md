@@ -126,6 +126,46 @@ override the batch size directly:
 airflow dags trigger feynman --conf '{"max_hexstrings_per_batch": 125}'
 ```
 
+The DAG uses one shared Airflow pool, `simulate_pool`, by default. All
+stages belong to that pool, but the lightweight orchestration stages use one
+slot each, and `simulate_batch` also uses one slot each by default. That gives
+a clean way to overdecompose the run into many batches while still capping the
+total concurrent work shown in the Gantt chart.
+
+Before using the DAG with the default pool-based throttling, create the pool in
+your Airflow environment:
+
+```bash
+source /home/frej/micromamba/bin/activate airflow
+bash scripts/setup_airflow_pool.sh simulate_pool 4
+```
+
+Or equivalently, run the Airflow CLI directly:
+
+```bash
+source /home/frej/micromamba/bin/activate airflow
+airflow pools set simulate_pool 4 "Limit concurrent simulate_batch Kubernetes pods"
+airflow pools list | grep simulate_pool
+```
+
+If you want a different pool name or per-task slot cost, set these before
+starting or refreshing Airflow:
+
+```bash
+export FEYNMAN_SHARED_POOL=simulate_pool
+export FEYNMAN_LIGHT_TASK_POOL_SLOTS=1
+export FEYNMAN_SIMULATE_TASK_POOL_SLOTS=1
+```
+
+Then copy the updated DAG into the local Airflow DAG directory:
+
+```bash
+bash scripts/copy_dags.sh
+```
+
+With that in place, a run can have, for example, about 12 batches total while
+only 4 pooled tasks run concurrently.
+
 To keep laptop runs safer by default, `simulate_batch` now runs with
 `OMP_NUM_THREADS=1`. For config-driven runs, put the fixed thread count directly
 in the benchmark JSON:
@@ -176,6 +216,13 @@ When `--config` is used, the script now looks for
 `target_num_pods_list` and `repeat` in the benchmark JSON and uses those
 pod counts and repeated runs by default.
 
+If the config also sets `max_hexstrings_per_batch`, the sweep script switches
+to fixed-batch mode for splitting. In that mode, `target_num_pods_list` is used
+only as the benchmark label in `summary.csv` and plots, while the actual DAG
+run is rendered with `max_hexstrings_per_batch`. This is useful when you want
+more total batches than the intended pool concurrency, for example a single
+Gantt-chart run with about 12 batches scheduled onto a shared 4-slot pool.
+
 Example:
 
 ```json
@@ -185,6 +232,20 @@ Example:
   "repeat": 3
 }
 ```
+
+Example fixed-batch Gantt config:
+
+```json
+{
+  "experiment_name": "qwalk_n64_it15_count1200_batch100_pool4",
+  "target_num_pods_list": [4],
+  "max_hexstrings_per_batch": 100,
+  "repeat": 1
+}
+```
+
+This produces roughly 12 batches for 1200 requested output bitstrings, while a
+shared Airflow pool of size 4 keeps only four pooled tasks active at once.
 
 Explicit pod counts on the command line still override the JSON list:
 
@@ -201,6 +262,10 @@ same high-level sections as the non-cloud configs: `circuit`,
 Example with the quantum-walk benchmark case:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
+
+For the single-run Gantt demo:
+
+`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
 
 For longer local runs, consider launching the sweep inside `tmux` so a
 terminal-window close does not kill the local polling script.

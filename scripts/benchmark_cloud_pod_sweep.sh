@@ -46,6 +46,7 @@ BENCHMARK_DIR="${BENCHMARK_DIR:-}"
 RESULTS_FILE="${RESULTS_FILE:-}"
 CONFIG_EXPERIMENT_NAME="qft_n8_k2"
 REPEAT_COUNT=1
+CONFIG_MAX_HEXSTRINGS_PER_BATCH=""
 
 if [ "$#" -eq 0 ]; then
   POD_COUNTS="1 2 4 8"
@@ -127,10 +128,14 @@ if [ -n "${CONFIG_PATH}" ]; then
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
   CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" -c 'import json,sys; from pathlib import Path; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", Path(sys.argv[1]).stem or "qft_n8_k2"))' "${CONFIG_PATH}")"
   REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
+  CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
   if [ "$#" -eq 0 ]; then
     CONFIG_POD_COUNTS="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
     if [ -n "${CONFIG_POD_COUNTS}" ]; then
       POD_COUNTS="${CONFIG_POD_COUNTS}"
+    elif [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+      echo "Fixed-batch cloud benchmark configs must set target_num_pods_list (used as labels) or pass an explicit label on the CLI." >&2
+      exit 1
     fi
   fi
 fi
@@ -178,6 +183,9 @@ echo "Benchmark directory: ${BENCHMARK_DIR}"
 echo "Benchmark results will be written to ${RESULTS_FILE}"
 echo "Pod counts: ${POD_COUNTS}"
 echo "Repeats per pod count: ${REPEAT_COUNT}"
+if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+  echo "Fixed batch size: ${CONFIG_MAX_HEXSTRINGS_PER_BATCH} hexstrings per batch"
+fi
 
 for pods in $POD_COUNTS
 do
@@ -191,18 +199,30 @@ do
     conf_json="{\"target_num_pods\": ${pods}}"
     experiment_name="qft_n8_k2"
     if [ -n "${CONFIG_PATH}" ]; then
-      conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
-        --config "${CONFIG_PATH}" \
-        --target-num-pods "${pods}" \
-        --run-output-dir "${BENCHMARK_DIR}/runs/${run_id}" \
-        --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_EXPERIMENT_NAME}_all_batches.hsv")"
+      if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+        conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
+          --config "${CONFIG_PATH}" \
+          --max-hexstrings-per-batch "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" \
+          --run-output-dir "${BENCHMARK_DIR}/runs/${run_id}" \
+          --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_EXPERIMENT_NAME}_all_batches.hsv")"
+      else
+        conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
+          --config "${CONFIG_PATH}" \
+          --target-num-pods "${pods}" \
+          --run-output-dir "${BENCHMARK_DIR}/runs/${run_id}" \
+          --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_EXPERIMENT_NAME}_all_batches.hsv")"
+      fi
       experiment_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("benchmark_case", {}).get("experiment_name", "unknown"))' "${conf_json}")"
     fi
     run_dir="${BENCHMARK_DIR}/runs/${run_id}"
     mkdir -p "${run_dir}"
     printf "%s\n" "${conf_json}" > "${run_dir}/dag_run_conf.json"
 
-    echo "Triggering ${DAG_ID} with target_num_pods=${pods} repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+    if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+      echo "Triggering ${DAG_ID} with label target_num_pods=${pods}, batch_size=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}, repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+    else
+      echo "Triggering ${DAG_ID} with target_num_pods=${pods} repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+    fi
     airflow dags trigger "${DAG_ID}" \
       --run-id "${run_id}" \
       --conf "${conf_json}"

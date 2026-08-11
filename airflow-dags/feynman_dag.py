@@ -15,6 +15,9 @@ SPLIT_IMAGE = "feynman-split:latest"
 SIMULATE_IMAGE = "feynman-simulate:latest"
 CONCAT_IMAGE = "feynman-concat:latest"
 MAX_HEXSTRINGS_PER_BATCH = 100
+SHARED_POOL = os.environ.get("FEYNMAN_SHARED_POOL", "simulate_pool")
+LIGHT_TASK_POOL_SLOTS = int(os.environ.get("FEYNMAN_LIGHT_TASK_POOL_SLOTS", "1"))
+SIMULATE_TASK_POOL_SLOTS = int(os.environ.get("FEYNMAN_SIMULATE_TASK_POOL_SLOTS", "1"))
 TARGET_NUM_PODS_TEMPLATE = "{{ dag_run.conf.get('target_num_pods', 0) }}"
 MAX_HEXSTRINGS_PER_BATCH_TEMPLATE = (
     "{{ dag_run.conf.get('max_hexstrings_per_batch', " + str(MAX_HEXSTRINGS_PER_BATCH) + ") }}"
@@ -175,7 +178,7 @@ def feynman():
     pipeline stage.
     """
 
-    @task()
+    @task(pool=SHARED_POOL, pool_slots=LIGHT_TASK_POOL_SLOTS)
     def build_batch_arguments(num_batches: int) -> list[list[str]]:
         benchmark_case = _resolved_benchmark_case_from_context()
         simulate_params = _resolved_simulate_params_from_context()
@@ -214,6 +217,8 @@ def feynman():
         image=SPLIT_IMAGE,
         image_pull_policy="Never",
         config_file=KUBECONFIG,
+        pool=SHARED_POOL,
+        pool_slots=LIGHT_TASK_POOL_SLOTS,
         do_xcom_push=True,
         get_logs=True,
         on_finish_action="delete_succeeded_pod",
@@ -245,6 +250,8 @@ def feynman():
         image=SIMULATE_IMAGE,
         image_pull_policy="Never",
         config_file=KUBECONFIG,
+        pool=SHARED_POOL,
+        pool_slots=SIMULATE_TASK_POOL_SLOTS,
         get_logs=True,
         on_finish_action="delete_succeeded_pod",
         env_vars=SIMULATE_ENV_VARS,
@@ -258,6 +265,8 @@ def feynman():
         image=CONCAT_IMAGE,
         image_pull_policy="Never",
         config_file=KUBECONFIG,
+        pool=SHARED_POOL,
+        pool_slots=LIGHT_TASK_POOL_SLOTS,
         get_logs=True,
         on_finish_action="delete_succeeded_pod",
         volume_mounts=[DATA_VOLUME_MOUNT],
@@ -276,7 +285,7 @@ def feynman():
         ],
     )
 
-    @task()
+    @task(pool=SHARED_POOL, pool_slots=LIGHT_TASK_POOL_SLOTS)
     def postprocessing() -> bool:
         merged_simulator_output_file = _mount_path_to_host_path(
             _resolved_benchmark_case_from_context()["merged_output_file"]

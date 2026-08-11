@@ -79,6 +79,16 @@ def parse_repeat_count(payload: dict[str, Any]) -> int:
     return repeat_count
 
 
+def parse_max_hexstrings_per_batch(payload: dict[str, Any]) -> int | None:
+    raw_value = payload.get("max_hexstrings_per_batch")
+    if raw_value is None:
+        return None
+    batch_size = int(raw_value)
+    if batch_size <= 0:
+        raise ValueError("max_hexstrings_per_batch must be > 0.")
+    return batch_size
+
+
 def _infer_circuit_qubits(circuit_cfg: Any) -> int | None:
     if not isinstance(circuit_cfg, dict):
         return None
@@ -205,6 +215,8 @@ def render_conf(
         if threshold < 0.0:
             raise ValueError("threshold must be >= 0.")
         conf["threshold"] = threshold
+    if target_num_pods is None and max_hexstrings_per_batch is None:
+        max_hexstrings_per_batch = parse_max_hexstrings_per_batch(payload)
     if target_num_pods is not None:
         conf["target_num_pods"] = int(target_num_pods)
     if max_hexstrings_per_batch is not None:
@@ -239,6 +251,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the configured number of repeated runs per pod count.",
     )
+    parser.add_argument(
+        "--print-max-hexstrings-per-batch",
+        action="store_true",
+        help="Print the configured fixed batch size, if any.",
+    )
     return parser.parse_args()
 
 
@@ -256,6 +273,12 @@ def main() -> int:
         return 0
     if args.print_repeat_count:
         sys.stdout.write(str(parse_repeat_count(payload)))
+        sys.stdout.write("\n")
+        return 0
+    if args.print_max_hexstrings_per_batch:
+        batch_size = parse_max_hexstrings_per_batch(payload)
+        if batch_size is not None:
+            sys.stdout.write(str(batch_size))
         sys.stdout.write("\n")
         return 0
 
