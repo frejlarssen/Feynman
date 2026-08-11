@@ -14,14 +14,18 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import requests
 
-from scripts.sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
+from scripts.sweeplib.plot_style import (
+    SINGLE_COLUMN_FIGURE_HEIGHT_IN,
+    apply_plot_fontsizes,
+    configure_headless_matplotlib,
+    ieee_column_width_inches,
+)
 from constants import (
     AIRFLOW_BEARER_TOKEN,
     AIRFLOW_PASSWORD,
     AIRFLOW_SESSION_COOKIE,
     AIRFLOW_USERNAME,
     BASE_URL,
-    POOL_ALIAS,
 )
 
 configure_headless_matplotlib()
@@ -232,13 +236,12 @@ def build_gantt_records(
 
         map_index_raw = _normalize_map_index(ti.get("map_index", -1))
         map_index = None if map_index_raw == -1 else str(map_index_raw)
-        pool_alias = POOL_ALIAS.get(pool, pool)
         records.append(
             {
                 "task": ti["task_id"],
                 "start": timestamp,
                 "end": end_time,
-                "resource": f"{pool_alias}.{index}",
+                "resource": f"Slot {index}",
                 "map_index": map_index,
                 "dag_run_id": ti.get("dag_run_id", ""),
             }
@@ -250,7 +253,7 @@ def build_gantt_records(
         record["start"] = record["start"] - delta
         record["end"] = record["end"] - delta
 
-    records.sort(key=lambda item: (str(item["resource"]), str(item["task"])))
+    records.sort(key=lambda item: float(_seconds_from_relative_datetime(item["start"])))
     return records
 
 
@@ -282,12 +285,14 @@ def _render_timeline(
     y_positions = {category: index for index, category in enumerate(y_categories)}
     colors = _categorical_colors(color_categories)
 
-    base_fontsize = apply_plot_fontsizes(plt=plt, label_fontsize=20.5)
-    tick_fontsize = max(1.0, base_fontsize + 7.9)
-    annotation_fontsize = max(1.0, base_fontsize + 7.5)
+    base_fontsize = apply_plot_fontsizes(plt=plt)
+    tick_fontsize = max(1.0, base_fontsize - 0.9)
+    annotation_fontsize = max(1.0, base_fontsize - 1.5)
 
-    fig_height = max(4.0, 0.8 * len(y_categories) + 1.5)
-    fig, ax = plt.subplots(figsize=(18, fig_height))
+    fig_width = ieee_column_width_inches()
+    fig_height = max(SINGLE_COLUMN_FIGURE_HEIGHT_IN, 0.55 * len(y_categories) + 0.6)
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    fig.subplots_adjust(left=0.04, right=0.995, bottom=0.16, top=0.74)
 
     for record in records:
         start = _seconds_from_relative_datetime(record["start"])
@@ -333,15 +338,31 @@ def _render_timeline(
     legend = ax.legend(
         handles=legend_handles,
         title=color_key.replace("_", " ").title(),
-        loc="upper left",
-        bbox_to_anchor=(1.01, 1.0),
+        loc="lower center",
+        bbox_to_anchor=(0.50, 0.75),
+        bbox_transform=fig.transFigure,
         borderaxespad=0.0,
+        ncol=max(1, min(2, len(legend_handles))),
     )
     legend.get_title().set_fontsize(base_fontsize)
 
-    fig.tight_layout()
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    tight_bbox = ax.get_tightbbox(renderer).transformed(fig.transFigure.inverted())
+    padding_x = 0.008
+    padding_y = 0.012
+    current = ax.get_position()
+    left = current.x0 + max(0.0, -tight_bbox.x0) + padding_x
+    right = current.x1 - max(0.0, tight_bbox.x1 - 1.0) - padding_x
+    bottom = current.y0 + max(0.0, -tight_bbox.y0) + padding_y
+    top = current.y1 - max(0.0, tight_bbox.y1 - 1.0) - padding_y
+    left = min(max(left, 0.10), 0.28)
+    right = max(min(right, 0.995), left + 0.35)
+    bottom = min(max(bottom, 0.14), 0.24)
+    top = max(min(top, 0.82), bottom + 0.38)
+    fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, format=output_path.suffix.lstrip(".") or "svg", bbox_inches="tight")
+    fig.savefig(output_path, format=output_path.suffix.lstrip(".") or "svg")
     plt.close(fig)
     return output_path
 
