@@ -358,7 +358,7 @@ if ! "${HELPER_PYTHON}" scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS
 fi
 if ! "${HELPER_PYTHON}" scripts/plot_gantt_multiexec.py \
   --input-glob "${BENCHMARK_DIR}/runs/*/task_instances.json" \
-  --output "${BENCHMARK_DIR}/gantt_multiexec.svg" \
+  --output "${BENCHMARK_DIR}/gantt_multiexec.pdf" \
   >"${BENCHMARK_DIR}/gantt_multiexec_stdout.log" 2>"${BENCHMARK_DIR}/gantt_multiexec_stderr.log"; then
   echo "WARNING: failed to generate multi-run Gantt plot." >&2
 fi

@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         type=Path,
         default=Path("figures"),
-        help="Directory for output SVGs. Defaults to ./figures.",
+        help="Directory for output PDFs. Defaults to ./figures.",
     )
     parser.add_argument(
         "--base-url",
@@ -53,8 +53,8 @@ def main() -> int:
 
     records = build_gantt_records([payload])
     output_dir = args.output_dir.resolve()
-    byresources = render_gantt_byresources(records, output_path=output_dir / "gantt_byresources.svg")
-    bytask = render_gantt_bytask(records, output_path=output_dir / "gantt_bytask.svg")
+    byresources = render_gantt_byresources(records, output_path=output_dir / "gantt_byresources.pdf")
+    bytask = render_gantt_bytask(records, output_path=output_dir / "gantt_bytask.pdf")
     print(f'wrote Gantt by resources to "{byresources}"')
     print(f'wrote Gantt by task to "{bytask}"')
     return 0

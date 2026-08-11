@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import requests
 
+from scripts.sweeplib.plot_style import apply_plot_fontsizes, configure_headless_matplotlib
 from constants import (
     AIRFLOW_BEARER_TOKEN,
     AIRFLOW_PASSWORD,
@@ -22,6 +23,8 @@ from constants import (
     BASE_URL,
     POOL_ALIAS,
 )
+
+configure_headless_matplotlib()
 
 
 def _auth_candidates() -> list[tuple[str, dict[str, str]]]:
@@ -279,6 +282,10 @@ def _render_timeline(
     y_positions = {category: index for index, category in enumerate(y_categories)}
     colors = _categorical_colors(color_categories)
 
+    base_fontsize = apply_plot_fontsizes(plt=plt, label_fontsize=20.5)
+    tick_fontsize = max(1.0, base_fontsize + 7.9)
+    annotation_fontsize = max(1.0, base_fontsize + 7.5)
+
     fig_height = max(4.0, 0.8 * len(y_categories) + 1.5)
     fig, ax = plt.subplots(figsize=(18, fig_height))
 
@@ -308,13 +315,14 @@ def _render_timeline(
                 label,
                 ha="center",
                 va="center",
-                fontsize=8,
+                fontsize=annotation_fontsize,
                 color="black",
             )
 
     ax.set_yticks(range(len(y_categories)))
     ax.set_yticklabels(y_categories)
     ax.set_xlabel(x_label)
+    ax.tick_params(axis="both", labelsize=tick_fontsize)
     ax.grid(axis="x", linestyle="--", alpha=0.35)
     ax.set_axisbelow(True)
 
@@ -322,13 +330,14 @@ def _render_timeline(
         Patch(facecolor=colors[value], edgecolor="black", label=value)
         for value in color_categories
     ]
-    ax.legend(
+    legend = ax.legend(
         handles=legend_handles,
         title=color_key.replace("_", " ").title(),
         loc="upper left",
         bbox_to_anchor=(1.01, 1.0),
         borderaxespad=0.0,
     )
+    legend.get_title().set_fontsize(base_fontsize)
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)

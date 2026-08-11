@@ -93,11 +93,11 @@ def main() -> int:
     records = build_gantt_records([payload])
     byresources = render_gantt_byresources(
         records,
-        output_path=output_dir / "gantt_byresources.svg",
+        output_path=output_dir / "gantt_byresources.pdf",
     )
     bytask = render_gantt_bytask(
         records,
-        output_path=output_dir / "gantt_bytask.svg",
+        output_path=output_dir / "gantt_bytask.pdf",
     )
 
     manifest = {
@@ -107,8 +107,8 @@ def main() -> int:
         "task_instances_json": str(task_instances_path),
         "task_summary_json": str(output_dir / "simulate_batch_task_summary.json"),
         "log_summary_json": str(output_dir / "simulate_batch_log_summary.json"),
-        "gantt_byresources_svg": str(byresources),
-        "gantt_bytask_svg": str(bytask),
+        "gantt_byresources_pdf": str(byresources),
+        "gantt_bytask_pdf": str(bytask),
     }
     if task_states_path is not None:
         manifest["task_states_json"] = str(task_states_path)

@@ -49,8 +49,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("figures/gantt_multiexec.svg"),
-        help="Output SVG path.",
+        default=Path("figures/gantt_multiexec.pdf"),
+        help="Output PDF path.",
     )
     parser.add_argument(
         "--base-url",
