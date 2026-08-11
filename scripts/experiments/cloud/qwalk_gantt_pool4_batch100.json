@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qwalk_n64_it15_count1200_batch100_pool4",
+  "experiment_name": "qwalk_n64_it5_count1200_batch100_pool4",
   "target_num_pods_list": [4],
   "max_hexstrings_per_batch": 100,
   "repeat": 1,
