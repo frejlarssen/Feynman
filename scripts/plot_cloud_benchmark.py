@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
+#TODO: Use colwidth 252.0pt
 import argparse
 import csv
 import math
@@ -33,15 +33,15 @@ METRIC_LABELS = {
 }
 
 METRIC_TITLES = {
-    "elapsed_seconds": "Wall-clock time",
-    "simulate_stage_elapsed_seconds": "simulate_batch span",
-    "simulate_task_instance_seconds_sum": "Cloud benchmark summed simulate task time",
-    "simulate_autotuning_seconds_sum": "Cloud benchmark summed worker autotuning time",
-    "simulate_autotuning_seconds_mean": "Cloud benchmark mean worker autotuning time",
-    "simulate_worker_full_seconds_sum": "Cloud benchmark summed worker full time",
-    "simulate_worker_full_seconds_mean": "Cloud benchmark mean worker full time",
-    "simulate_worker_simulate_calls_seconds_sum": "Cloud benchmark summed pure simulate() time",
-    "simulate_worker_simulate_calls_seconds_mean": "Cloud benchmark mean pure simulate() time",
+    "elapsed_seconds": "Cloud wall time",
+    "simulate_stage_elapsed_seconds": "Cloud simulate span",
+    "simulate_task_instance_seconds_sum": "Summed simulate task time",
+    "simulate_autotuning_seconds_sum": "Summed autotuning time",
+    "simulate_autotuning_seconds_mean": "Mean autotuning time",
+    "simulate_worker_full_seconds_sum": "Summed worker time",
+    "simulate_worker_full_seconds_mean": "Mean worker time",
+    "simulate_worker_simulate_calls_seconds_sum": "Summed simulate() time",
+    "simulate_worker_simulate_calls_seconds_mean": "Mean simulate() time",
 }
 EFFICIENCY_LINE_COLOR = "#2F4858"
 
@@ -80,6 +80,10 @@ def _to_groups(rows: list[dict[str, str]], *, metric: str) -> dict[int, list[flo
 
 def _default_output(summary_csv: Path, *, metric: str) -> Path:
     return summary_csv.parent / f"cloud_benchmark_{metric}_vs_pods.pdf"
+
+
+def _default_title(summary_csv: Path, *, metric: str, experiment_names: list[str]) -> str:
+    return "Strong scaling"
 
 
 def _strong_scaling_efficiency_percent(
@@ -229,13 +233,25 @@ def main() -> int:
 
     ax.set_xlabel("Target pods")
     ax.set_ylabel(METRIC_LABELS[args.metric])
-    title = args.title if args.title is not None else METRIC_TITLES[args.metric]
-    if experiment_names:
-        title = f"{title}: {', '.join(experiment_names)}"
+    title = (
+        args.title
+        if args.title is not None
+        else _default_title(summary_csv, metric=args.metric, experiment_names=experiment_names)
+    )
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
-    ax.legend(legend_handles, legend_labels)
-    fig.tight_layout()
+    if len(legend_labels) > 2:
+        fig.legend(
+            legend_handles,
+            legend_labels,
+            loc="center left",
+            bbox_to_anchor=(1.01, 0.5),
+            frameon=False,
+        )
+        fig.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
+    else:
+        ax.legend(legend_handles, legend_labels, loc="best", frameon=False)
+        fig.tight_layout()
 
     output_path = (
         args.output.resolve()
