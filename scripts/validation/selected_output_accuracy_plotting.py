@@ -9,6 +9,7 @@ from typing import Any
 from sweeplib.plot_style import (
     DEFAULT_LINEWIDTH_PRIMARY,
     DEFAULT_LINEWIDTH_SECONDARY,
+    DEFAULT_MARKERSIZE,
     DEFAULT_MARKER_PRIMARY,
     DEFAULT_MARKER_SECONDARY,
     LINE_COLOR_PRIMARY,
@@ -52,6 +53,15 @@ def _load_run_title(summary_csv: Path) -> str:
                 return f"Google-RQC selected-output tradeoff ({rows}x{cols}, m={cycles})"
 
     return "Selected-output Google-RQC validation"
+
+
+def _format_estimator_label(estimator: str) -> str:
+    key = str(estimator).strip().lower()
+    if key == "amplitude_square":
+        return "Amplitude-square"
+    if key == "cross_seeded":
+        return "Cross-seeded"
+    return estimator.replace("_", "-")
 
 
 def _comparison_grouped_by_case(
@@ -112,6 +122,7 @@ def load_fraction_tradeoff_rows(
                 "case_name": case_name,
                 "fraction": fraction,
                 "runtime_s": runtime_s,
+                "population_estimator": row.get("population_estimator", ""),
                 "population_fidelity": 1.0 if case_name == "exact_reference" else fidelities.get(case_name, 0.0),
                 "is_reference": case_name == "exact_reference",
             }
@@ -182,10 +193,30 @@ def plot_fraction_tradeoff(
 
     approx_rows = [row for row in rows if not row["is_reference"]]
     reference_row = next((row for row in rows if row["is_reference"]), None)
-
-    x_approx = [float(row["fraction"]) for row in approx_rows]
-    runtime_approx = [float(row["runtime_s"]) for row in approx_rows]
-    fidelity_approx = [float(row["population_fidelity"]) for row in approx_rows]
+    estimator_keys = list(
+        dict.fromkeys(
+            str(row.get("population_estimator", "")).strip() or "unspecified"
+            for row in approx_rows
+        )
+    )
+    grouped_rows: dict[str, list[dict[str, Any]]] = {
+        estimator: sorted(
+            [
+                row
+                for row in approx_rows
+                if (str(row.get("population_estimator", "")).strip() or "unspecified") == estimator
+            ],
+            key=lambda item: (float(item["fraction"]), str(item["case_name"])),
+        )
+        for estimator in estimator_keys
+    }
+    multiple_estimators = len(estimator_keys) > 1
+    estimator_styles = [
+        (LINE_COLOR_PRIMARY, DEFAULT_MARKER_PRIMARY),
+        (LINE_COLOR_SECONDARY, DEFAULT_MARKER_SECONDARY),
+        ("#2ca02c", "^"),
+        ("#9467bd", "D"),
+    ]
 
     fig, (ax_time, ax_fidelity) = plt.subplots(
         2,
@@ -195,25 +226,39 @@ def plot_fraction_tradeoff(
         constrained_layout=True,
     )
 
-    ax_time.plot(
-        x_approx,
-        runtime_approx,
-        marker=DEFAULT_MARKER_PRIMARY,
-        linewidth=DEFAULT_LINEWIDTH_PRIMARY,
-        color=LINE_COLOR_PRIMARY,
-        label="Approximate case",
-    )
+    for index, estimator in enumerate(estimator_keys):
+        series = grouped_rows[estimator]
+        if not series:
+            continue
+        color, marker = estimator_styles[index % len(estimator_styles)]
+        x_values = [float(row["fraction"]) for row in series]
+        runtime_values = [float(row["runtime_s"]) for row in series]
+        fidelity_values = [float(row["population_fidelity"]) for row in series]
+        label = (
+            _format_estimator_label(estimator) if multiple_estimators else "Approximate case"
+        )
+        ax_time.plot(
+            x_values,
+            runtime_values,
+            marker=marker,
+            linewidth=DEFAULT_LINEWIDTH_PRIMARY,
+            markersize=DEFAULT_MARKERSIZE,
+            color=color,
+            label=label,
+        )
+        ax_fidelity.plot(
+            x_values,
+            fidelity_values,
+            marker=marker,
+            linewidth=DEFAULT_LINEWIDTH_SECONDARY,
+            markersize=DEFAULT_MARKERSIZE,
+            color=color,
+            label=label,
+        )
+
     ax_time.set_ylabel("Runtime [s]")
     ax_time.grid(True, alpha=0.3, linewidth=0.5)
 
-    ax_fidelity.plot(
-        x_approx,
-        fidelity_approx,
-        marker=DEFAULT_MARKER_SECONDARY,
-        linewidth=DEFAULT_LINEWIDTH_SECONDARY,
-        color=LINE_COLOR_SECONDARY,
-        label="Selected-population fidelity",
-    )
     ax_fidelity.set_xlabel("Chunk-2 sampling fraction")
     ax_fidelity.set_ylabel("Population fidelity")
     ax_fidelity.set_ylim(0.0, 1.05)
@@ -225,7 +270,7 @@ def plot_fraction_tradeoff(
         y_ref_fidelity = [float(reference_row["population_fidelity"])]
         ax_time.scatter(x_ref, y_ref_runtime, color="black", marker="*", s=42, zorder=3, label="Exact reference")
         ax_fidelity.scatter(x_ref, y_ref_fidelity, color="black", marker="*", s=42, zorder=3)
-        ax_time.legend(loc="upper left", frameon=False, handlelength=1.8)
+    ax_time.legend(loc="upper left", frameon=False, handlelength=1.8)
 
     all_fractions = sorted({float(row["fraction"]) for row in rows})
     ax_fidelity.set_xticks(all_fractions)

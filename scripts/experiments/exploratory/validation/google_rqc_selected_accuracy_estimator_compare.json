@@ -1,0 +1,137 @@
+{
+  "experiment_name": "google_rqc_selected_accuracy_estimator_compare",
+  "repo_root": ".",
+  "output_root": "data/outputs/validation",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "mpirun": "mpirun",
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 5,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 2
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "size": 2,
+    "count": 1024,
+    "seed": 11,
+    "n_qubits": 10
+  },
+  "reference": {
+    "name": "exact_reference",
+    "fraction": 1.0,
+    "threshold": 0.0,
+    "verbosity": 1,
+    "population_estimator": "amplitude_square",
+    "history_seed": 1
+  },
+  "nonzero_eps": 1e-26,
+  "cases": [
+    {
+      "name": "fraction_0.99_amplitude_square",
+      "fraction": 0.99,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "amplitude_square",
+      "history_seed": 1
+    },
+    {
+      "name": "fraction_0.99_cross_seeded",
+      "fraction": 0.99,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.9_amplitude_square",
+      "fraction": 0.9,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "amplitude_square",
+      "history_seed": 1
+    },
+    {
+      "name": "fraction_0.9_cross_seeded",
+      "fraction": 0.9,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.75_amplitude_square",
+      "fraction": 0.75,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "amplitude_square",
+      "history_seed": 1
+    },
+    {
+      "name": "fraction_0.75_cross_seeded",
+      "fraction": 0.75,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.5_amplitude_square",
+      "fraction": 0.5,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "amplitude_square",
+      "history_seed": 1
+    },
+    {
+      "name": "fraction_0.5_cross_seeded",
+      "fraction": 0.5,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.25_amplitude_square",
+      "fraction": 0.25,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "amplitude_square",
+      "history_seed": 1
+    },
+    {
+      "name": "fraction_0.25_cross_seeded",
+      "fraction": 0.25,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    },
+    {
+      "name": "fraction_0.10_amplitude_square",
+      "fraction": 0.10,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "amplitude_square",
+      "history_seed": 1
+    },
+    {
+      "name": "fraction_0.10_cross_seeded",
+      "fraction": 0.10,
+      "threshold": 0.0,
+      "verbosity": 1,
+      "population_estimator": "cross_seeded",
+      "history_seeds": [1, 2]
+    }
+  ]
+}
