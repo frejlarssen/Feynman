@@ -3,6 +3,7 @@
 set -eu
 
 DAG_ID="feynman"
+DAG_ID_EXPLICIT=0
 CONFIG_PATH=""
 LABEL_KIND="target_num_batches"
 while [ "$#" -gt 0 ]
@@ -14,6 +15,7 @@ do
       ;;
     --dag-id)
       DAG_ID="$2"
+      DAG_ID_EXPLICIT=1
       shift 2
       ;;
     --label-kind)
@@ -34,7 +36,7 @@ do
   esac
 done
 
-if [ "$#" -gt 0 ]; then
+if [ "${DAG_ID_EXPLICIT}" -eq 0 ] && [ "$#" -gt 0 ]; then
   DAG_ID="$1"
   shift || true
 fi
