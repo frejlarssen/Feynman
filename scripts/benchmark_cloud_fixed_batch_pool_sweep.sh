@@ -51,8 +51,8 @@ default_helper_python() {
     return 0
   fi
 
-  if [ -x "/home/frej/micromamba/envs/feynman/bin/python" ]; then
-    printf "%s\n" "/home/frej/micromamba/envs/feynman/bin/python"
+  if [ -x "${HOME}/micromamba/envs/feynman/bin/python" ]; then
+    printf "%s\n" "${HOME}/micromamba/envs/feynman/bin/python"
     return 0
   fi
 

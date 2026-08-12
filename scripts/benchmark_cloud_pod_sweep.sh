@@ -81,8 +81,8 @@ default_config_render_python() {
     return 0
   fi
 
-  if [ -x "/home/frej/micromamba/envs/feynman/bin/python" ]; then
-    printf "%s\n" "/home/frej/micromamba/envs/feynman/bin/python"
+  if [ -x "${HOME}/micromamba/envs/feynman/bin/python" ]; then
+    printf "%s\n" "${HOME}/micromamba/envs/feynman/bin/python"
     return 0
   fi
 
@@ -123,7 +123,7 @@ if [ -n "${CONFIG_PATH}" ]; then
     echo "Config rendering requires the repo's development Python environment." >&2
     echo "Tried: ${CONFIG_RENDER_PYTHON}" >&2
     echo "If needed, rerun with:" >&2
-    echo "  CONFIG_RENDER_PYTHON=/home/frej/micromamba/envs/feynman/bin/python bash scripts/benchmark_cloud_pod_sweep.sh --config ${CONFIG_PATH}" >&2
+    echo "  CONFIG_RENDER_PYTHON=\$HOME/micromamba/envs/feynman/bin/python bash scripts/benchmark_cloud_pod_sweep.sh --config ${CONFIG_PATH}" >&2
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"

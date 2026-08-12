@@ -136,14 +136,14 @@ Before using the DAG with the default pool-based throttling, create the pool in
 your Airflow environment:
 
 ```bash
-source /home/frej/micromamba/bin/activate airflow
+source "$HOME/micromamba/bin/activate" airflow
 bash scripts/setup_airflow_pool.sh simulate_pool 4
 ```
 
 Or equivalently, run the Airflow CLI directly:
 
 ```bash
-source /home/frej/micromamba/bin/activate airflow
+source "$HOME/micromamba/bin/activate" airflow
 airflow pools set simulate_pool 4 "Limit concurrent simulate_batch Kubernetes pods"
 airflow pools list | grep simulate_pool
 ```

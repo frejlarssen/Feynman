@@ -8,7 +8,7 @@ from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperato
 from airflow.sdk import dag, get_current_context, task
 
 
-KUBECONFIG = os.environ.get("KUBECONFIG", "/home/frej/.kube/config")
+KUBECONFIG = os.environ.get("KUBECONFIG", str(Path.home() / ".kube" / "config"))
 DATA_MOUNT_PATH = "/data"
 DATA_PVC_NAME = "feynman-data-pvc"
 SPLIT_IMAGE = "feynman-split:latest"
