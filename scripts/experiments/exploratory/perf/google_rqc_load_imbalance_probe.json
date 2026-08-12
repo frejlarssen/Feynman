@@ -1,5 +1,5 @@
 {
-  "experiment_name": "google_rqc_load_imbalance_probe",
+  "description": "google_rqc_load_imbalance_probe",
   "repo_root": ".",
   "vary": "batch_size",
   "values": [
@@ -22,15 +22,12 @@
     "variant": "sycamore"
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 1
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "size": 1,
     "count": 128,
-    "seed": 17,
-    "n_qubits": 8
+    "seed": 17
   },
   "cases": [
     {

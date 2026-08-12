@@ -27,6 +27,11 @@ DEFAULT_CONTRACT_VALUES: tuple[Any, ...] = (
 )
 
 
+def _label_from_description(description: str, fallback: str) -> str:
+    label = description.strip()
+    return _sanitize(label) if label else fallback
+
+
 def _utc_stamp() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
 
@@ -97,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
         else list(DEFAULT_CONTRACT_VALUES)
     )
 
-    base_experiment_name = str(base_config.get("experiment_name", "qwalk_quimb_qubit_sweep"))
+    base_description = str(base_config.get("description", "")).strip()
+    base_experiment_name = _label_from_description(base_description, base_config_path.stem)
     base_output_root = args.output_root or Path(base_config.get("output_root", "data/outputs/experiments"))
     if not base_output_root.is_absolute():
         base_output_root = repo_root / base_output_root
@@ -116,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     for value in values:
         label = _contract_label(value)
         config = json.loads(json.dumps(base_config))
-        config["experiment_name"] = f"{base_experiment_name}_contract_{label}"
+        config["description"] = (base_description + f" contract={label}").strip()
         config["output_root"] = str(outer_dir)
         validation = dict(config.get("validation", {}))
         validation["quimb_gate_contract"] = value

@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from sweeplib.materialize import derive_experiment_name
+
 from .schema import (
     BOOLEAN_FIELDS,
     CASE_OVERRIDE_FIELDS,
@@ -55,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Sweep one parameter for sv_prefetcher and store results with metadata."
     )
     parser.add_argument("--config", default=argparse.SUPPRESS)
-    parser.add_argument("--experiment-name", default=argparse.SUPPRESS)
+    parser.add_argument("--description", default=argparse.SUPPRESS)
     parser.add_argument("--repo-root", default=argparse.SUPPRESS)
     parser.add_argument("--vary", choices=VARY_CHOICES, default=argparse.SUPPRESS)
     parser.add_argument("--values", nargs="+", default=argparse.SUPPRESS)
@@ -228,6 +230,14 @@ def _parse_values(options: dict[str, Any]) -> None:
     options["values"] = [_to_number("values", value, conv) for value in options["values"]]
 
 
+def _derive_runtime_name(options: dict[str, Any]) -> None:
+    repo_root_raw = str(options.get("repo_root", "."))
+    repo_root_path = Path(repo_root_raw).expanduser()
+    repo_root = repo_root_path.resolve() if repo_root_path.is_absolute() else (Path.cwd() / repo_root_path).resolve()
+    fallback = Path(options["config"]).stem if options.get("config") else "sweep"
+    options["experiment_name"] = derive_experiment_name(options, repo_root, fallback=fallback)
+
+
 def build_config(argv: list[str] | None = None) -> SweepConfig:
     parser = build_parser()
     try:
@@ -236,6 +246,7 @@ def build_config(argv: list[str] | None = None) -> SweepConfig:
         _validate_required(options)
         _validate_semantics(options)
         _parse_values(options)
+        _derive_runtime_name(options)
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
 

@@ -1,6 +1,13 @@
 {
-  "experiment_name": "qwalk_n100_it17_count1024_exact_opencube",
-  "target_pool_slots_list": [1, 2, 4, 8, 16, 32],
+  "description": "qwalk_n100_it17_count1024_exact_opencube",
+  "target_pool_slots_list": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
   "max_hexstrings_per_batch": 32,
   "repeat": 5,
   "simulate_omp_num_threads": 1,
@@ -12,12 +19,10 @@
     "it": 17
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 13
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 13,
     "count": 1024
   }
 }

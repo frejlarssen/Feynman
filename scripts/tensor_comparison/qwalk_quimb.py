@@ -27,6 +27,9 @@ for path in (SCRIPT_REPO_ROOT, SCRIPT_DIR):
         sys.path.insert(0, str(path))
 
 from scripts.sweeplib.materialize import (  # noqa: E402
+    derive_experiment_name,
+    infer_circuit_qubits,
+    normalize_generator_specs,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -187,7 +190,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         return getattr(args, key, None) if getattr(args, key, None) is not None else raw.get(key, default)
 
     cfg = {
-        "experiment_name": pick("experiment_name", "qwalk_quimb"),
+        "description": pick("description", ""),
         "repo_root": pick("repo_root", "."),
         "output_root": pick("output_root", "data/outputs/validation"),
         "circuit": raw.get("circuit"),
@@ -218,6 +221,17 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     for key in ("circuit", "input_statevector", "output_bitstrings"):
         if cfg[key] is None:
             raise ValueError(f"Missing required config key: {key}")
+    cfg["circuit"], cfg["input_statevector"], cfg["output_bitstrings"], _ = normalize_generator_specs(
+        cfg["circuit"],
+        cfg["input_statevector"],
+        cfg["output_bitstrings"],
+        SCRIPT_REPO_ROOT,
+    )
+    cfg["experiment_name"] = derive_experiment_name(
+        cfg,
+        SCRIPT_REPO_ROOT,
+        fallback=args.config.resolve().stem or "qwalk_quimb",
+    )
     return cfg
 
 
@@ -936,7 +950,7 @@ def _write_comparison_csv(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--experiment-name", default=None)
+    parser.add_argument("--description", default=None)
     parser.add_argument("--repo-root", default=None)
     parser.add_argument("--output-root", default=None)
     return parser.parse_args(argv)
@@ -960,8 +974,17 @@ def main(argv: list[str] | None = None) -> int:
 
     _log("Materializing circuit, input statevector, and output bitstrings", verbosity=verbosity)
     circuit, circuit_generated = resolve_circuit_input(cfg["circuit"], repo_root)
-    input_statevector, input_generated = resolve_statevector_input(cfg["input_statevector"], repo_root)
-    output_bitstrings, output_generated = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
+    circuit_qubits = infer_circuit_qubits(cfg["circuit"], repo_root)
+    input_statevector, input_generated = resolve_statevector_input(
+        cfg["input_statevector"],
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
+    output_bitstrings, output_generated = resolve_output_bitstrings_input(
+        cfg["output_bitstrings"],
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
     output_indices, output_size_bytes = parse_hs(output_bitstrings)
     input_index, input_amplitude = _single_input_basis_state(input_statevector)
     _log(

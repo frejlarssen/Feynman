@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qft_demo",
+  "description": "qft_demo",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
   "ranks": 8,
@@ -13,7 +13,6 @@
   },
   "input_statevector": {
     "generator": "two_freq",
-    "n_qubits": 12,
     "f1": 5,
     "f2": 2001,
     "f2_amp": 0.5,
@@ -23,7 +22,6 @@
   },
   "output_bitstrings": {
     "generator": "two_intervals",
-    "size": 2,
     "interval1": {
       "start": 3,
       "count": 4

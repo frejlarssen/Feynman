@@ -1,5 +1,5 @@
 {
-  "experiment_name": "google_rqc_selected_accuracy_cross_seeded_smoke",
+  "description": "google_rqc_selected_accuracy_cross_seeded_smoke",
   "repo_root": ".",
   "output_root": "data/outputs/validation",
   "binary": "build-cloud/cloud_task.x",
@@ -17,15 +17,12 @@
     "variant": "sycamore"
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 1
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "size": 1,
     "count": 64,
-    "seed": 11,
-    "n_qubits": 8
+    "seed": 11
   },
   "reference": {
     "name": "exact_reference",
@@ -40,7 +37,10 @@
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "cross_seeded",
-      "history_seeds": [1, 2]
+      "history_seeds": [
+        1,
+        2
+      ]
     }
   ],
   "nonzero_eps": 1e-12

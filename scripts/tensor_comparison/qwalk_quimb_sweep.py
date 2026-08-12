@@ -30,6 +30,7 @@ from scripts.sweeplib.plot_style import (
     configure_headless_matplotlib,
     single_column_figure_size,
 )
+from scripts.sweeplib.materialize import derive_experiment_name
 from scripts.sweeplib.provenance import build_sweep_metadata, get_git_info
 
 
@@ -190,7 +191,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     validation = dict(raw.get("validation", {}))
     plotting = dict(raw.get("plotting", {}))
     cfg = {
-        "experiment_name": pick("experiment_name", "qwalk_quimb_qubit_sweep"),
+        "description": pick("description", ""),
         "repo_root": pick("repo_root", "."),
         "output_root": pick("output_root", "data/outputs/experiments"),
         "qubits": raw.get("qubits", []),
@@ -216,11 +217,12 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("Sweep config must define a non-empty 'qubits' list.")
     if cfg["repeat"] < 1:
         raise ValueError("repeat must be >= 1")
+    cfg["experiment_name"] = derive_experiment_name(
+        cfg,
+        SCRIPT_REPO_ROOT,
+        fallback=args.config.resolve().stem if args.config else "qwalk_quimb_qubit_sweep",
+    )
     return cfg
-
-
-def _statevector_size_bytes(n_qubits: int) -> int:
-    return max(1, (int(n_qubits) + 7) // 8)
 
 
 def _enabled_up_to(default: bool, max_n: Any, n_qubits: int) -> bool:
@@ -245,9 +247,8 @@ def _build_validation_config(
         cfg["feynman_transpiled_max_n"],
         n_qubits,
     )
-    size_bytes = _statevector_size_bytes(n_qubits)
     payload = {
-        "experiment_name": f"{cfg['experiment_name']}_n{n_qubits}",
+        "description": str(cfg["description"] or cfg["experiment_name"]),
         "repo_root": str(repo_root),
         "output_root": str(run_dir / "validation_runs"),
         "circuit": {
@@ -258,13 +259,12 @@ def _build_validation_config(
         },
         "input_statevector": {
             "generator": input_statevector.get("generator", "ket0"),
-            "size": int(input_statevector.get("size", size_bytes)),
+            **{k: v for k, v in input_statevector.items() if k != "generator"},
         },
         "output_bitstrings": {
             "generator": output_bitstrings.get("generator", "one_interval"),
-            "size": int(output_bitstrings.get("size", size_bytes)),
             "count": int(output_bitstrings.get("count", 8)),
-            **{k: v for k, v in output_bitstrings.items() if k not in {"generator", "size", "count"}},
+            **{k: v for k, v in output_bitstrings.items() if k not in {"generator", "count"}},
         },
         **validation,
         "timeout_seconds": cfg["timeout_seconds"],
@@ -957,7 +957,7 @@ def _plot_summary(summary_csv: Path, *, output_dir: Path, title: str, label_font
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path)
-    parser.add_argument("--experiment-name", default=None)
+    parser.add_argument("--description", default=None)
     parser.add_argument("--repo-root", default=None)
     parser.add_argument("--output-root", default=None)
     parser.add_argument("--continue-on-error", action="store_true")
@@ -977,7 +977,12 @@ def _plot_title_from_metadata(summary_csv: Path) -> tuple[str, float | None]:
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     config = metadata.get("config", {}) if isinstance(metadata, dict) else {}
     plotting = config.get("plotting", {}) if isinstance(config.get("plotting", {}), dict) else {}
-    title = str(plotting.get("title", config.get("experiment_name", metadata.get("experiment_name", summary_csv.parent.name))))
+    title = str(
+        plotting.get(
+            "title",
+            config.get("description", metadata.get("experiment_name", summary_csv.parent.name)),
+        )
+    )
     return title, plotting.get("label_fontsize")
 
 
@@ -1146,7 +1151,7 @@ def main(argv: list[str] | None = None) -> int:
         for out in _plot_summary(
             summary_csv,
             output_dir=sweep_dir,
-            title=str(cfg["plotting"].get("title", cfg["experiment_name"])),
+            title=str(cfg["plotting"].get("title", cfg["description"] or cfg["experiment_name"])),
             label_fontsize=cfg["plotting"].get("label_fontsize"),
         ):
             print(f"Saved plot: {out}")

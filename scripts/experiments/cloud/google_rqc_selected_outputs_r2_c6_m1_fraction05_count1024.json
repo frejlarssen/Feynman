@@ -1,6 +1,10 @@
 {
-  "experiment_name": "google_rqc_r2_c6_m1_fraction05_count1024",
-  "target_num_pods_list": [1, 2, 4],
+  "description": "google_rqc_r2_c6_m1_fraction05_count1024",
+  "target_num_pods_list": [
+    1,
+    2,
+    4
+  ],
   "repeat": 3,
   "simulate_omp_num_threads": 1,
   "fraction": 0.5,
@@ -14,14 +18,11 @@
     "variant": "sycamore"
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 2
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "size": 2,
     "count": 1024,
-    "seed": 11,
-    "n_qubits": 12
+    "seed": 11
   }
 }

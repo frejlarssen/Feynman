@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,294 @@ def _resolve_output_dir(spec: dict[str, Any], repo_root: Path, default_dir: Path
         return default_dir.resolve()
     out_dir = Path(str(out_dir_raw))
     return out_dir.resolve() if out_dir.is_absolute() else (repo_root / out_dir).resolve()
+
+
+def infer_size_bytes_for_qubits(n_qubits: int) -> int:
+    if n_qubits <= 0:
+        raise ValueError("n_qubits must be > 0")
+    return max(1, math.ceil(int(n_qubits) / 8))
+
+
+def _infer_qasm_qubits(path: Path) -> int | None:
+    try:
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("//"):
+                continue
+            if line.startswith("qreg ") or line.startswith("qubit "):
+                lb = line.find("[")
+                rb = line.find("]")
+                if lb == -1 or rb == -1 or rb <= lb:
+                    return None
+                return int(line[lb + 1 : rb])
+    except OSError:
+        return None
+    return None
+
+
+def infer_circuit_qubits(circuit_cfg: str | dict[str, Any], repo_root: Path) -> int | None:
+    if isinstance(circuit_cfg, str):
+        return _infer_qasm_qubits(resolve_path_like(circuit_cfg, repo_root))
+    if not isinstance(circuit_cfg, dict):
+        return None
+
+    generator = str(circuit_cfg.get("generator", "")).strip().lower()
+    if generator in {"google_rqc", "google_style_rqc", "rqc"}:
+        rows_raw = circuit_cfg.get("rows")
+        cols_raw = circuit_cfg.get("cols")
+        if rows_raw is None or cols_raw is None:
+            return None
+        return int(rows_raw) * int(cols_raw)
+    n_raw = circuit_cfg.get("n")
+    return int(n_raw) if n_raw is not None else None
+
+
+def normalize_statevector_spec(
+    statevector_cfg: str | dict[str, Any],
+    repo_root: Path,
+    *,
+    circuit_qubits: int | None = None,
+) -> str | dict[str, Any]:
+    if isinstance(statevector_cfg, str):
+        return statevector_cfg
+    if not isinstance(statevector_cfg, dict):
+        raise ValueError("input_statevector must be a path string or a generator object.")
+
+    cfg = dict(statevector_cfg)
+    generator = str(cfg.get("generator", "two_freq")).strip().lower()
+    if generator == "ket0":
+        if all(cfg.get(key) is None for key in ("size", "n_qubits", "n")):
+            if circuit_qubits is None:
+                raise ValueError(
+                    "input_statevector ket0 requires size/n_qubits or an inferable circuit width."
+                )
+            cfg["size"] = infer_size_bytes_for_qubits(circuit_qubits)
+        return cfg
+
+    if generator in {"two_freq", "amplitude_signal", "two_tone", "two_tone_dense"}:
+        if all(cfg.get(key) is None for key in ("size", "n_qubits", "n")):
+            if circuit_qubits is None:
+                raise ValueError(
+                    f"input_statevector {generator} requires size/n_qubits or an inferable circuit width."
+                )
+            cfg["n_qubits"] = int(circuit_qubits)
+        return cfg
+
+    return cfg
+
+
+def normalize_output_bitstrings_spec(
+    output_cfg: str | dict[str, Any],
+    repo_root: Path,
+    *,
+    circuit_qubits: int | None = None,
+) -> str | dict[str, Any]:
+    if isinstance(output_cfg, str):
+        return output_cfg
+    if not isinstance(output_cfg, dict):
+        raise ValueError("output_bitstrings must be a path string or a generator object.")
+
+    cfg = dict(output_cfg)
+    generator = str(cfg.get("generator", "one_interval")).strip().lower()
+    if cfg.get("size") is None:
+        if circuit_qubits is None:
+            raise ValueError(
+                f"output_bitstrings {generator} requires size or an inferable circuit width."
+            )
+        cfg["size"] = infer_size_bytes_for_qubits(circuit_qubits)
+
+    if generator in {"random_uniform", "uniform_random", "random"}:
+        if cfg.get("n_qubits") is None and cfg.get("active_qubits") is None and circuit_qubits is not None:
+            cfg["n_qubits"] = int(circuit_qubits)
+    return cfg
+
+
+def normalize_generator_specs(
+    circuit_cfg: str | dict[str, Any],
+    statevector_cfg: str | dict[str, Any],
+    output_cfg: str | dict[str, Any],
+    repo_root: Path,
+) -> tuple[str | dict[str, Any], str | dict[str, Any], str | dict[str, Any], int | None]:
+    circuit_qubits = infer_circuit_qubits(circuit_cfg, repo_root)
+    return (
+        circuit_cfg,
+        normalize_statevector_spec(statevector_cfg, repo_root, circuit_qubits=circuit_qubits),
+        normalize_output_bitstrings_spec(output_cfg, repo_root, circuit_qubits=circuit_qubits),
+        circuit_qubits,
+    )
+
+
+def _sanitize_identifier(value: str) -> str:
+    out = []
+    for ch in value.strip():
+        if ch.isalnum() or ch in {"-", "_", "."}:
+            out.append(ch)
+        else:
+            out.append("_")
+    return "".join(out).strip("_") or "case"
+
+
+def _number_token(value: Any) -> str:
+    text = f"{float(value):.12g}" if isinstance(value, float) or isinstance(value, int) else str(value)
+    return (
+        text.replace("-", "m")
+        .replace(".", "p")
+        .replace("+", "")
+        .replace("/", "_")
+    )
+
+
+def derive_circuit_identifier(circuit_cfg: str | dict[str, Any], repo_root: Path) -> str:
+    if isinstance(circuit_cfg, str):
+        return _sanitize_identifier(resolve_path_like(circuit_cfg, repo_root).stem)
+    if not isinstance(circuit_cfg, dict):
+        return "circuit"
+
+    generator = str(circuit_cfg.get("generator", "circuit")).strip().lower()
+    if generator == "qft":
+        return f"qft_n{int(circuit_cfg['n'])}_k{int(circuit_cfg['k'])}"
+    if generator in {"qwalk", "quantum_walk"}:
+        suffix = "_biased" if _as_bool(circuit_cfg.get("biased", False)) else ""
+        return f"qwalk_n{int(circuit_cfg['n'])}_it{int(circuit_cfg['it'])}{suffix}"
+    if generator in {"aa", "amplitude_amplification"}:
+        return (
+            f"aa_n{int(circuit_cfg['n'])}_it{int(circuit_cfg['it'])}_mark{int(circuit_cfg['mark'])}"
+        )
+    if generator in {"google_rqc", "google_style_rqc", "rqc"}:
+        if circuit_cfg.get("name"):
+            return _sanitize_identifier(str(circuit_cfg["name"]))
+        token = (
+            f"google_rqc_r{int(circuit_cfg['rows'])}_c{int(circuit_cfg['cols'])}"
+            f"_m{int(circuit_cfg['cycles'])}"
+        )
+        seed = int(circuit_cfg.get("seed", 0))
+        if seed != 0:
+            token += f"_seed{seed}"
+        variant = str(circuit_cfg.get("variant", "sycamore_cz")).strip().lower()
+        if variant and variant not in {"sycamore_cz", "sycamore"}:
+            token += f"_{_sanitize_identifier(variant)}"
+        return token
+    if generator in {"qaoa_maxcut", "qaoa"}:
+        if circuit_cfg.get("name"):
+            return _sanitize_identifier(str(circuit_cfg["name"]))
+        graph = _sanitize_identifier(str(circuit_cfg.get("graph", "graph")))
+        return f"qaoa_{graph}_n{int(circuit_cfg['n'])}_p{int(circuit_cfg['p'])}"
+    return _sanitize_identifier(generator)
+
+
+def _interval_descriptor(interval_spec: Any) -> str:
+    if isinstance(interval_spec, dict):
+        if "start" in interval_spec and "count" in interval_spec:
+            return f"from{int(interval_spec['start'])}_count{int(interval_spec['count'])}"
+        if "start" in interval_spec and "end" in interval_spec:
+            return f"from{int(interval_spec['start'])}_to{int(interval_spec['end'])}"
+        if "center" in interval_spec and "radius" in interval_spec:
+            return f"center{int(interval_spec['center'])}_rad{int(interval_spec['radius'])}"
+        if "values" in interval_spec:
+            values = list(interval_spec["values"])
+            return f"values{len(values)}"
+    if isinstance(interval_spec, list):
+        return f"values{len(interval_spec)}"
+    return "interval"
+
+
+def derive_statevector_identifier(
+    statevector_cfg: str | dict[str, Any],
+    repo_root: Path,
+    *,
+    circuit_qubits: int | None = None,
+) -> str:
+    if isinstance(statevector_cfg, str):
+        return _sanitize_identifier(resolve_path_like(statevector_cfg, repo_root).stem)
+    cfg = normalize_statevector_spec(statevector_cfg, repo_root, circuit_qubits=circuit_qubits)
+    assert isinstance(cfg, dict)
+    generator = str(cfg.get("generator", "")).strip().lower()
+    if generator == "ket0":
+        return ""
+    if generator in {"two_freq", "amplitude_signal"}:
+        return f"twofreq_f{int(cfg['f1'])}_f{_number_token(cfg['f2'])}"
+    if generator in {"two_tone", "two_tone_dense"}:
+        return f"twotone_f{int(cfg['f1'])}_{int(cfg['f2'])}"
+    return _sanitize_identifier(generator)
+
+
+def derive_output_identifier(
+    output_cfg: str | dict[str, Any],
+    repo_root: Path,
+    *,
+    circuit_qubits: int | None = None,
+) -> str:
+    if isinstance(output_cfg, str):
+        return _sanitize_identifier(resolve_path_like(output_cfg, repo_root).stem)
+    cfg = normalize_output_bitstrings_spec(output_cfg, repo_root, circuit_qubits=circuit_qubits)
+    assert isinstance(cfg, dict)
+    generator = str(cfg.get("generator", "outputs")).strip().lower()
+    if generator == "one_interval":
+        token = f"count{int(cfg['count'])}"
+        start = int(cfg.get("start", 0))
+        if start != 0:
+            token += f"_from{start}"
+        return token
+    if generator in {"random_uniform", "uniform_random", "random"}:
+        token = f"count{int(cfg['count'])}_seed{int(cfg.get('seed', 0))}"
+        n_qubits = cfg.get("n_qubits", cfg.get("active_qubits"))
+        if n_qubits is not None and circuit_qubits is not None and int(n_qubits) != int(circuit_qubits):
+            token += f"_nq{int(n_qubits)}"
+        return token
+    if generator == "two_intervals":
+        return (
+            f"twointervals_{_interval_descriptor(cfg.get('interval1'))}_"
+            f"{_interval_descriptor(cfg.get('interval2'))}"
+        )
+    if generator in {"explicit", "values"}:
+        values = cfg.get("values")
+        if isinstance(values, list):
+            return f"explicit{len(values)}"
+        return f"explicit{int(cfg.get('count', 0))}"
+    return _sanitize_identifier(generator)
+
+
+def derive_experiment_name(
+    payload: dict[str, Any],
+    repo_root: Path,
+    *,
+    fallback: str = "experiment",
+) -> str:
+    circuit_cfg = payload.get("circuit", payload.get("circuit_file"))
+    statevector_cfg = payload.get("input_statevector", payload.get("input_statevector_file"))
+    output_cfg = payload.get("output_bitstrings", payload.get("output_bitstrings_file"))
+    if circuit_cfg is None:
+        description = str(payload.get("description", "")).strip()
+        return _sanitize_identifier(description or fallback)
+
+    circuit_cfg, statevector_cfg, output_cfg, circuit_qubits = normalize_generator_specs(
+        circuit_cfg,
+        statevector_cfg,
+        output_cfg,
+        repo_root,
+    )
+    tokens = [derive_circuit_identifier(circuit_cfg, repo_root)]
+
+    state_token = derive_statevector_identifier(
+        statevector_cfg, repo_root, circuit_qubits=circuit_qubits
+    )
+    if state_token:
+        tokens.append(state_token)
+
+    output_token = derive_output_identifier(
+        output_cfg, repo_root, circuit_qubits=circuit_qubits
+    )
+    if output_token:
+        tokens.append(output_token)
+
+    if "fraction" in payload and float(payload.get("fraction", 1.0)) != 1.0:
+        tokens.append(f"fraction{_number_token(payload['fraction'])}")
+    if "threshold" in payload and float(payload.get("threshold", 0.0)) != 0.0:
+        tokens.append(f"threshold{_number_token(payload['threshold'])}")
+    if "max_hexstrings_per_batch" in payload:
+        tokens.append(f"batch{int(payload['max_hexstrings_per_batch'])}")
+
+    return "_".join(token for token in tokens if token) or _sanitize_identifier(fallback)
 
 
 def _build_interval(interval_spec: Any, label: str) -> list[int]:
@@ -241,8 +530,16 @@ def resolve_circuit_input(circuit_cfg: str | dict[str, Any], repo_root: Path) ->
 
 
 def resolve_statevector_input(
-    statevector_cfg: str | dict[str, Any], repo_root: Path
+    statevector_cfg: str | dict[str, Any],
+    repo_root: Path,
+    *,
+    circuit_qubits: int | None = None,
 ) -> tuple[Path, dict[str, Any] | None]:
+    statevector_cfg = normalize_statevector_spec(
+        statevector_cfg,
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
     if isinstance(statevector_cfg, str):
         return resolve_path_like(statevector_cfg, repo_root), None
     if not isinstance(statevector_cfg, dict):
@@ -349,8 +646,16 @@ def resolve_statevector_input(
 
 
 def resolve_output_bitstrings_input(
-    output_cfg: str | dict[str, Any], repo_root: Path
+    output_cfg: str | dict[str, Any],
+    repo_root: Path,
+    *,
+    circuit_qubits: int | None = None,
 ) -> tuple[Path, dict[str, Any] | None]:
+    output_cfg = normalize_output_bitstrings_spec(
+        output_cfg,
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
     if isinstance(output_cfg, str):
         return resolve_path_like(output_cfg, repo_root), None
     if not isinstance(output_cfg, dict):

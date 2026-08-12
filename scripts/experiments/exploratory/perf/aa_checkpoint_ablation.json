@@ -1,5 +1,5 @@
 {
-  "experiment_name": "aa_n4_it3_mark5_checkpoint_ablation",
+  "description": "aa_n4_it3_mark5_checkpoint_ablation",
   "repo_root": ".",
   "vary": "batch_size",
   "values": [
@@ -20,12 +20,10 @@
     "mark": 5
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 1
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 1,
     "count": 10
   },
   "cases": [

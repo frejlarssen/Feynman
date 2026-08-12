@@ -1,5 +1,5 @@
 {
-  "experiment_name": "google_rqc_selected_accuracy_threshold_fraction025_r2_c5_m1_ultraultratiny",
+  "description": "google_rqc_selected_accuracy_threshold_fraction025_r2_c5_m1_ultraultratiny",
   "repo_root": ".",
   "output_root": "data/outputs/validation",
   "binary": "build-cloud/cloud_task.x",
@@ -17,15 +17,12 @@
     "variant": "sycamore"
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 2
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "size": 2,
     "count": 1024,
-    "seed": 11,
-    "n_qubits": 10
+    "seed": 11
   },
   "reference": {
     "name": "exact_reference",
@@ -40,7 +37,9 @@
       "threshold": 1e-120,
       "verbosity": 1,
       "population_estimator": "amplitude_square",
-      "history_seeds": [1]
+      "history_seeds": [
+        1
+      ]
     }
   ],
   "nonzero_eps": 1e-320

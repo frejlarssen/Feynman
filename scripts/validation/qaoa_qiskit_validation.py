@@ -32,6 +32,8 @@ from qiskit.circuit.library import (
 )
 from qiskit.quantum_info import Statevector
 from sweeplib.materialize import (
+    derive_experiment_name,
+    infer_circuit_qubits,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -89,7 +91,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         return cli_value if cli_value is not None else cfg.get(key, default)
 
     merged = {
-        "experiment_name": pick("experiment_name", args.experiment_name, "qaoa_qiskit_validation"),
+        "description": pick("description", args.description, ""),
         "repo_root": pick("repo_root", args.repo_root, str(SCRIPT_REPO_ROOT)),
         "output_root": pick("output_root", args.output_root, "data/outputs/validation"),
         "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
@@ -115,6 +117,11 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("ranks must be >= 1")
     if merged["batch_size"] < 0:
         raise ValueError("batch_size must be >= 0")
+    merged["experiment_name"] = derive_experiment_name(
+        merged,
+        SCRIPT_REPO_ROOT,
+        fallback="qaoa_qiskit_validation",
+    )
 
     return merged
 
@@ -369,7 +376,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Compare Feynman simulator vs Qiskit (config-driven) and report runtimes."
     )
     parser.add_argument("--config", type=Path, default=None)
-    parser.add_argument("--experiment-name", type=str, default=None)
+    parser.add_argument("--description", type=str, default=None)
     parser.add_argument("--repo-root", type=Path, default=None)
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--circuit", type=Path, default=None)
@@ -444,9 +451,14 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_name'])}"
     run_dir.mkdir(parents=True, exist_ok=False)
 
+    circuit_qubits = infer_circuit_qubits(cfg["circuit"], repo_root)
     circuit, _ = resolve_circuit_input(cfg["circuit"], repo_root)
-    input_statevector, _ = resolve_statevector_input(cfg["input_statevector"], repo_root)
-    output_bitstrings, _ = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
+    input_statevector, _ = resolve_statevector_input(
+        cfg["input_statevector"], repo_root, circuit_qubits=circuit_qubits
+    )
+    output_bitstrings, _ = resolve_output_bitstrings_input(
+        cfg["output_bitstrings"], repo_root, circuit_qubits=circuit_qubits
+    )
     binary = _resolve_path(cfg["binary"], repo_root).resolve()
     if not binary.exists():
         raise FileNotFoundError(f"Binary not found: {binary}")

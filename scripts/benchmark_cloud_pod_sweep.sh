@@ -127,7 +127,7 @@ if [ -n "${CONFIG_PATH}" ]; then
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
-  CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" -c 'import json,sys; from pathlib import Path; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", Path(sys.argv[1]).stem or "qft_n8_k2"))' "${CONFIG_PATH}")"
+  CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-experiment-name)"
   REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
   CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
   if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then

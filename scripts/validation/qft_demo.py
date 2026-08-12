@@ -32,6 +32,8 @@ if str(SCRIPT_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_REPO_ROOT))
 
 from scripts.sweeplib.materialize import (  # noqa: E402
+    derive_experiment_name,
+    infer_circuit_qubits,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -99,7 +101,7 @@ def _merge_config(
         return cli_value if cli_value is not None else cfg.get(key, default)
 
     merged = {
-        "experiment_name": pick("experiment_name", args.experiment_name, "qft_demo"),
+        "description": pick("description", args.description, ""),
         "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
@@ -140,6 +142,11 @@ def _merge_config(
         raise ValueError("batch_size must be >= 0")
     if merged["plot_max_xticks"] < 2:
         raise ValueError("plot_max_xticks must be >= 2")
+    merged["experiment_name"] = derive_experiment_name(
+        merged,
+        SCRIPT_REPO_ROOT,
+        fallback="qft_demo",
+    )
     return merged, cfg, config_path_str
 
 
@@ -569,7 +576,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Run a QFT frequency demo and produce a PDF plot."
     )
     parser.add_argument("--config", default=None, help="JSON config path.")
-    parser.add_argument("--experiment-name", default=None)
+    parser.add_argument("--description", default=None)
     parser.add_argument("--repo-root", default=None)
     parser.add_argument("--binary", default=None)
     parser.add_argument("--mpirun", default=None)
@@ -682,9 +689,14 @@ def main(argv: list[str] | None = None) -> int:
     if not binary.is_absolute():
         binary = (repo_root / binary).resolve()
 
+    circuit_qubits = infer_circuit_qubits(cfg["circuit"], repo_root)
     circuit, circuit_generated = resolve_circuit_input(cfg["circuit"], repo_root)
-    input_statevector, input_generated = resolve_statevector_input(cfg["input_statevector"], repo_root)
-    output_bitstrings, output_generated = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
+    input_statevector, input_generated = resolve_statevector_input(
+        cfg["input_statevector"], repo_root, circuit_qubits=circuit_qubits
+    )
+    output_bitstrings, output_generated = resolve_output_bitstrings_input(
+        cfg["output_bitstrings"], repo_root, circuit_qubits=circuit_qubits
+    )
     output_root = (repo_root / cfg["output_root"]).resolve()
 
     for p in (binary, circuit, input_statevector, output_bitstrings):

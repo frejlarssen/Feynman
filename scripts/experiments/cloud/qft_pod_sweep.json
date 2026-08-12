@@ -1,6 +1,11 @@
 {
-  "experiment_name": "qft_n8_k2",
-  "target_num_pods_list": [1, 2, 4, 8],
+  "description": "qft_n8_k2",
+  "target_num_pods_list": [
+    1,
+    2,
+    4,
+    8
+  ],
   "repeat": 3,
   "simulate_omp_num_threads": 1,
   "circuit": {
@@ -9,12 +14,10 @@
     "k": 2
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 1
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 1,
     "count": 10
   }
 }

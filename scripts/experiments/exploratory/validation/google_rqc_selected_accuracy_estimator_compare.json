@@ -1,5 +1,5 @@
 {
-  "experiment_name": "google_rqc_selected_accuracy_estimator_compare",
+  "description": "google_rqc_selected_accuracy_estimator_compare",
   "repo_root": ".",
   "output_root": "data/outputs/validation",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
@@ -17,15 +17,12 @@
     "variant": "sycamore"
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 2
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "size": 2,
     "count": 1024,
-    "seed": 11,
-    "n_qubits": 10
+    "seed": 11
   },
   "reference": {
     "name": "exact_reference",
@@ -51,7 +48,10 @@
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "cross_seeded",
-      "history_seeds": [1, 2]
+      "history_seeds": [
+        1,
+        2
+      ]
     },
     {
       "name": "fraction_0.9_amplitude_square",
@@ -67,7 +67,10 @@
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "cross_seeded",
-      "history_seeds": [1, 2]
+      "history_seeds": [
+        1,
+        2
+      ]
     },
     {
       "name": "fraction_0.75_amplitude_square",
@@ -83,7 +86,10 @@
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "cross_seeded",
-      "history_seeds": [1, 2]
+      "history_seeds": [
+        1,
+        2
+      ]
     },
     {
       "name": "fraction_0.5_amplitude_square",
@@ -99,7 +105,10 @@
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "cross_seeded",
-      "history_seeds": [1, 2]
+      "history_seeds": [
+        1,
+        2
+      ]
     },
     {
       "name": "fraction_0.25_amplitude_square",
@@ -115,11 +124,14 @@
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "cross_seeded",
-      "history_seeds": [1, 2]
+      "history_seeds": [
+        1,
+        2
+      ]
     },
     {
       "name": "fraction_0.10_amplitude_square",
-      "fraction": 0.10,
+      "fraction": 0.1,
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "amplitude_square",
@@ -127,11 +139,14 @@
     },
     {
       "name": "fraction_0.10_cross_seeded",
-      "fraction": 0.10,
+      "fraction": 0.1,
       "threshold": 0.0,
       "verbosity": 1,
       "population_estimator": "cross_seeded",
-      "history_seeds": [1, 2]
+      "history_seeds": [
+        1,
+        2
+      ]
     }
   ]
 }

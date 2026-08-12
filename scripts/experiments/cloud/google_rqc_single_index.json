@@ -1,6 +1,8 @@
 {
-  "experiment_name": "google_rqc_r2_c2_m1_single_index",
-  "target_num_pods_list": [1],
+  "description": "google_rqc_r2_c2_m1_single_index",
+  "target_num_pods_list": [
+    1
+  ],
   "repeat": 1,
   "simulate_omp_num_threads": 1,
   "fraction": 1.0,
@@ -14,12 +16,10 @@
     "variant": "sycamore"
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 1
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 1,
     "start": 18,
     "count": 1
   }

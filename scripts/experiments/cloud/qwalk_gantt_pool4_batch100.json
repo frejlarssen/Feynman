@@ -1,6 +1,8 @@
 {
-  "experiment_name": "qwalk_n64_it5_count1200_batch100_pool4",
-  "target_pool_slots_list": [4],
+  "description": "qwalk_n64_it5_count1200_batch100_pool4",
+  "target_pool_slots_list": [
+    4
+  ],
   "max_hexstrings_per_batch": 100,
   "repeat": 1,
   "simulate_omp_num_threads": 1,
@@ -10,12 +12,10 @@
     "it": 5
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 8
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 8,
     "count": 1200
   }
 }

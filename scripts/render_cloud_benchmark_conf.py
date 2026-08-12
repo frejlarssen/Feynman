@@ -12,6 +12,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.sweeplib.materialize import (  # noqa: E402
+    derive_experiment_name,
+    infer_circuit_qubits,
+    normalize_generator_specs,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -19,7 +22,7 @@ from scripts.sweeplib.materialize import (  # noqa: E402
 
 DATA_HOST_ROOT = (REPO_ROOT / "data").resolve()
 DATA_MOUNT_ROOT = Path("/data")
-DEFAULT_EXPERIMENT_NAME = "qft_n8_k2"
+DEFAULT_EXPERIMENT_NAME = "experiment"
 
 
 def _resolve_config_path(value: str) -> Path:
@@ -98,25 +101,16 @@ def parse_max_hexstrings_per_batch(payload: dict[str, Any]) -> int | None:
     return batch_size
 
 
-def _infer_circuit_qubits(circuit_cfg: Any) -> int | None:
-    if not isinstance(circuit_cfg, dict):
-        return None
-    rows_raw = circuit_cfg.get("rows")
-    cols_raw = circuit_cfg.get("cols")
-    if rows_raw is not None and cols_raw is not None:
-        logical_qubits = int(rows_raw) * int(cols_raw)
-        return ((logical_qubits + 7) // 8) * 8
-    n_raw = circuit_cfg.get("n")
-    return int(n_raw) if n_raw is not None else None
-
-
 def _infer_statevector_qubits(statevector_cfg: Any) -> int | None:
     if not isinstance(statevector_cfg, dict):
         return None
     generator = str(statevector_cfg.get("generator", "")).strip().lower()
     if generator == "ket0":
         size_raw = statevector_cfg.get("size")
-        return int(size_raw) * 8 if size_raw is not None else None
+        if size_raw is not None:
+            return int(size_raw) * 8
+        n_qubits_raw = statevector_cfg.get("n_qubits", statevector_cfg.get("n"))
+        return int(n_qubits_raw) if n_qubits_raw is not None else None
     size_raw = statevector_cfg.get("size")
     if size_raw is not None:
         return int(size_raw) * 8
@@ -138,7 +132,7 @@ def _validate_generator_dimensions(
     statevector_cfg: Any,
     output_cfg: Any,
 ) -> None:
-    circuit_qubits = _infer_circuit_qubits(circuit_cfg)
+    circuit_qubits = infer_circuit_qubits(circuit_cfg, REPO_ROOT)
     statevector_qubits = _infer_statevector_qubits(statevector_cfg)
     output_qubits = _infer_output_bitstring_qubits(output_cfg)
 
@@ -175,10 +169,20 @@ def render_conf(
 ) -> dict[str, Any]:
     payload = _load_config(config_path)
 
-    experiment_name = str(payload.get("experiment_name", config_path.stem or DEFAULT_EXPERIMENT_NAME))
+    experiment_name = derive_experiment_name(
+        payload,
+        REPO_ROOT,
+        fallback=config_path.stem or DEFAULT_EXPERIMENT_NAME,
+    )
     circuit_cfg = _pick(payload, "circuit", "circuit_file")
     statevector_cfg = _pick(payload, "input_statevector", "input_statevector_file")
     output_cfg = _pick(payload, "output_bitstrings", "output_bitstrings_file")
+    circuit_cfg, statevector_cfg, output_cfg, _ = normalize_generator_specs(
+        circuit_cfg,
+        statevector_cfg,
+        output_cfg,
+        REPO_ROOT,
+    )
 
     _validate_generator_dimensions(
         experiment_name=experiment_name,
@@ -261,6 +265,11 @@ def parse_args() -> argparse.Namespace:
         help="Print the configured Airflow pool-slot counts as a space-separated list.",
     )
     parser.add_argument(
+        "--print-experiment-name",
+        action="store_true",
+        help="Print the derived machine-readable experiment name.",
+    )
+    parser.add_argument(
         "--print-repeat-count",
         action="store_true",
         help="Print the configured number of repeated runs per pod count.",
@@ -288,6 +297,16 @@ def main() -> int:
     if args.print_target_pool_slots_list:
         sys.stdout.write(
             " ".join(str(slots) for slots in parse_target_pool_slots_list(payload))
+        )
+        sys.stdout.write("\n")
+        return 0
+    if args.print_experiment_name:
+        sys.stdout.write(
+            derive_experiment_name(
+                payload,
+                REPO_ROOT,
+                fallback=config_path.stem or DEFAULT_EXPERIMENT_NAME,
+            )
         )
         sys.stdout.write("\n")
         return 0

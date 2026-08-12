@@ -67,7 +67,7 @@ if ! "${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --help >/dev/null
   exit 1
 fi
 
-CONFIG_EXPERIMENT_NAME="$("${HELPER_PYTHON}" -c 'import json,sys; from pathlib import Path; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", Path(sys.argv[1]).stem or "qft_n8_k2"))' "${CONFIG_PATH}")"
+CONFIG_EXPERIMENT_NAME="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-experiment-name)"
 CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
 if [ -z "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
   echo "This wrapper is only for fixed-batch configs with max_hexstrings_per_batch set." >&2

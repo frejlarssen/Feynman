@@ -24,6 +24,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from sweeplib.materialize import (
+    derive_experiment_name,
+    infer_circuit_qubits,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -91,9 +93,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     ]
 
     merged = {
-        "experiment_name": _pick(
-            cfg, "experiment_name", args.experiment_name, "selected_output_seed_stability"
-        ),
+        "description": _pick(cfg, "description", args.description, ""),
         "repo_root": str(_pick(cfg, "repo_root", args.repo_root, SCRIPT_REPO_ROOT)),
         "output_root": str(
             _pick(cfg, "output_root", args.output_root, "data/outputs/validation")
@@ -115,6 +115,11 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError(f"Missing required parameter: {key}")
     if merged["ranks"] < 1:
         raise ValueError("ranks must be >= 1")
+    merged["experiment_name"] = derive_experiment_name(
+        merged,
+        SCRIPT_REPO_ROOT,
+        fallback="selected_output_seed_stability",
+    )
     return merged
 
 
@@ -123,7 +128,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Run approximate-only selected-output stability checks across seed groups."
     )
     parser.add_argument("--config", type=Path, default=None)
-    parser.add_argument("--experiment-name", default=None)
+    parser.add_argument("--description", default=None)
     parser.add_argument("--repo-root", type=Path, default=None)
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--binary", type=Path, default=None)
@@ -388,9 +393,14 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_name'])}"
     run_dir.mkdir(parents=True, exist_ok=False)
 
+    circuit_qubits = infer_circuit_qubits(cfg["circuit"], repo_root)
     circuit, circuit_generated = resolve_circuit_input(cfg["circuit"], repo_root)
-    input_statevector, input_generated = resolve_statevector_input(cfg["input_statevector"], repo_root)
-    output_bitstrings, output_generated = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
+    input_statevector, input_generated = resolve_statevector_input(
+        cfg["input_statevector"], repo_root, circuit_qubits=circuit_qubits
+    )
+    output_bitstrings, output_generated = resolve_output_bitstrings_input(
+        cfg["output_bitstrings"], repo_root, circuit_qubits=circuit_qubits
+    )
     binary = _resolve_path(cfg["binary"], repo_root).resolve()
 
     subset_indices, size_bytes = parse_hs(output_bitstrings)

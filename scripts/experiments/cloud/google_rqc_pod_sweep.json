@@ -1,6 +1,10 @@
 {
-  "experiment_name": "google_rqc_r4_c6_m12_count1024",
-  "target_num_pods_list": [1, 2, 4],
+  "description": "google_rqc_r4_c6_m12_count1024",
+  "target_num_pods_list": [
+    1,
+    2,
+    4
+  ],
   "repeat": 3,
   "simulate_omp_num_threads": 1,
   "circuit": {
@@ -12,12 +16,10 @@
     "variant": "sycamore"
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 3
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "size": 3,
     "count": 1024,
     "seed": 29
   }

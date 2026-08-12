@@ -12,7 +12,7 @@ from typing import Iterable
 
 def _add_common_sweep_flags(parser: argparse.ArgumentParser, *, require_config: bool = True) -> None:
     parser.add_argument("--config", required=require_config, help="Path to sweep config JSON.")
-    parser.add_argument("--experiment-name", default="", help="Optional experiment name override.")
+    parser.add_argument("--description", default="", help="Optional description override.")
     parser.add_argument("--repo-root", default="", help="Optional repo root override.")
     parser.add_argument("--output-root", default="", help="Optional output root override.")
     parser.add_argument("--dry-run", action="store_true")
@@ -26,8 +26,8 @@ def _sweep_argv(args: argparse.Namespace) -> list[str]:
     argv = []
     if args.config:
         argv.extend(["--config", args.config])
-    if args.experiment_name:
-        argv.extend(["--experiment-name", args.experiment_name])
+    if args.description:
+        argv.extend(["--description", args.description])
     if args.repo_root:
         argv.extend(["--repo-root", args.repo_root])
     if args.output_root:

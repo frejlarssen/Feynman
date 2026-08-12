@@ -217,7 +217,7 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 mode="meanstd",
                 x_label=x_label,
                 y_label="total_full_s",
-                title=config.experiment_name,
+                title=config.description,
                 output_path=output_path,
                 label_fontsize=None,
             )

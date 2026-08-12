@@ -1,6 +1,10 @@
 {
-  "experiment_name": "qwalk_n16_it6",
-  "target_num_pods_list": [1, 2, 4],
+  "description": "qwalk_n16_it6",
+  "target_num_pods_list": [
+    1,
+    2,
+    4
+  ],
   "repeat": 1,
   "simulate_omp_num_threads": 1,
   "circuit": {
@@ -9,12 +13,10 @@
     "it": 6
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 2
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 2,
     "count": 32
   }
 }

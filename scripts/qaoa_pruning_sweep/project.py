@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 import numpy as np
 from sweeplib.materialize import (
+    normalize_generator_specs,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -167,9 +168,23 @@ def resolve_paths_and_runtime(config: SweepConfig, repo_root: Path) -> tuple[Pro
 
     output_root = resolve_path(config.output_root, repo_root, must_exist=False)
     binary = resolve_path(str(merged_cfg["binary"]), repo_root, must_exist=True)
-    circuit, _ = resolve_circuit_input(merged_cfg["circuit"], repo_root)
-    input_statevector, _ = resolve_statevector_input(merged_cfg["input_statevector"], repo_root)
-    output_bitstrings, _ = resolve_output_bitstrings_input(merged_cfg["output_bitstrings"], repo_root)
+    circuit_cfg, statevector_cfg, output_cfg, circuit_qubits = normalize_generator_specs(
+        merged_cfg["circuit"],
+        merged_cfg["input_statevector"],
+        merged_cfg["output_bitstrings"],
+        repo_root,
+    )
+    circuit, _ = resolve_circuit_input(circuit_cfg, repo_root)
+    input_statevector, _ = resolve_statevector_input(
+        statevector_cfg,
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
+    output_bitstrings, _ = resolve_output_bitstrings_input(
+        output_cfg,
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
     subset_indices, _ = parse_hs(output_bitstrings)
 
     paths = ProjectPaths(
@@ -357,6 +372,7 @@ def build_metadata(
         launcher_key="mpi_launcher",
         config_snapshot={
             "config_file": config.config,
+            "description": config.description,
             "experiment_name": config.experiment_name,
             "repo_root": str(paths.repo_root),
             "output_root": str(paths.output_root),

@@ -172,7 +172,7 @@ in the benchmark JSON:
 
 ```json
 {
-  "experiment_name": "qwalk_n64_it4",
+  "description": "qwalk_n64_it4",
   "simulate_omp_num_threads": 2
 }
 ```
@@ -182,7 +182,7 @@ Cloud benchmark configs may also set the simulator pruning threshold passed as
 
 ```json
 {
-  "experiment_name": "qwalk_n64_it4",
+  "description": "qwalk_n64_it4",
   "threshold": 1e-8
 }
 ```
@@ -194,7 +194,7 @@ Cloud benchmark configs may also set the chunk-2 sampling fraction passed as
 
 ```json
 {
-  "experiment_name": "qwalk_n64_it4",
+  "description": "qwalk_n64_it4",
   "fraction": 0.1
 }
 ```
@@ -230,7 +230,7 @@ Example:
 
 ```json
 {
-  "experiment_name": "qwalk_n64_it4",
+  "description": "qwalk_n64_it4",
   "target_num_pods_list": [1, 2, 4],
   "repeat": 3
 }
@@ -240,7 +240,7 @@ Example fixed-batch Gantt config:
 
 ```json
 {
-  "experiment_name": "qwalk_n64_it15_count1200_batch100_pool4",
+  "description": "qwalk_n64_it15_count1200_batch100_pool4",
   "target_pool_slots_list": [4],
   "max_hexstrings_per_batch": 100,
   "repeat": 1
@@ -285,7 +285,7 @@ terminal-window close does not kill the local polling script.
 The script runs pod counts sequentially, repeats each pod count according to the
 config's `repeat` value, waits for each DAG run to finish, and prints the
 wall-clock time per run. By default it saves a timestamped summary CSV under
-`data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv`.
+`data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv`.
 
 If that directory exists with the wrong owner or mode, fix it before running
 the benchmark:
@@ -305,7 +305,7 @@ RESULTS_FILE=data/outputs/somewhere_else/summary.csv \
 
 The benchmark output now follows the repo's experiment-artifact pattern more
 closely. By default it creates a directory named
-`data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/` with:
+`data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/` with:
 
 - `summary.csv`
 - `benchmark_metadata.json` with git/provenance context
@@ -321,7 +321,7 @@ The sweep script captures `task_states.json` from the local Airflow CLI after
 each run finishes, then renders the archive/Gantt artifacts from that file.
 That keeps benchmark archiving independent of Airflow REST API credentials.
 For config-driven sweeps, this also avoids creating a second top-level
-`data/outputs/cloud_benchmarks/<experiment_name>/` runtime-output tree.
+`data/outputs/cloud_benchmarks/<derived_experiment_name>/` runtime-output tree.
 
 Each summary row now includes both:
 
@@ -388,14 +388,14 @@ After the sweep, switch back to the `feynman` development environment and plot:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv
 ```
 
 To plot the parallel compute stage instead of the full DAG wall-clock time:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv \
   --metric simulate_stage_elapsed_seconds
 ```
 
@@ -408,6 +408,6 @@ Disable it with:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<experiment_name>/summary.csv \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv \
   --no-efficiency
 ```

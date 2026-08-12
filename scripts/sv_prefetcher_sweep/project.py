@@ -7,7 +7,12 @@ import shlex
 from pathlib import Path
 from typing import Any, Callable
 
-from sweeplib.materialize import resolve_circuit_input, resolve_output_bitstrings_input, resolve_statevector_input
+from sweeplib.materialize import (
+    normalize_generator_specs,
+    resolve_circuit_input,
+    resolve_output_bitstrings_input,
+    resolve_statevector_input,
+)
 from sweeplib.provenance import build_sweep_metadata
 from sweeplib.sweep import execute_command
 from sweeplib.utils import iso_utc, resolve_path, sanitize
@@ -90,9 +95,23 @@ def _preflight_validate_dimensions(circuit_path: Path, input_statevector_path: P
 
 
 def resolve_paths(config: SweepConfig, repo_root: Path) -> ProjectPaths:
-    circuit_path, _ = resolve_circuit_input(config.circuit, repo_root)
-    input_statevector_path, _ = resolve_statevector_input(config.input_statevector, repo_root)
-    output_bitstrings_path, _ = resolve_output_bitstrings_input(config.output_bitstrings, repo_root)
+    circuit_cfg, statevector_cfg, output_cfg, circuit_qubits = normalize_generator_specs(
+        config.circuit,
+        config.input_statevector,
+        config.output_bitstrings,
+        repo_root,
+    )
+    circuit_path, _ = resolve_circuit_input(circuit_cfg, repo_root)
+    input_statevector_path, _ = resolve_statevector_input(
+        statevector_cfg,
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
+    output_bitstrings_path, _ = resolve_output_bitstrings_input(
+        output_cfg,
+        repo_root,
+        circuit_qubits=circuit_qubits,
+    )
     return ProjectPaths(
         repo_root=repo_root,
         binary=resolve_path(config.binary, repo_root, must_exist=True),
@@ -419,6 +438,7 @@ def build_metadata(
         launcher_key="mpi_launcher",
         config_snapshot={
             "config_file": config.config,
+            "description": config.description,
             "experiment_name": config.experiment_name,
             "vary": config.vary,
             "values": config.values,
