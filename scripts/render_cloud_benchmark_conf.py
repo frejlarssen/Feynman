@@ -136,23 +136,23 @@ def _validate_generator_dimensions(
     if (
         circuit_qubits is not None
         and statevector_qubits is not None
-        and circuit_qubits != statevector_qubits
+        and statevector_qubits < circuit_qubits
     ):
         raise ValueError(
-            "Cloud benchmark config has mismatched circuit and input_statevector sizes "
+            "Cloud benchmark config input_statevector is too small "
             f"for {experiment_name}: circuit uses {circuit_qubits} qubits but "
-            f"input_statevector describes {statevector_qubits} qubits."
+            f"input_statevector describes only {statevector_qubits} qubits of storage."
         )
 
     if (
         circuit_qubits is not None
         and output_qubits is not None
-        and circuit_qubits != output_qubits
+        and output_qubits < circuit_qubits
     ):
         raise ValueError(
-            "Cloud benchmark config has mismatched circuit and output_bitstrings sizes "
+            "Cloud benchmark config output_bitstrings storage is too small "
             f"for {experiment_name}: circuit uses {circuit_qubits} qubits but "
-            f"output_bitstrings describe {output_qubits} qubits."
+            f"output_bitstrings describe only {output_qubits} qubits of storage."
         )
 
 

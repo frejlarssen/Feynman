@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qwalk_n64_it15_count8192_exact_opencube",
+  "experiment_name": "qwalk_n100_it15_count8192_exact_opencube",
   "target_num_pods_list": [1, 2, 4, 8, 16],
   "repeat": 5,
   "simulate_omp_num_threads": 1,
@@ -7,16 +7,16 @@
   "threshold": 0.0,
   "circuit": {
     "generator": "qwalk",
-    "n": 64,
-    "it": 15
+    "n": 100,
+    "it": 18
   },
   "input_statevector": {
     "generator": "ket0",
-    "size": 8
+    "size": 13
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 8,
-    "count": 8192
+    "size": 13,
+    "count": 1024
   }
 }
