@@ -212,19 +212,15 @@ A simple benchmark sweep is available in:
 
 `sh scripts/benchmark_cloud_runner.sh`
 
-When `--config` is used, the script now looks for
-`target_num_pods_list` and `repeat` in ordinary pod-sweep benchmark JSON, and
-uses those pod counts and repeated runs by default.
+When `--config` is used, the script looks for `target_num_pods_list` and
+`repeat` in ordinary pod-sweep benchmark JSON, and uses those pod counts and
+repeated runs by default.
 
-If the config also sets `max_hexstrings_per_batch`, the sweep script switches
-to fixed-batch mode for splitting. In that mode, use
-`target_pool_slots_list` in the config to describe the intended shared-pool
-concurrency labels. The actual DAG run is rendered with
-`max_hexstrings_per_batch`; the pool-slot list is used only as the benchmark
-label in `summary.csv`, plots, and helper wrappers. This is useful when you
-want more total batches than the intended pool concurrency, for example a
-single Gantt-chart run with about 12 batches scheduled onto a shared 4-slot
-pool.
+`benchmark_cloud_runner.sh` is intentionally strict in direct use: treat it as
+the pod-count benchmark entrypoint. If a config sets
+`max_hexstrings_per_batch`, run it through `benchmark_cloud_pool_sweep.sh`
+instead. That avoids having config fields that look meaningful but are only
+treated as labels.
 
 Example:
 
@@ -268,20 +264,16 @@ Example with the quantum-walk benchmark case:
 
 For the single-run Gantt demo:
 
-`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
 
-For fixed-batch configs where `target_pool_slots_list` is meant to act as a
-shared-pool slot sweep, use:
+For fixed-batch configs, including single-point runs with only one pool size,
+use:
 
 `sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pool_sweep_opencube.json`
 
 This wrapper updates the Airflow pool size before each labeled run, then calls
 `benchmark_cloud_runner.sh` one label at a time while keeping a single
 benchmark output directory.
-
-If `target_pool_slots_list` contains only one value, this is still the right
-wrapper to use. It is named `pool_sweep` because it sweeps over that list when
-needed, but a one-point run is fine too.
 
 For longer local runs, consider launching the sweep inside `tmux` so a
 terminal-window close does not kill the local polling script.

@@ -114,6 +114,7 @@ do
   sh scripts/benchmark_cloud_runner.sh \
     --config "${CONFIG_PATH}" \
     --dag-id "${DAG_ID}" \
+    --label-kind pool_slots \
     "${slots}"
 done
 

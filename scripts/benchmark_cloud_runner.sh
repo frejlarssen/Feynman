@@ -4,6 +4,7 @@ set -eu
 
 DAG_ID="feynman"
 CONFIG_PATH=""
+LABEL_KIND="target_num_pods"
 while [ "$#" -gt 0 ]
 do
   case "$1" in
@@ -13,6 +14,10 @@ do
       ;;
     --dag-id)
       DAG_ID="$2"
+      shift 2
+      ;;
+    --label-kind)
+      LABEL_KIND="$2"
       shift 2
       ;;
     --)
@@ -34,6 +39,12 @@ if [ "$#" -gt 0 ]; then
   shift || true
 fi
 
+if [ "${LABEL_KIND}" != "target_num_pods" ] && [ "${LABEL_KIND}" != "pool_slots" ]; then
+  echo "Unsupported --label-kind: ${LABEL_KIND}" >&2
+  echo "Expected one of: target_num_pods, pool_slots" >&2
+  exit 1
+fi
+
 POLL_SECONDS="${POLL_SECONDS:-5}"
 K3D_CLUSTER_NAME="${K3D_CLUSTER_NAME:-feynman-cluster}"
 K3D_NODE_NAME="${K3D_NODE_NAME:-k3d-${K3D_CLUSTER_NAME}-server-0}"
@@ -46,8 +57,6 @@ BENCHMARK_DIR="${BENCHMARK_DIR:-}"
 RESULTS_FILE="${RESULTS_FILE:-}"
 CONFIG_EXPERIMENT_TAG="qft_pod_sweep"
 REPEAT_COUNT=1
-CONFIG_MAX_HEXSTRINGS_PER_BATCH=""
-LABEL_KIND="target_num_pods"
 
 if [ "$#" -eq 0 ]; then
   LABEL_VALUES="1 2 4 8"
@@ -131,23 +140,33 @@ if [ -n "${CONFIG_PATH}" ]; then
   REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
   CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
   if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
-    LABEL_KIND="pool_slots"
+    if [ "${LABEL_KIND}" != "pool_slots" ]; then
+      echo "benchmark_cloud_runner.sh only accepts fixed-batch configs in explicit pool-slot mode." >&2
+      echo "Config ${CONFIG_PATH} sets max_hexstrings_per_batch=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}." >&2
+      echo "Use sh scripts/benchmark_cloud_pool_sweep.sh --config ${CONFIG_PATH} instead." >&2
+      echo "Even single-point fixed-batch runs should go through benchmark_cloud_pool_sweep.sh." >&2
+      exit 1
+    fi
+  elif [ "${LABEL_KIND}" = "pool_slots" ]; then
+    echo "benchmark_cloud_runner.sh --label-kind pool_slots requires a fixed-batch config." >&2
+    echo "Config ${CONFIG_PATH} does not set max_hexstrings_per_batch." >&2
+    exit 1
   fi
   if [ "$#" -eq 0 ]; then
-    if [ "${LABEL_KIND}" = "pool_slots" ]; then
-      CONFIG_LABEL_VALUES="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-pool-slots-list)"
-    elif [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
-      CONFIG_LABEL_VALUES=""
-    else
+    if [ "${LABEL_KIND}" = "target_num_pods" ]; then
       CONFIG_LABEL_VALUES="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
-    fi
-    if [ -n "${CONFIG_LABEL_VALUES}" ]; then
-      LABEL_VALUES="${CONFIG_LABEL_VALUES}"
-    elif [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
-      echo "Fixed-batch cloud benchmark configs must set target_pool_slots_list or pass explicit pool-slot labels on the CLI." >&2
+      if [ -n "${CONFIG_LABEL_VALUES}" ]; then
+        LABEL_VALUES="${CONFIG_LABEL_VALUES}"
+      fi
+    else
+      echo "Explicit pool-slot mode requires explicit label values on the CLI." >&2
+      echo "Use sh scripts/benchmark_cloud_pool_sweep.sh --config ${CONFIG_PATH} for config-driven pool-slot sweeps." >&2
       exit 1
     fi
   fi
+elif [ "${LABEL_KIND}" = "pool_slots" ]; then
+  echo "benchmark_cloud_runner.sh --label-kind pool_slots requires --config with max_hexstrings_per_batch set." >&2
+  exit 1
 fi
 
 if [ -z "${BENCHMARK_DIR}" ]; then
@@ -187,7 +206,7 @@ fi
   --experiment-tag "${CONFIG_EXPERIMENT_TAG}" \
   --label-kind "${LABEL_KIND}" \
   --label-values ${LABEL_VALUES} \
-  --invocation "sh scripts/benchmark_cloud_runner.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${LABEL_VALUES}" \
+  --invocation "sh scripts/benchmark_cloud_runner.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} --label-kind ${LABEL_KIND} ${DAG_ID} ${LABEL_VALUES}" \
   >/dev/null
 
 echo "Benchmark directory: ${BENCHMARK_DIR}"
@@ -198,7 +217,7 @@ else
   echo "Pod counts: ${LABEL_VALUES}"
 fi
 echo "Repeats per label: ${REPEAT_COUNT}"
-if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH:-}" ]; then
   echo "Fixed batch size: ${CONFIG_MAX_HEXSTRINGS_PER_BATCH} hexstrings per batch"
 fi
 
@@ -218,7 +237,7 @@ do
     conf_json="{\"target_num_pods\": ${label_value}}"
     experiment_tag="qft_pod_sweep"
     if [ -n "${CONFIG_PATH}" ]; then
-      if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+      if [ "${LABEL_KIND}" = "pool_slots" ]; then
         conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
           --config "${CONFIG_PATH}" \
           --max-hexstrings-per-batch "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" \
@@ -237,8 +256,8 @@ do
     mkdir -p "${run_dir}"
     printf "%s\n" "${conf_json}" > "${run_dir}/dag_run_conf.json"
 
-    if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
-      echo "Triggering ${DAG_ID} with label ${LABEL_KIND}=${label_value}, batch_size=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}, repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+    if [ "${LABEL_KIND}" = "pool_slots" ]; then
+      echo "Triggering ${DAG_ID} with pool_slots=${label_value}, batch_size=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}, repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
     else
       echo "Triggering ${DAG_ID} with target_num_pods=${label_value} repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
     fi
