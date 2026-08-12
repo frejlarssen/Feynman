@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
+import re
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -20,6 +22,10 @@ from scripts.airflow_gantt import (  # noqa: E402
 )
 from scripts.summarize_airflow_task_timing import summarize_task_states  # noqa: E402
 from scripts.summarize_cloud_task_logs import _default_airflow_log_root, summarize_logs  # noqa: E402
+
+
+_BATCH_OUTPUT_RE = re.compile(r"_batch_(\d+)\.hsv$")
+_BATCH_TIMING_RE = re.compile(r"_batch_(\d+)\.timeBitstrings\.tm$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +51,68 @@ def _find_timing_files(output_dir: Path) -> list[Path]:
     if legacy.exists():
         return [legacy.resolve()]
     return []
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+def _index_batch_files(output_dir: Path, *, pattern: re.Pattern[str]) -> dict[int, str]:
+    indexed: dict[int, str] = {}
+    for path in sorted(output_dir.iterdir()):
+        if not path.is_file():
+            continue
+        match = pattern.search(path.name)
+        if match is None:
+            continue
+        indexed[int(match.group(1))] = str(path.resolve())
+    return indexed
+
+
+def _build_simulate_batch_instances(
+    rows: list[dict[str, object]],
+    *,
+    output_dir: Path,
+    task_id: str,
+) -> list[dict[str, object]]:
+    batch_outputs = _index_batch_files(output_dir, pattern=_BATCH_OUTPUT_RE)
+    batch_timings = _index_batch_files(output_dir, pattern=_BATCH_TIMING_RE)
+
+    instances: list[dict[str, object]] = []
+    for row in rows:
+        if str(row.get("task_id", "")).strip() != task_id:
+            continue
+
+        map_index_raw = row.get("map_index")
+        map_index = int(map_index_raw) if map_index_raw is not None else -1
+        start = _parse_timestamp(row.get("start_date"))
+        end = _parse_timestamp(row.get("end_date"))
+        duration_seconds = None
+        if start is not None and end is not None:
+            duration_seconds = (end - start).total_seconds()
+
+        instance: dict[str, object] = {
+            "map_index": map_index,
+            "state": str(row.get("state", "")).strip(),
+            "start_date": str(row.get("start_date", "")).strip(),
+            "end_date": str(row.get("end_date", "")).strip(),
+            "duration_seconds": duration_seconds,
+            "pool": str(row.get("pool", "")).strip(),
+            "pool_slots": row.get("pool_slots"),
+        }
+        if map_index >= 0:
+            if map_index in batch_outputs:
+                instance["output_hsv"] = batch_outputs[map_index]
+            if map_index in batch_timings:
+                instance["timing_file"] = batch_timings[map_index]
+        instances.append(instance)
+
+    return sorted(instances, key=lambda item: int(item["map_index"]))
 
 
 def main() -> int:
@@ -90,6 +158,16 @@ def main() -> int:
         encoding="utf-8",
     )
 
+    simulate_batch_instances = _build_simulate_batch_instances(
+        summary_rows,
+        output_dir=output_dir,
+        task_id=args.task_id,
+    )
+    (output_dir / "simulate_batch_instances.json").write_text(
+        json.dumps(simulate_batch_instances, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
     log_summary = summarize_logs(
         log_root=(args.log_root or _default_airflow_log_root()).expanduser(),
         dag_id=args.dag_id,
@@ -117,6 +195,7 @@ def main() -> int:
         "task_id": args.task_id,
         "task_instances_json": str(task_instances_path),
         "task_summary_json": str(output_dir / "simulate_batch_task_summary.json"),
+        "simulate_batch_instances_json": str(output_dir / "simulate_batch_instances.json"),
         "log_summary_json": str(output_dir / "simulate_batch_log_summary.json"),
         "gantt_byresources_pdf": str(byresources),
         "gantt_bytask_pdf": str(bytask),

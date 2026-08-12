@@ -213,7 +213,7 @@ closely. By default it creates a directory named
 - the raw simulator batch outputs and merged `.hsv` output for that run stored directly inside `runs/<run_id>/`
 - one per-batch timing file per worker batch as `*.timeBitstrings.tm`
 - per-benchmark per-bitstring timing histograms generated from those timing files
-- per-run `task_states.json`, normalized `task_instances.json`, task/log summaries, and single-run Gantt PDFs
+- per-run `task_states.json`, normalized `task_instances.json`, `simulate_batch_instances.json`, task/log summaries, and single-run Gantt PDFs
 - a sweep-level `gantt_multiexec.pdf`
 - the usual cloud benchmark PDFs from `plot_cloud_benchmark.py`
 
@@ -225,6 +225,7 @@ config-driven sweeps, this also avoids creating a second top-level
 
 Each summary row includes:
 
+- `num_batches`: number of `simulate_batch` task instances created for the run
 - `repeat_index`: which repeated run this was for the given batch count
 - `elapsed_seconds`: full DAG wall-clock time
 - `simulate_stage_elapsed_seconds`: the span from the first `simulate_batch`
