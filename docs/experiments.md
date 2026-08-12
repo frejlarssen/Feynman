@@ -5,7 +5,7 @@ This file is the full command catalog for the unified pipeline in
 
 All runs write into `data/outputs/experiments/` or `data/outputs/validation/`.
 Experiment and validation runs generate their associated plots automatically.
-Perf sweeps now also auto-generate per-bitstring timing histograms from
+Perf sweeps also auto-generate per-bitstring timing histograms from
 `timeBitstrings.tm` when those artifacts are present.
 
 For perf experiments, build the release binary first:
@@ -17,7 +17,7 @@ cmake --build --preset release --target sv_prefetcher_mpi_subsetbitstrings -j
 
 Perf configs in this catalog use `build-release/sv_prefetcher_subset_mpi.x`.
 
-Perf run telemetry now records:
+Perf run telemetry records:
 
 - `summary.csv`: `ranks`, `feynman_env`, `active_workers`, `omp_threads_per_worker`
 - `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
