@@ -119,7 +119,8 @@ void run(Options &opts) {
     fs::create_directories(output_path.parent_path());
   }
   const fs::path timing_file_path =
-      replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
+      output_path.parent_path() /
+      (output_path.stem().string() + ".timeBitstrings.tm");
   if (timing_file_path.has_parent_path()) {
     fs::create_directories(timing_file_path.parent_path());
   }

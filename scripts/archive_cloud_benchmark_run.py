@@ -36,6 +36,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _find_timing_files(output_dir: Path) -> list[Path]:
+    per_batch = sorted(path.resolve() for path in output_dir.glob("*.timeBitstrings.tm"))
+    if per_batch:
+        return per_batch
+
+    legacy = output_dir / "timeBitstrings.tm"
+    if legacy.exists():
+        return [legacy.resolve()]
+    return []
+
+
 def main() -> int:
     args = parse_args()
     output_dir = args.output_dir.resolve()
@@ -109,6 +120,7 @@ def main() -> int:
         "log_summary_json": str(output_dir / "simulate_batch_log_summary.json"),
         "gantt_byresources_pdf": str(byresources),
         "gantt_bytask_pdf": str(bytask),
+        "timing_files": [str(path) for path in _find_timing_files(output_dir)],
     }
     if task_states_path is not None:
         manifest["task_states_json"] = str(task_states_path)

@@ -90,18 +90,25 @@ def _parse_perf_summary_series(summary_csv: Path) -> list[TimingSeries]:
     return series
 
 
-def _cloud_timing_path(summary_csv: Path, row: dict[str, str]) -> Path | None:
+def _cloud_timing_paths(summary_csv: Path, row: dict[str, str]) -> tuple[Path, ...]:
     run_id = (row.get("run_id") or "").strip()
     if not run_id:
-        return None
-    candidates = (
-        summary_csv.parent / "runs" / run_id / "timeBitstrings.tm",
-        summary_csv.parent / run_id / "timeBitstrings.tm",
+        return ()
+
+    run_dirs = (
+        summary_csv.parent / "runs" / run_id,
+        summary_csv.parent / run_id,
     )
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate.resolve()
-    return None
+    for run_dir in run_dirs:
+        if not run_dir.exists():
+            continue
+        per_batch = tuple(sorted(path.resolve() for path in run_dir.glob("*.timeBitstrings.tm")))
+        if per_batch:
+            return per_batch
+        legacy = run_dir / "timeBitstrings.tm"
+        if legacy.exists():
+            return (legacy.resolve(),)
+    return ()
 
 
 def _parse_cloud_summary_series(summary_csv: Path) -> list[TimingSeries]:
@@ -111,8 +118,8 @@ def _parse_cloud_summary_series(summary_csv: Path) -> list[TimingSeries]:
         for row in reader:
             if (row.get("state") or "").strip().lower() != "success":
                 continue
-            timing_path = _cloud_timing_path(summary_csv, row)
-            if timing_path is None:
+            timing_paths = _cloud_timing_paths(summary_csv, row)
+            if not timing_paths:
                 continue
             label_kind = (row.get("label_kind") or "").strip()
             value = (row.get("target_label_value") or row.get("target_num_batches") or "").strip()
@@ -122,10 +129,13 @@ def _parse_cloud_summary_series(summary_csv: Path) -> list[TimingSeries]:
                 label = f"{value} batches"
             else:
                 label = "cloud"
-            entries.append((label, timing_path))
+            for timing_path in timing_paths:
+                entries.append((label, timing_path))
     series = _group_series(entries)
     if not series:
-        raise ValueError(f"No timeBitstrings.tm files found for successful cloud benchmark rows in {summary_csv}")
+        raise ValueError(
+            f"No cloud timing files found for successful benchmark rows in {summary_csv}"
+        )
     return series
 
 
