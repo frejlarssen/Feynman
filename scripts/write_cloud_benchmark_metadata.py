@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--label-kind", default="target_num_pods")
     parser.add_argument("--label-values", nargs="*", default=[])
     parser.add_argument("--pod-counts", nargs="*", default=[])
-    parser.add_argument("--runner-script", default="scripts/benchmark_cloud_pod_sweep.sh")
+    parser.add_argument("--runner-script", default="scripts/benchmark_cloud_runner.sh")
     parser.add_argument("--notes", default="")
     parser.add_argument("--invocation", default="")
     return parser.parse_args()

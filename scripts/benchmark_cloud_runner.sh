@@ -123,7 +123,7 @@ if [ -n "${CONFIG_PATH}" ]; then
     echo "Config rendering requires the repo's development Python environment." >&2
     echo "Tried: ${CONFIG_RENDER_PYTHON}" >&2
     echo "If needed, rerun with:" >&2
-    echo "  CONFIG_RENDER_PYTHON=\$HOME/micromamba/envs/feynman/bin/python sh scripts/benchmark_cloud_pod_sweep.sh --config ${CONFIG_PATH}" >&2
+    echo "  CONFIG_RENDER_PYTHON=\$HOME/micromamba/envs/feynman/bin/python sh scripts/benchmark_cloud_runner.sh --config ${CONFIG_PATH}" >&2
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
@@ -187,7 +187,7 @@ fi
   --experiment-tag "${CONFIG_EXPERIMENT_TAG}" \
   --label-kind "${LABEL_KIND}" \
   --label-values ${LABEL_VALUES} \
-  --invocation "sh scripts/benchmark_cloud_pod_sweep.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${LABEL_VALUES}" \
+  --invocation "sh scripts/benchmark_cloud_runner.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${LABEL_VALUES}" \
   >/dev/null
 
 echo "Benchmark directory: ${BENCHMARK_DIR}"

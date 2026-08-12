@@ -36,7 +36,7 @@ do
 done
 
 if [ -z "${CONFIG_PATH}" ]; then
-  echo "Usage: sh scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config <path> [--dag-id feynman] [--pool-name simulate_pool] [pool_size ...]" >&2
+  echo "Usage: sh scripts/benchmark_cloud_pool_sweep.sh --config <path> [--dag-id feynman] [--pool-name simulate_pool] [pool_size ...]" >&2
   exit 1
 fi
 
@@ -111,7 +111,7 @@ do
   RESULTS_FILE="${RESULTS_FILE}" \
   HELPER_PYTHON="${HELPER_PYTHON}" \
   CONFIG_RENDER_PYTHON="${HELPER_PYTHON}" \
-  sh scripts/benchmark_cloud_pod_sweep.sh \
+  sh scripts/benchmark_cloud_runner.sh \
     --config "${CONFIG_PATH}" \
     --dag-id "${DAG_ID}" \
     "${slots}"
@@ -124,9 +124,9 @@ done
   --experiment-tag "${CONFIG_EXPERIMENT_TAG}" \
   --label-kind "pool_slots" \
   --label-values ${POOL_SLOTS_LIST} \
-  --runner-script "scripts/benchmark_cloud_fixed_batch_pool_sweep.sh" \
+  --runner-script "scripts/benchmark_cloud_pool_sweep.sh" \
   --notes "Fixed-batch benchmark sweep. Airflow pool ${POOL_NAME} was resized before each labeled run; summary rows use label_kind=pool_slots." \
-  --invocation "sh scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config ${CONFIG_PATH} --dag-id ${DAG_ID} --pool-name ${POOL_NAME} ${POOL_SLOTS_LIST}" \
+  --invocation "sh scripts/benchmark_cloud_pool_sweep.sh --config ${CONFIG_PATH} --dag-id ${DAG_ID} --pool-name ${POOL_NAME} ${POOL_SLOTS_LIST}" \
   >/dev/null
 
 echo "Pool sweep complete. Results in ${RESULTS_FILE}"

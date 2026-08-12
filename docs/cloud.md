@@ -210,7 +210,7 @@ airflow dags trigger feynman --conf '{"simulate_omp_num_threads": 2}'
 
 A simple benchmark sweep is available in:
 
-`sh scripts/benchmark_cloud_pod_sweep.sh`
+`sh scripts/benchmark_cloud_runner.sh`
 
 When `--config` is used, the script now looks for
 `target_num_pods_list` and `repeat` in ordinary pod-sweep benchmark JSON, and
@@ -252,11 +252,11 @@ shared Airflow pool of size 4 keeps only four pooled tasks active at once.
 
 Explicit pod counts on the command line still override the JSON list:
 
-`sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json 1 2`
+`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json 1 2`
 
 You can also pass an explicit DAG id and pod counts:
 
-`sh scripts/benchmark_cloud_pod_sweep.sh feynman 1 2 4 8`
+`sh scripts/benchmark_cloud_runner.sh feynman 1 2 4 8`
 
 Cloud benchmark configs live under `scripts/experiments/cloud/` and reuse the
 same high-level sections as the non-cloud configs: `circuit`,
@@ -264,20 +264,24 @@ same high-level sections as the non-cloud configs: `circuit`,
 
 Example with the quantum-walk benchmark case:
 
-`sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
+`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
 
 For the single-run Gantt demo:
 
-`sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
+`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
 
 For fixed-batch configs where `target_pool_slots_list` is meant to act as a
 shared-pool slot sweep, use:
 
-`sh scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep_opencube.json`
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pool_sweep_opencube.json`
 
 This wrapper updates the Airflow pool size before each labeled run, then calls
-`benchmark_cloud_pod_sweep.sh` one label at a time while keeping a single
+`benchmark_cloud_runner.sh` one label at a time while keeping a single
 benchmark output directory.
+
+If `target_pool_slots_list` contains only one value, this is still the right
+wrapper to use. It is named `pool_sweep` because it sweeps over that list when
+needed, but a one-point run is fine too.
 
 For longer local runs, consider launching the sweep inside `tmux` so a
 terminal-window close does not kill the local polling script.
@@ -300,7 +304,7 @@ If you prefer not to change the default directory, point the script elsewhere:
 
 ```bash
 RESULTS_FILE=data/outputs/somewhere_else/summary.csv \
-  sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json
+  sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json
 ```
 
 The benchmark output now follows the repo's experiment-artifact pattern more
@@ -367,11 +371,11 @@ garbage-collect unused task images out from under the benchmark.
 
 You can override the destination if you want:
 
-`RESULTS_FILE=data/outputs/cloud_benchmark_results.csv sh scripts/benchmark_cloud_pod_sweep.sh`
+`RESULTS_FILE=data/outputs/cloud_benchmark_results.csv sh scripts/benchmark_cloud_runner.sh`
 
 If you need to abort a running benchmark:
 
-- Press `Ctrl-C` in the terminal running `sh scripts/benchmark_cloud_pod_sweep.sh`
+- Press `Ctrl-C` in the terminal running `sh scripts/benchmark_cloud_runner.sh`
   to stop the local polling script.
 - That does not stop the already-triggered Airflow DAG run.
 - To stop the actual running cloud task, find the pod and delete it:

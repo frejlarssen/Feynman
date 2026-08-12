@@ -130,13 +130,13 @@ def _strong_scaling_efficiency_percent(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot cloud benchmark wall-clock time versus target pod count."
+        description="Plot cloud benchmark metrics versus the benchmark label value."
     )
     parser.add_argument(
         "--summary-csv",
         required=True,
         type=Path,
-        help="Benchmark summary CSV produced by benchmark_cloud_pod_sweep.sh.",
+        help="Benchmark summary CSV produced by the cloud benchmark sweep scripts.",
     )
     parser.add_argument(
         "--output",
