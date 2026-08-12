@@ -399,6 +399,78 @@ def _run_case(
     }
 
 
+def _run_cache_key(
+    *,
+    binary: Path,
+    mpirun: str,
+    ranks: int,
+    circuit: Path,
+    input_statevector: Path,
+    output_bitstrings: Path,
+    feynman_env: dict[str, str],
+    case: dict[str, Any],
+) -> tuple[Any, ...]:
+    return (
+        str(binary.resolve()),
+        str(mpirun),
+        int(ranks),
+        str(circuit.resolve()),
+        str(input_statevector.resolve()),
+        str(output_bitstrings.resolve()),
+        tuple(sorted((str(key), str(value)) for key, value in feynman_env.items())),
+        float(case["fraction"]),
+        float(case["threshold"]),
+        int(case["verbosity"]),
+        None if case["batch_size"] is None else int(case["batch_size"]),
+        bool(case["dense"]),
+        None if case.get("history_seed") is None else int(case["history_seed"]),
+    )
+
+
+def _run_case_cached(
+    *,
+    repo_root: Path,
+    binary: Path,
+    mpirun: str,
+    ranks: int,
+    circuit: Path,
+    input_statevector: Path,
+    output_bitstrings: Path,
+    feynman_env: dict[str, str],
+    case: dict[str, Any],
+    run_dir: Path,
+    run_cache: dict[tuple[Any, ...], dict[str, Any]],
+) -> dict[str, Any]:
+    key = _run_cache_key(
+        binary=binary,
+        mpirun=mpirun,
+        ranks=ranks,
+        circuit=circuit,
+        input_statevector=input_statevector,
+        output_bitstrings=output_bitstrings,
+        feynman_env=feynman_env,
+        case=case,
+    )
+    cached = run_cache.get(key)
+    if cached is not None:
+        return dict(cached)
+
+    result = _run_case(
+        repo_root=repo_root,
+        binary=binary,
+        mpirun=mpirun,
+        ranks=ranks,
+        circuit=circuit,
+        input_statevector=input_statevector,
+        output_bitstrings=output_bitstrings,
+        feynman_env=feynman_env,
+        case=case,
+        run_dir=run_dir,
+    )
+    run_cache[key] = dict(result)
+    return result
+
+
 def _compute_metrics(
     *,
     subset_indices: list[int],
@@ -714,6 +786,7 @@ def _run_case_estimator(
     run_dir: Path,
     subset_indices: list[int],
     size_bytes: int,
+    run_cache: dict[tuple[Any, ...], dict[str, Any]],
 ) -> dict[str, Any]:
     estimator = str(case["population_estimator"])
     history_seeds = list(case["history_seeds"])
@@ -725,7 +798,7 @@ def _run_case_estimator(
             component_case["history_seed"] = history_seed
             component_case["history_seeds"] = [history_seed]
             component_runs.append(
-                _run_case(
+                _run_case_cached(
                     repo_root=repo_root,
                     binary=binary,
                     mpirun=mpirun,
@@ -736,6 +809,7 @@ def _run_case_estimator(
                     feynman_env=feynman_env,
                     case=component_case,
                     run_dir=run_dir,
+                    run_cache=run_cache,
                 )
             )
         component_vectors = [
@@ -743,7 +817,8 @@ def _run_case_estimator(
             for component_run in component_runs
         ]
         approx_pop = _cross_seeded_population(component_vectors)
-        case_dir = component_runs[0]["dir"]
+        case_dir = run_dir / "cases" / case["name"]
+        case_dir.mkdir(parents=True, exist_ok=True)
         population_file = case_dir / "population_estimate.csv"
         with population_file.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
@@ -756,6 +831,14 @@ def _run_case_estimator(
                         f"{float(approx_pop[ordinal]):.18e}",
                     ]
                 )
+        sources_file = case_dir / "population_estimate.sources.txt"
+        sources_file.write_text(
+            "".join(
+                f"{run['name']}: seed={run.get('history_seed')} output={run['output_file']}\n"
+                for run in component_runs
+            ),
+            encoding="utf-8",
+        )
         return {
             "name": case["name"],
             "fraction": float(case["fraction"]),
@@ -780,7 +863,7 @@ def _run_case_estimator(
             ),
         }
 
-    single_run = _run_case(
+    single_run = _run_case_cached(
         repo_root=repo_root,
         binary=binary,
         mpirun=mpirun,
@@ -791,6 +874,7 @@ def _run_case_estimator(
         feynman_env=feynman_env,
         case=case,
         run_dir=run_dir,
+        run_cache=run_cache,
     )
     approx_vec = _ordered_vector(single_run["sparse"], subset_indices)
     return {
@@ -883,6 +967,7 @@ def main(argv: list[str] | None = None) -> int:
 
     subset_indices, size_bytes = parse_hs(output_bitstrings)
 
+    run_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
     reference_run = _run_case_estimator(
         repo_root=repo_root,
         binary=binary,
@@ -896,6 +981,7 @@ def main(argv: list[str] | None = None) -> int:
         run_dir=run_dir,
         subset_indices=subset_indices,
         size_bytes=size_bytes,
+        run_cache=run_cache,
     )
     reference_vec = reference_run["approx_vec"]
     if reference_vec is None:
@@ -931,6 +1017,7 @@ def main(argv: list[str] | None = None) -> int:
             run_dir=run_dir,
             subset_indices=subset_indices,
             size_bytes=size_bytes,
+            run_cache=run_cache,
         )
         case_records[case["name"]] = {
             "approx_vec": case_run["approx_vec"],
