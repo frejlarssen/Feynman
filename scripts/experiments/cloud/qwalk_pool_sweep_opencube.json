@@ -11,7 +11,7 @@
   ],
   "max_hexstrings_per_batch": 32,
   "repeat": 5,
-  "simulate_omp_num_threads": 1,
+  "simulate_omp_num_threads": 8,
   "fraction": 1.0,
   "threshold": 0.0,
   "circuit": {
