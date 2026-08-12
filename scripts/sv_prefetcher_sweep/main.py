@@ -217,7 +217,7 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 mode="meanstd",
                 x_label=x_label,
                 y_label="total_full_s",
-                title=config.description,
+                title=config.description or config.run_slug,
                 output_path=output_path,
                 label_fontsize=None,
             )
@@ -254,7 +254,7 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
 
     return run_sweep(
         output_root=paths.output_root,
-        experiment_name=config.experiment_name,
+        run_slug=config.run_slug,
         summary_fields=SUMMARY_FIELDS,
         values=run_points,
         repeat=config.repeat,

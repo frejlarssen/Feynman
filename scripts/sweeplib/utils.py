@@ -23,6 +23,19 @@ def sanitize(text: str) -> str:
     return "".join(out).strip("_") or "value"
 
 
+def config_stem(config_path: str | Path | None, *, fallback: str = "manual") -> str:
+    if config_path is None:
+        return fallback
+    path = Path(config_path)
+    if not str(path).strip():
+        return fallback
+    return path.stem or fallback
+
+
+def run_slug_from_config(config_path: str | Path | None, *, fallback: str = "manual") -> str:
+    return sanitize(config_stem(config_path, fallback=fallback))
+
+
 def resolve_path(path_str: str, root: Path, must_exist: bool = False) -> Path:
     path = Path(path_str)
     if not path.is_absolute():

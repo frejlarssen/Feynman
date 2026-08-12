@@ -26,29 +26,27 @@ SIMULATE_OMP_NUM_THREADS_TEMPLATE = "{{ dag_run.conf.get('simulate_omp_num_threa
 SIMULATE_FRACTION_TEMPLATE = "{{ dag_run.conf.get('fraction', 1.0) }}"
 SIMULATE_THRESHOLD_TEMPLATE = "{{ dag_run.conf.get('threshold', 0.0) }}"
 DEFAULT_BENCHMARK_CASE = {
-    "experiment_name": "qft_n8_k2",
+    "run_slug": "qft_pod_sweep",
     "circuit_file": f"{DATA_MOUNT_PATH}/generated/circuits/qft/qft_n8_k2.qasm",
     "input_statevector_file": f"{DATA_MOUNT_PATH}/generated/statevectors/ket0_size1.hsv",
     "output_bitstrings_file": (
         f"{DATA_MOUNT_PATH}/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs"
     ),
 }
-EXPERIMENT_NAME_TEMPLATE = "{{ dag_run.conf.get('benchmark_case', {}).get('experiment_name', 'qft_n8_k2') }}"
+RUN_SLUG_TEMPLATE = "{{ dag_run.conf.get('benchmark_case', {}).get('run_slug', 'qft_pod_sweep') }}"
 HEXSTRINGS_FILE_TEMPLATE = (
     "{{ dag_run.conf.get('benchmark_case', {}).get('output_bitstrings_file', '"
     + DEFAULT_BENCHMARK_CASE["output_bitstrings_file"]
     + "') }}"
 )
-BATCH_DIR_TEMPLATE = (
-    f"{DATA_MOUNT_PATH}/generated/batches/" + EXPERIMENT_NAME_TEMPLATE + "/{{ run_id }}"
-)
+BATCH_DIR_TEMPLATE = f"{DATA_MOUNT_PATH}/generated/batches/" + RUN_SLUG_TEMPLATE + "/{{ run_id }}"
 RUN_OUTPUT_DIR_TEMPLATE = (
     "{% set benchmark_case = dag_run.conf.get('benchmark_case', {}) %}"
     "{% if benchmark_case.get('run_output_dir') %}"
     "{{ benchmark_case.get('run_output_dir') }}"
     "{% else %}"
     f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/"
-    "{{ benchmark_case.get('experiment_name', 'qft_n8_k2') }}/{{ run_id }}"
+    "{{ benchmark_case.get('run_slug', 'qft_pod_sweep') }}/{{ run_id }}"
     "{% endif %}"
 )
 MERGED_OUTPUT_FILE_TEMPLATE = (
@@ -57,8 +55,8 @@ MERGED_OUTPUT_FILE_TEMPLATE = (
     "{{ benchmark_case.get('merged_output_file') }}"
     "{% else %}"
     f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/"
-    "{{ benchmark_case.get('experiment_name', 'qft_n8_k2') }}/{{ run_id }}/"
-    "{{ benchmark_case.get('experiment_name', 'qft_n8_k2') }}_all_batches.hsv"
+    "{{ benchmark_case.get('run_slug', 'qft_pod_sweep') }}/{{ run_id }}/"
+    "{{ benchmark_case.get('run_slug', 'qft_pod_sweep') }}_all_batches.hsv"
     "{% endif %}"
 )
 
@@ -103,16 +101,16 @@ def _resolved_benchmark_case_from_context() -> dict[str, str]:
 
     case = dict(DEFAULT_BENCHMARK_CASE)
     case.update({k: str(v) for k, v in raw_case.items() if v is not None})
-    experiment_name = str(case.get("experiment_name", DEFAULT_BENCHMARK_CASE["experiment_name"])).strip()
-    if not experiment_name:
-        raise ValueError("benchmark_case.experiment_name must be non-empty.")
-    case["experiment_name"] = experiment_name
+    run_slug = str(case.get("run_slug", DEFAULT_BENCHMARK_CASE["run_slug"])).strip()
+    if not run_slug:
+        raise ValueError("benchmark_case.run_slug must be non-empty.")
+    case["run_slug"] = run_slug
     run_id = str(dag_run.run_id)
-    case["batch_dir"] = f"{DATA_MOUNT_PATH}/generated/batches/{experiment_name}/{run_id}"
+    case["batch_dir"] = f"{DATA_MOUNT_PATH}/generated/batches/{run_slug}/{run_id}"
     if not case.get("run_output_dir"):
-        case["run_output_dir"] = f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/{experiment_name}/{run_id}"
+        case["run_output_dir"] = f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/{run_slug}/{run_id}"
     if not case.get("merged_output_file"):
-        case["merged_output_file"] = f"{case['run_output_dir']}/{experiment_name}_all_batches.hsv"
+        case["merged_output_file"] = f"{case['run_output_dir']}/{run_slug}_all_batches.hsv"
     return case
 
 
@@ -187,7 +185,7 @@ def feynman():
         for batch_id in range(num_batches):
             hexstrings_batch_file = f"{benchmark_case['batch_dir']}/batch_{batch_id}.hs"
             simulator_output_file = (
-                f"{benchmark_case['run_output_dir']}/{benchmark_case['experiment_name']}_batch_{batch_id}.hsv"
+                f"{benchmark_case['run_output_dir']}/{benchmark_case['run_slug']}_batch_{batch_id}.hsv"
             )
             batch_arguments.append(
                 [
@@ -279,7 +277,7 @@ def feynman():
             "-n",
             "{{ ti.xcom_pull(task_ids='split_hexstrings') }}",
             "-p",
-            EXPERIMENT_NAME_TEMPLATE + "_batch_",
+            RUN_SLUG_TEMPLATE + "_batch_",
             "-v",
             "1",
         ],

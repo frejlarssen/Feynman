@@ -285,7 +285,7 @@ terminal-window close does not kill the local polling script.
 The script runs pod counts sequentially, repeats each pod count according to the
 config's `repeat` value, waits for each DAG run to finish, and prints the
 wall-clock time per run. By default it saves a timestamped summary CSV under
-`data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv`.
+`data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv`.
 
 If that directory exists with the wrong owner or mode, fix it before running
 the benchmark:
@@ -305,7 +305,7 @@ RESULTS_FILE=data/outputs/somewhere_else/summary.csv \
 
 The benchmark output now follows the repo's experiment-artifact pattern more
 closely. By default it creates a directory named
-`data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/` with:
+`data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/` with:
 
 - `summary.csv`
 - `benchmark_metadata.json` with git/provenance context
@@ -321,7 +321,7 @@ The sweep script captures `task_states.json` from the local Airflow CLI after
 each run finishes, then renders the archive/Gantt artifacts from that file.
 That keeps benchmark archiving independent of Airflow REST API credentials.
 For config-driven sweeps, this also avoids creating a second top-level
-`data/outputs/cloud_benchmarks/<derived_experiment_name>/` runtime-output tree.
+`data/outputs/cloud_benchmarks/<config_stem>/` runtime-output tree.
 
 Each summary row now includes both:
 
@@ -388,14 +388,14 @@ After the sweep, switch back to the `feynman` development environment and plot:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv
 ```
 
 To plot the parallel compute stage instead of the full DAG wall-clock time:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv \
   --metric simulate_stage_elapsed_seconds
 ```
 
@@ -408,6 +408,6 @@ Disable it with:
 
 ```bash
 python scripts/plot_cloud_benchmark.py \
-  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<derived_experiment_name>/summary.csv \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv \
   --no-efficiency
 ```

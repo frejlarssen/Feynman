@@ -24,12 +24,12 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from sweeplib.materialize import (
-    derive_experiment_name,
     infer_circuit_qubits,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
 )
+from sweeplib.utils import run_slug_from_config
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -115,9 +115,8 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError(f"Missing required parameter: {key}")
     if merged["ranks"] < 1:
         raise ValueError("ranks must be >= 1")
-    merged["experiment_name"] = derive_experiment_name(
-        merged,
-        SCRIPT_REPO_ROOT,
+    merged["run_slug"] = run_slug_from_config(
+        str(args.config.resolve()) if args.config else None,
         fallback="selected_output_seed_stability",
     )
     return merged
@@ -390,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(cfg["repo_root"]).resolve()
     output_root = _resolve_path(cfg["output_root"], repo_root).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    run_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_name'])}"
+    run_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['run_slug'])}"
     run_dir.mkdir(parents=True, exist_ok=False)
 
     circuit_qubits = infer_circuit_qubits(cfg["circuit"], repo_root)
@@ -458,7 +457,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "experiment_name": cfg["experiment_name"],
+        "run_slug": cfg["run_slug"],
         "config": cfg,
         "config_file": str(Path(args.config).resolve()) if args.config else None,
         "paths": {

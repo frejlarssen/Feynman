@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts.render_cloud_benchmark_conf import _load_config  # noqa: E402
 from scripts.sweeplib.materialize import (  # noqa: E402
+    normalize_generator_specs,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -42,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--benchmark-dir", type=Path, required=True)
     parser.add_argument("--dag-id", required=True)
     parser.add_argument("--config", default="")
-    parser.add_argument("--experiment-name", required=True)
+    parser.add_argument("--run-slug", required=True)
     parser.add_argument("--label-kind", default="target_num_pods")
     parser.add_argument("--label-values", nargs="*", default=[])
     parser.add_argument("--pod-counts", nargs="*", default=[])
@@ -73,7 +74,7 @@ def main() -> int:
 
     config_snapshot: dict[str, Any] = {
         "config_file": args.config,
-        "experiment_name": args.experiment_name,
+        "run_slug": args.run_slug,
         "dag_id": args.dag_id,
         "label_kind": args.label_kind,
         "label_values": label_values,
@@ -87,14 +88,25 @@ def main() -> int:
         config_path = (repo_root / args.config).resolve()
         payload = _load_config(config_path)
         config_snapshot["raw_config"] = payload
-        circuit_path, _ = resolve_circuit_input(_pick(payload, "circuit", "circuit_file"), repo_root)
-        input_statevector_path, _ = resolve_statevector_input(
-            _pick(payload, "input_statevector", "input_statevector_file"),
+        circuit_cfg = _pick(payload, "circuit", "circuit_file")
+        statevector_cfg = _pick(payload, "input_statevector", "input_statevector_file")
+        output_cfg = _pick(payload, "output_bitstrings", "output_bitstrings_file")
+        circuit_cfg, statevector_cfg, output_cfg, circuit_qubits = normalize_generator_specs(
+            circuit_cfg,
+            statevector_cfg,
+            output_cfg,
             repo_root,
         )
-        output_bitstrings_path, _ = resolve_output_bitstrings_input(
-            _pick(payload, "output_bitstrings", "output_bitstrings_file"),
+        circuit_path, _ = resolve_circuit_input(circuit_cfg, repo_root)
+        input_statevector_path, _ = resolve_statevector_input(
+            statevector_cfg,
             repo_root,
+            circuit_qubits=circuit_qubits,
+        )
+        output_bitstrings_path, _ = resolve_output_bitstrings_input(
+            output_cfg,
+            repo_root,
+            circuit_qubits=circuit_qubits,
         )
         input_files = {
             "config": describe_file(config_path, repo_root),

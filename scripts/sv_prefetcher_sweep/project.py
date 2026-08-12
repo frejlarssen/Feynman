@@ -439,7 +439,7 @@ def build_metadata(
         config_snapshot={
             "config_file": config.config,
             "description": config.description,
-            "experiment_name": config.experiment_name,
+            "run_slug": config.run_slug,
             "vary": config.vary,
             "values": config.values,
             "repeat": config.repeat,

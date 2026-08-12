@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from sweeplib.materialize import derive_experiment_name
+from sweeplib.utils import run_slug_from_config
 
 from .schema import (
     BOOLEAN_FIELDS,
@@ -192,12 +192,8 @@ def _finalize_thresholds(options: dict[str, Any]) -> None:
         raise ValueError("No thresholds left after applying --max-cases.")
 
 
-def _derive_runtime_name(options: dict[str, Any]) -> None:
-    repo_root_raw = str(options.get("repo_root", "."))
-    repo_root_path = Path(repo_root_raw).expanduser()
-    repo_root = repo_root_path.resolve() if repo_root_path.is_absolute() else (Path.cwd() / repo_root_path).resolve()
-    fallback = Path(options["config"]).stem if options.get("config") else "qaoa_pruning_sweep"
-    options["experiment_name"] = derive_experiment_name(options, repo_root, fallback=fallback)
+def _derive_run_slug(options: dict[str, Any]) -> None:
+    options["run_slug"] = run_slug_from_config(options.get("config"), fallback="qaoa_pruning_sweep")
 
 
 def build_config(argv: list[str] | None = None) -> SweepConfig:
@@ -208,7 +204,7 @@ def build_config(argv: list[str] | None = None) -> SweepConfig:
         _validate_required(options)
         _validate_semantics(options)
         _finalize_thresholds(options)
-        _derive_runtime_name(options)
+        _derive_run_slug(options)
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
 

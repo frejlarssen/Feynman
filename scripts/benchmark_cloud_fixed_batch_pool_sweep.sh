@@ -67,7 +67,7 @@ if ! "${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --help >/dev/null
   exit 1
 fi
 
-CONFIG_EXPERIMENT_NAME="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-experiment-name)"
+CONFIG_RUN_SLUG="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-run-slug)"
 CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
 if [ -z "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
   echo "This wrapper is only for fixed-batch configs with max_hexstrings_per_batch set." >&2
@@ -86,7 +86,7 @@ if [ -z "${POOL_SLOTS_LIST}" ]; then
 fi
 
 BENCHMARK_STAMP="${BENCHMARK_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
-BENCHMARK_DIR="${BENCHMARK_DIR:-data/outputs/cloud_benchmarks/${BENCHMARK_STAMP}_${CONFIG_EXPERIMENT_NAME}}"
+BENCHMARK_DIR="${BENCHMARK_DIR:-data/outputs/cloud_benchmarks/${BENCHMARK_STAMP}_${CONFIG_RUN_SLUG}}"
 RESULTS_FILE="${RESULTS_FILE:-${BENCHMARK_DIR}/summary.csv}"
 
 mkdir -p "${BENCHMARK_DIR}"
@@ -121,7 +121,7 @@ done
   --benchmark-dir "${BENCHMARK_DIR}" \
   --dag-id "${DAG_ID}" \
   --config "${CONFIG_PATH}" \
-  --experiment-name "${CONFIG_EXPERIMENT_NAME}" \
+  --run-slug "${CONFIG_RUN_SLUG}" \
   --label-kind "pool_slots" \
   --label-values ${POOL_SLOTS_LIST} \
   --runner-script "scripts/benchmark_cloud_fixed_batch_pool_sweep.sh" \

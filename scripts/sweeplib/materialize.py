@@ -325,49 +325,6 @@ def derive_output_identifier(
     return _sanitize_identifier(generator)
 
 
-def derive_experiment_name(
-    payload: dict[str, Any],
-    repo_root: Path,
-    *,
-    fallback: str = "experiment",
-) -> str:
-    circuit_cfg = payload.get("circuit", payload.get("circuit_file"))
-    statevector_cfg = payload.get("input_statevector", payload.get("input_statevector_file"))
-    output_cfg = payload.get("output_bitstrings", payload.get("output_bitstrings_file"))
-    if circuit_cfg is None:
-        description = str(payload.get("description", "")).strip()
-        return _sanitize_identifier(description or fallback)
-
-    circuit_cfg, statevector_cfg, output_cfg, circuit_qubits = normalize_generator_specs(
-        circuit_cfg,
-        statevector_cfg,
-        output_cfg,
-        repo_root,
-    )
-    tokens = [derive_circuit_identifier(circuit_cfg, repo_root)]
-
-    state_token = derive_statevector_identifier(
-        statevector_cfg, repo_root, circuit_qubits=circuit_qubits
-    )
-    if state_token:
-        tokens.append(state_token)
-
-    output_token = derive_output_identifier(
-        output_cfg, repo_root, circuit_qubits=circuit_qubits
-    )
-    if output_token:
-        tokens.append(output_token)
-
-    if "fraction" in payload and float(payload.get("fraction", 1.0)) != 1.0:
-        tokens.append(f"fraction{_number_token(payload['fraction'])}")
-    if "threshold" in payload and float(payload.get("threshold", 0.0)) != 0.0:
-        tokens.append(f"threshold{_number_token(payload['threshold'])}")
-    if "max_hexstrings_per_batch" in payload:
-        tokens.append(f"batch{int(payload['max_hexstrings_per_batch'])}")
-
-    return "_".join(token for token in tokens if token) or _sanitize_identifier(fallback)
-
-
 def _build_interval(interval_spec: Any, label: str) -> list[int]:
     if isinstance(interval_spec, list):
         values = [int(v) for v in interval_spec]

@@ -30,8 +30,8 @@ from scripts.sweeplib.plot_style import (
     configure_headless_matplotlib,
     single_column_figure_size,
 )
-from scripts.sweeplib.materialize import derive_experiment_name
 from scripts.sweeplib.provenance import build_sweep_metadata, get_git_info
+from scripts.sweeplib.utils import run_slug_from_config
 
 
 THREAD_ENV_VARS = (
@@ -217,10 +217,9 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("Sweep config must define a non-empty 'qubits' list.")
     if cfg["repeat"] < 1:
         raise ValueError("repeat must be >= 1")
-    cfg["experiment_name"] = derive_experiment_name(
-        cfg,
-        SCRIPT_REPO_ROOT,
-        fallback=args.config.resolve().stem if args.config else "qwalk_quimb_qubit_sweep",
+    cfg["run_slug"] = run_slug_from_config(
+        args.config.resolve() if args.config else None,
+        fallback="qwalk_quimb_qubit_sweep",
     )
     return cfg
 
@@ -248,7 +247,7 @@ def _build_validation_config(
         n_qubits,
     )
     payload = {
-        "description": str(cfg["description"] or cfg["experiment_name"]),
+        "description": str(cfg["description"]),
         "repo_root": str(repo_root),
         "output_root": str(run_dir / "validation_runs"),
         "circuit": {
@@ -980,7 +979,7 @@ def _plot_title_from_metadata(summary_csv: Path) -> tuple[str, float | None]:
     title = str(
         plotting.get(
             "title",
-            config.get("description", metadata.get("experiment_name", summary_csv.parent.name)),
+            config.get("description", metadata.get("run_slug", summary_csv.parent.name)),
         )
     )
     return title, plotting.get("label_fontsize")
@@ -1011,7 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
     cfg = _merge_config(args)
     repo_root = _resolve_path(cfg["repo_root"], Path.cwd())
     output_root = _resolve_path(cfg["output_root"], repo_root)
-    sweep_dir = output_root / f"{_utc_stamp()}_{_sanitize(str(cfg['experiment_name']))}"
+    sweep_dir = output_root / f"{_utc_stamp()}_{_sanitize(str(cfg['run_slug']))}"
     sweep_dir.mkdir(parents=True, exist_ok=False)
     configs_dir = sweep_dir / "configs"
     logs_dir = sweep_dir / "logs"
@@ -1033,7 +1032,7 @@ def main(argv: list[str] | None = None) -> int:
             created_at=created_at,
         ),
         "created_utc": created_at.isoformat(),
-        "experiment_name": cfg["experiment_name"],
+        "run_slug": cfg["run_slug"],
         "config": cfg,
         "config_file": str(args.config.resolve()),
         "sweep_dir": str(sweep_dir),
@@ -1151,7 +1150,7 @@ def main(argv: list[str] | None = None) -> int:
         for out in _plot_summary(
             summary_csv,
             output_dir=sweep_dir,
-            title=str(cfg["plotting"].get("title", cfg["description"] or cfg["experiment_name"])),
+            title=str(cfg["plotting"].get("title", cfg["description"] or cfg["run_slug"])),
             label_fontsize=cfg["plotting"].get("label_fontsize"),
         ):
             print(f"Saved plot: {out}")

@@ -32,7 +32,6 @@ from qiskit.circuit.library import (
 )
 from qiskit.quantum_info import Statevector
 from sweeplib.materialize import (
-    derive_experiment_name,
     infer_circuit_qubits,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
@@ -43,6 +42,7 @@ from sweeplib.plot_style import (
     configure_headless_matplotlib,
     single_column_figure_size,
 )
+from sweeplib.utils import run_slug_from_config
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -117,9 +117,8 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("ranks must be >= 1")
     if merged["batch_size"] < 0:
         raise ValueError("batch_size must be >= 0")
-    merged["experiment_name"] = derive_experiment_name(
-        merged,
-        SCRIPT_REPO_ROOT,
+    merged["run_slug"] = run_slug_from_config(
+        str(args.config.resolve()) if args.config else None,
         fallback="qaoa_qiskit_validation",
     )
 
@@ -442,13 +441,13 @@ def plot_from_comparison_csv(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     cfg = _merge_config(args)
-    config_stem = Path(args.config).resolve().stem if args.config else _sanitize(str(cfg["experiment_name"]))
+    config_stem = Path(args.config).resolve().stem if args.config else str(cfg["run_slug"])
 
     repo_root = Path(cfg["repo_root"]).resolve()
     output_root = _resolve_path(cfg["output_root"], repo_root).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
 
-    run_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_name'])}"
+    run_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['run_slug'])}"
     run_dir.mkdir(parents=True, exist_ok=False)
 
     circuit_qubits = infer_circuit_qubits(cfg["circuit"], repo_root)
@@ -549,7 +548,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "experiment_name": cfg["experiment_name"],
+        "run_slug": cfg["run_slug"],
         "paths": {
             "run_dir": str(run_dir),
             "circuit": str(circuit),

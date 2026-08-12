@@ -100,7 +100,7 @@ def _default_output(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
     return summary_csv.parent / f"cloud_benchmark_{metric}_vs_{suffix}.pdf"
 
 
-def _default_title(summary_csv: Path, *, metric: str, experiment_names: list[str]) -> str:
+def _default_title(summary_csv: Path, *, metric: str, run_slugs: list[str]) -> str:
     return "Strong scaling"
 
 
@@ -179,11 +179,11 @@ def main() -> int:
     rows_success = _successful_rows(rows)
     label_kind = _summary_label_kind(rows_success)
     groups = _to_groups(rows_success, metric=args.metric)
-    experiment_names = sorted(
+    run_slugs = sorted(
         {
-            row.get("experiment_name", "").strip()
+            row.get("run_slug", "").strip()
             for row in rows_success
-            if row.get("experiment_name", "").strip()
+            if row.get("run_slug", "").strip()
         }
     )
 
@@ -255,7 +255,7 @@ def main() -> int:
     title = (
         args.title
         if args.title is not None
-        else _default_title(summary_csv, metric=args.metric, experiment_names=experiment_names)
+        else _default_title(summary_csv, metric=args.metric, run_slugs=run_slugs)
     )
     ax.set_title(title)
     ax.grid(True, alpha=0.3)

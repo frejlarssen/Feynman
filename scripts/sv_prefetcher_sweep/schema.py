@@ -94,7 +94,7 @@ SUMMARY_FIELDS = list(
 )
 
 DEFAULT_OPTIONS: dict[str, Any] = {
-    "description": None,
+    "description": "",
     "repo_root": ".",
     "vary": None,
     "values": None,
@@ -123,7 +123,6 @@ DEFAULT_OPTIONS: dict[str, Any] = {
 }
 
 REQUIRED_FIELDS = (
-    "description",
     "vary",
     "values",
     "circuit",
@@ -152,7 +151,7 @@ BOOLEAN_FIELDS = ("dense", "continue_on_error", "dry_run")
 class SweepConfig:
     config: str
     description: str
-    experiment_name: str
+    run_slug: str
     repo_root: str
     vary: str
     values: list[Any]

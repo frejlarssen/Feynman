@@ -27,13 +27,13 @@ for path in (SCRIPT_REPO_ROOT, SCRIPT_DIR):
         sys.path.insert(0, str(path))
 
 from scripts.sweeplib.materialize import (  # noqa: E402
-    derive_experiment_name,
     infer_circuit_qubits,
     normalize_generator_specs,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
 )
+from scripts.sweeplib.utils import run_slug_from_config  # noqa: E402
 from scripts.tensor_comparison.quimb_transpile import transpile_for_quimb  # noqa: E402
 from scripts.validation.qaoa_qiskit_validation import (  # noqa: E402
     build_qiskit_circuit,
@@ -227,11 +227,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         cfg["output_bitstrings"],
         SCRIPT_REPO_ROOT,
     )
-    cfg["experiment_name"] = derive_experiment_name(
-        cfg,
-        SCRIPT_REPO_ROOT,
-        fallback=args.config.resolve().stem or "qwalk_quimb",
-    )
+    cfg["run_slug"] = run_slug_from_config(args.config.resolve(), fallback="qwalk_quimb")
     return cfg
 
 
@@ -962,7 +958,7 @@ def main(argv: list[str] | None = None) -> int:
     verbosity = int(cfg["verbosity"])
     repo_root = _resolve_path(cfg["repo_root"], Path.cwd()).resolve()
     output_root = _resolve_path(cfg["output_root"], repo_root).resolve()
-    run_dir = output_root / f"{_utc_stamp()}_{_sanitize(str(cfg['experiment_name']))}"
+    run_dir = output_root / f"{_utc_stamp()}_{_sanitize(str(cfg['run_slug']))}"
     run_dir.mkdir(parents=True, exist_ok=False)
     process_start_peak_rss_mb = _rss_mb()
     recorded_environment = _recorded_environment()
@@ -1073,7 +1069,7 @@ def main(argv: list[str] | None = None) -> int:
         summary_path = run_dir / "summary.json"
         summary = {
             "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "experiment_name": cfg["experiment_name"],
+            "run_slug": cfg["run_slug"],
             "notes": cfg["notes"],
             "status": status,
             "config": cfg,
@@ -1141,7 +1137,7 @@ def main(argv: list[str] | None = None) -> int:
         summary_path = run_dir / "summary.json"
         summary = {
             "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "experiment_name": cfg["experiment_name"],
+            "run_slug": cfg["run_slug"],
             "notes": cfg["notes"],
             "status": status,
             "config": cfg,
@@ -1226,7 +1222,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "experiment_name": cfg["experiment_name"],
+        "run_slug": cfg["run_slug"],
         "notes": cfg["notes"],
         "config": cfg,
         "config_file": str(args.config.resolve()),

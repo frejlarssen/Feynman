@@ -44,7 +44,7 @@ HELPER_PYTHON="${HELPER_PYTHON:-}"
 BENCHMARK_STAMP="${BENCHMARK_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 BENCHMARK_DIR="${BENCHMARK_DIR:-}"
 RESULTS_FILE="${RESULTS_FILE:-}"
-CONFIG_EXPERIMENT_NAME="qft_n8_k2"
+CONFIG_RUN_SLUG="qft_pod_sweep"
 REPEAT_COUNT=1
 CONFIG_MAX_HEXSTRINGS_PER_BATCH=""
 LABEL_KIND="target_num_pods"
@@ -127,7 +127,7 @@ if [ -n "${CONFIG_PATH}" ]; then
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
-  CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-experiment-name)"
+  CONFIG_RUN_SLUG="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-run-slug)"
   REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
   CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
   if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
@@ -154,7 +154,7 @@ if [ -z "${BENCHMARK_DIR}" ]; then
   if [ -n "${RESULTS_FILE}" ]; then
     BENCHMARK_DIR="$(dirname "${RESULTS_FILE}")"
   else
-    BENCHMARK_DIR="data/outputs/cloud_benchmarks/${BENCHMARK_STAMP}_${CONFIG_EXPERIMENT_NAME}"
+    BENCHMARK_DIR="data/outputs/cloud_benchmarks/${BENCHMARK_STAMP}_${CONFIG_RUN_SLUG}"
   fi
 fi
 if [ -z "${RESULTS_FILE}" ]; then
@@ -177,14 +177,14 @@ fi
 mkdir -p "${BENCHMARK_DIR}/runs"
 
 if [ ! -f "${RESULTS_FILE}" ]; then
-  printf "dag_id,experiment_name,run_id,target_num_pods,label_kind,target_label_value,repeat_index,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
+  printf "dag_id,run_slug,run_id,target_num_pods,label_kind,target_label_value,repeat_index,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
 "${HELPER_PYTHON}" scripts/write_cloud_benchmark_metadata.py \
   --benchmark-dir "${BENCHMARK_DIR}" \
   --dag-id "${DAG_ID}" \
   --config "${CONFIG_PATH}" \
-  --experiment-name "${CONFIG_EXPERIMENT_NAME}" \
+  --run-slug "${CONFIG_RUN_SLUG}" \
   --label-kind "${LABEL_KIND}" \
   --label-values ${LABEL_VALUES} \
   --invocation "sh scripts/benchmark_cloud_pod_sweep.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${LABEL_VALUES}" \
@@ -216,22 +216,22 @@ do
     start_epoch="$(date +%s)"
     start_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     conf_json="{\"target_num_pods\": ${label_value}}"
-    experiment_name="qft_n8_k2"
+    run_slug="qft_pod_sweep"
     if [ -n "${CONFIG_PATH}" ]; then
       if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
         conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
           --config "${CONFIG_PATH}" \
           --max-hexstrings-per-batch "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" \
           --run-output-dir "${BENCHMARK_DIR}/runs/${run_id}" \
-          --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_EXPERIMENT_NAME}_all_batches.hsv")"
+          --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_RUN_SLUG}_all_batches.hsv")"
       else
         conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
           --config "${CONFIG_PATH}" \
           --target-num-pods "${label_value}" \
           --run-output-dir "${BENCHMARK_DIR}/runs/${run_id}" \
-          --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_EXPERIMENT_NAME}_all_batches.hsv")"
+          --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_RUN_SLUG}_all_batches.hsv")"
       fi
-      experiment_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("benchmark_case", {}).get("experiment_name", "unknown"))' "${conf_json}")"
+      run_slug="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("benchmark_case", {}).get("run_slug", "unknown"))' "${conf_json}")"
     fi
     run_dir="${BENCHMARK_DIR}/runs/${run_id}"
     mkdir -p "${run_dir}"
@@ -333,7 +333,7 @@ EOF
             echo "  worker logs: autotune sum=${simulate_autotuning_seconds_sum}s, worker full sum=${simulate_worker_full_seconds_sum}s from ${simulate_log_file_count} log files."
           fi
           printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-            "${DAG_ID}" "${experiment_name}" "${run_id}" "${label_value}" "${LABEL_KIND}" "${label_value}" "${repeat_index}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
+            "${DAG_ID}" "${run_slug}" "${run_id}" "${label_value}" "${LABEL_KIND}" "${label_value}" "${repeat_index}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
             >> "${RESULTS_FILE}"
           task_states_json="${run_dir}/task_states.json"
           if airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" --output json \
