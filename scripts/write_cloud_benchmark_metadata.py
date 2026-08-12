@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--benchmark-dir", type=Path, required=True)
     parser.add_argument("--dag-id", required=True)
     parser.add_argument("--config", default="")
-    parser.add_argument("--run-slug", required=True)
+    parser.add_argument("--experiment-tag", required=True)
     parser.add_argument("--label-kind", default="target_num_pods")
     parser.add_argument("--label-values", nargs="*", default=[])
     parser.add_argument("--pod-counts", nargs="*", default=[])
@@ -74,7 +74,7 @@ def main() -> int:
 
     config_snapshot: dict[str, Any] = {
         "config_file": args.config,
-        "run_slug": args.run_slug,
+        "experiment_tag": args.experiment_tag,
         "dag_id": args.dag_id,
         "label_kind": args.label_kind,
         "label_values": label_values,

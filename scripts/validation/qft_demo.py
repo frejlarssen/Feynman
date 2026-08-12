@@ -42,7 +42,7 @@ from scripts.sweeplib.plot_style import (  # noqa: E402
     resolve_subplot_title_fontsize,
     single_column_figure_size,
 )
-from scripts.sweeplib.utils import run_slug_from_config  # noqa: E402
+from scripts.sweeplib.utils import experiment_tag_from_config  # noqa: E402
 
 
 def _utc_stamp() -> str:
@@ -142,7 +142,7 @@ def _merge_config(
         raise ValueError("batch_size must be >= 0")
     if merged["plot_max_xticks"] < 2:
         raise ValueError("plot_max_xticks must be >= 2")
-    merged["run_slug"] = run_slug_from_config(config_path_str, fallback="qft_demo")
+    merged["experiment_tag"] = experiment_tag_from_config(config_path_str, fallback="qft_demo")
     return merged, cfg, config_path_str
 
 
@@ -603,7 +603,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     cfg, raw_cfg, config_path_str = _merge_config(args)
-    config_stem = Path(config_path_str).stem if config_path_str else str(cfg["run_slug"])
+    config_stem = Path(config_path_str).stem if config_path_str else str(cfg["experiment_tag"])
 
     repo_root = Path(cfg["repo_root"]).resolve()
 
@@ -699,7 +699,7 @@ def main(argv: list[str] | None = None) -> int:
         if not p.exists():
             raise FileNotFoundError(f"Required path not found: {p}")
 
-    sweep_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['run_slug'])}"
+    sweep_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_tag'])}"
     sweep_dir.mkdir(parents=True, exist_ok=False)
 
     output_bins, size_bytes = _read_output_bitstrings(output_bitstrings)
@@ -913,7 +913,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "run_slug": cfg["run_slug"],
+        "experiment_tag": cfg["experiment_tag"],
         "config_file": config_path_str,
         "config_from_file": raw_cfg,
         "config_effective": cfg,

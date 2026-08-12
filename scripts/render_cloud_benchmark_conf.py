@@ -18,11 +18,11 @@ from scripts.sweeplib.materialize import (  # noqa: E402
     resolve_output_bitstrings_input,
     resolve_statevector_input,
 )
-from scripts.sweeplib.utils import run_slug_from_config  # noqa: E402
+from scripts.sweeplib.utils import experiment_tag_from_config  # noqa: E402
 
 DATA_HOST_ROOT = (REPO_ROOT / "data").resolve()
 DATA_MOUNT_ROOT = Path("/data")
-DEFAULT_RUN_SLUG = "benchmark"
+DEFAULT_EXPERIMENT_TAG = "benchmark"
 
 
 def _resolve_config_path(value: str) -> Path:
@@ -127,7 +127,7 @@ def _infer_output_bitstring_qubits(output_cfg: Any) -> int | None:
 
 def _validate_generator_dimensions(
     *,
-    run_slug: str,
+    experiment_tag: str,
     circuit_cfg: Any,
     statevector_cfg: Any,
     output_cfg: Any,
@@ -143,7 +143,7 @@ def _validate_generator_dimensions(
     ):
         raise ValueError(
             "Cloud benchmark config input_statevector is too small "
-            f"for {run_slug}: circuit uses {circuit_qubits} qubits but "
+            f"for {experiment_tag}: circuit uses {circuit_qubits} qubits but "
             f"input_statevector describes only {statevector_qubits} qubits of storage."
         )
 
@@ -154,7 +154,7 @@ def _validate_generator_dimensions(
     ):
         raise ValueError(
             "Cloud benchmark config output_bitstrings storage is too small "
-            f"for {run_slug}: circuit uses {circuit_qubits} qubits but "
+            f"for {experiment_tag}: circuit uses {circuit_qubits} qubits but "
             f"output_bitstrings describe only {output_qubits} qubits of storage."
         )
 
@@ -169,7 +169,7 @@ def render_conf(
 ) -> dict[str, Any]:
     payload = _load_config(config_path)
 
-    run_slug = run_slug_from_config(config_path, fallback=DEFAULT_RUN_SLUG)
+    experiment_tag = experiment_tag_from_config(config_path, fallback=DEFAULT_EXPERIMENT_TAG)
     circuit_cfg = _pick(payload, "circuit", "circuit_file")
     statevector_cfg = _pick(payload, "input_statevector", "input_statevector_file")
     output_cfg = _pick(payload, "output_bitstrings", "output_bitstrings_file")
@@ -181,7 +181,7 @@ def render_conf(
     )
 
     _validate_generator_dimensions(
-        run_slug=run_slug,
+        experiment_tag=experiment_tag,
         circuit_cfg=circuit_cfg,
         statevector_cfg=statevector_cfg,
         output_cfg=output_cfg,
@@ -192,7 +192,7 @@ def render_conf(
     output_path, _ = resolve_output_bitstrings_input(output_cfg, REPO_ROOT)
 
     benchmark_case = {
-        "run_slug": run_slug,
+        "experiment_tag": experiment_tag,
         "description": str(payload.get("description", "")).strip(),
         "circuit_file": _host_to_mount_path(circuit_path),
         "input_statevector_file": _host_to_mount_path(statevector_path),
@@ -262,9 +262,9 @@ def parse_args() -> argparse.Namespace:
         help="Print the configured Airflow pool-slot counts as a space-separated list.",
     )
     parser.add_argument(
-        "--print-run-slug",
+        "--print-experiment-tag",
         action="store_true",
-        help="Print the run slug derived from the config filename.",
+        help="Print the experiment tag derived from the config filename.",
     )
     parser.add_argument(
         "--print-repeat-count",
@@ -297,8 +297,8 @@ def main() -> int:
         )
         sys.stdout.write("\n")
         return 0
-    if args.print_run_slug:
-        sys.stdout.write(run_slug_from_config(config_path, fallback=DEFAULT_RUN_SLUG))
+    if args.print_experiment_tag:
+        sys.stdout.write(experiment_tag_from_config(config_path, fallback=DEFAULT_EXPERIMENT_TAG))
         sys.stdout.write("\n")
         return 0
     if args.print_repeat_count:

@@ -373,7 +373,7 @@ def build_metadata(
         config_snapshot={
             "config_file": config.config,
             "description": config.description,
-            "run_slug": config.run_slug,
+            "experiment_tag": config.experiment_tag,
             "repo_root": str(paths.repo_root),
             "output_root": str(paths.output_root),
             "base_config": str(paths.base_config_path),

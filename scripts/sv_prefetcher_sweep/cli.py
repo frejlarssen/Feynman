@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from sweeplib.utils import run_slug_from_config
+from sweeplib.utils import experiment_tag_from_config
 
 from .schema import (
     BOOLEAN_FIELDS,
@@ -230,8 +230,8 @@ def _parse_values(options: dict[str, Any]) -> None:
     options["values"] = [_to_number("values", value, conv) for value in options["values"]]
 
 
-def _derive_run_slug(options: dict[str, Any]) -> None:
-    options["run_slug"] = run_slug_from_config(options.get("config"), fallback="sweep")
+def _derive_experiment_tag(options: dict[str, Any]) -> None:
+    options["experiment_tag"] = experiment_tag_from_config(options.get("config"), fallback="sweep")
 
 
 def build_config(argv: list[str] | None = None) -> SweepConfig:
@@ -242,7 +242,7 @@ def build_config(argv: list[str] | None = None) -> SweepConfig:
         _validate_required(options)
         _validate_semantics(options)
         _parse_values(options)
-        _derive_run_slug(options)
+        _derive_experiment_tag(options)
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
 

@@ -151,7 +151,7 @@ BOOLEAN_FIELDS = ("dense", "continue_on_error", "dry_run")
 class SweepConfig:
     config: str
     description: str
-    run_slug: str
+    experiment_tag: str
     repo_root: str
     vary: str
     values: list[Any]

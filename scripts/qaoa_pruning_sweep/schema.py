@@ -118,7 +118,7 @@ BOOLEAN_FIELDS = ("continue_on_error", "dry_run", "no_plot")
 class SweepConfig:
     config: str
     description: str
-    run_slug: str
+    experiment_tag: str
     repo_root: str
     output_root: str
     base_config: str

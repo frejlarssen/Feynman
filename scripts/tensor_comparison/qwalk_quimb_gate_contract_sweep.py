@@ -97,11 +97,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     base_description = str(base_config.get("description", "")).strip()
-    base_run_slug = base_config_path.stem
+    base_experiment_tag = base_config_path.stem
     base_output_root = args.output_root or Path(base_config.get("output_root", "data/outputs/experiments"))
     if not base_output_root.is_absolute():
         base_output_root = repo_root / base_output_root
-    outer_dir = base_output_root / f"{_utc_stamp()}_{_sanitize(base_run_slug)}_gate_contract"
+    outer_dir = base_output_root / f"{_utc_stamp()}_{_sanitize(base_experiment_tag)}_gate_contract"
     configs_dir = outer_dir / "configs"
     configs_dir.mkdir(parents=True, exist_ok=False)
 

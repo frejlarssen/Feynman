@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from sweeplib.utils import run_slug_from_config
+from sweeplib.utils import experiment_tag_from_config
 
 from .schema import (
     BOOLEAN_FIELDS,
@@ -192,8 +192,8 @@ def _finalize_thresholds(options: dict[str, Any]) -> None:
         raise ValueError("No thresholds left after applying --max-cases.")
 
 
-def _derive_run_slug(options: dict[str, Any]) -> None:
-    options["run_slug"] = run_slug_from_config(options.get("config"), fallback="qaoa_pruning_sweep")
+def _derive_experiment_tag(options: dict[str, Any]) -> None:
+    options["experiment_tag"] = experiment_tag_from_config(options.get("config"), fallback="qaoa_pruning_sweep")
 
 
 def build_config(argv: list[str] | None = None) -> SweepConfig:
@@ -204,7 +204,7 @@ def build_config(argv: list[str] | None = None) -> SweepConfig:
         _validate_required(options)
         _validate_semantics(options)
         _finalize_thresholds(options)
-        _derive_run_slug(options)
+        _derive_experiment_tag(options)
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
 

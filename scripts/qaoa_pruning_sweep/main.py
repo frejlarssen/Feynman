@@ -48,7 +48,7 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
 
     rc = run_sweep(
         output_root=paths.output_root,
-        run_slug=config.run_slug,
+        experiment_tag=config.experiment_tag,
         summary_fields=SUMMARY_FIELDS,
         values=run_points,
         repeat=config.repeat,

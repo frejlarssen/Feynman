@@ -14,10 +14,10 @@ from typing import Any, Callable
 from .utils import ensure_text, now_utc, sanitize
 
 
-def create_sweep_dir(output_root: Path, run_slug: str) -> tuple[Path, dt.datetime]:
+def create_sweep_dir(output_root: Path, experiment_tag: str) -> tuple[Path, dt.datetime]:
     created_at = now_utc()
     stamp = created_at.strftime("%Y%m%d_%H%M%S")
-    sweep_dir = output_root / f"{stamp}_{sanitize(run_slug)}"
+    sweep_dir = output_root / f"{stamp}_{sanitize(experiment_tag)}"
     sweep_dir.mkdir(parents=True, exist_ok=False)
     return sweep_dir, created_at
 
@@ -63,7 +63,7 @@ def execute_command(
 def run_sweep(
     *,
     output_root: Path,
-    run_slug: str,
+    experiment_tag: str,
     summary_fields: list[str],
     values: list[Any],
     repeat: int,
@@ -73,7 +73,7 @@ def run_sweep(
     on_complete: Callable[[Path, Path, Path, int], None] | None = None,
     metadata_filename: str = "sweep_metadata.json",
 ) -> int:
-    sweep_dir, created_at = create_sweep_dir(output_root, run_slug)
+    sweep_dir, created_at = create_sweep_dir(output_root, experiment_tag)
     summary_path = sweep_dir / "summary.csv"
     metadata_path = sweep_dir / metadata_filename
 

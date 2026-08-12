@@ -32,7 +32,7 @@ def config_stem(config_path: str | Path | None, *, fallback: str = "manual") -> 
     return path.stem or fallback
 
 
-def run_slug_from_config(config_path: str | Path | None, *, fallback: str = "manual") -> str:
+def experiment_tag_from_config(config_path: str | Path | None, *, fallback: str = "manual") -> str:
     return sanitize(config_stem(config_path, fallback=fallback))
 
 
