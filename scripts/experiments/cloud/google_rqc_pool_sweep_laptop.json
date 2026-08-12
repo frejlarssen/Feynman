@@ -1,0 +1,29 @@
+{
+  "description": "Laptop-sized RQC load-imbalance probe for cloud pool sweep.",
+  "target_pool_slots_list": [
+    1,
+    2,
+    4
+  ],
+  "max_hexstrings_per_batch": 16,
+  "repeat": 2,
+  "simulate_omp_num_threads": 1,
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 6,
+    "cycles": 2,
+    "seed": 11,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 256,
+    "seed": 17
+  }
+}
