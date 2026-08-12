@@ -114,8 +114,14 @@ def _parse_cloud_summary_series(summary_csv: Path) -> list[TimingSeries]:
             timing_path = _cloud_timing_path(summary_csv, row)
             if timing_path is None:
                 continue
-            pods = (row.get("target_num_pods") or "").strip()
-            label = f"{pods} pods" if pods else "cloud"
+            label_kind = (row.get("label_kind") or "").strip()
+            value = (row.get("target_label_value") or row.get("target_num_pods") or "").strip()
+            if label_kind == "pool_slots" and value:
+                label = f"{value} pool slots"
+            elif value:
+                label = f"{value} pods"
+            else:
+                label = "cloud"
             entries.append((label, timing_path))
     series = _group_series(entries)
     if not series:

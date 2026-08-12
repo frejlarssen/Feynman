@@ -1,6 +1,6 @@
 {
   "experiment_name": "qwalk_n100_it17_count1024_exact_opencube",
-  "target_num_pods_list": [1, 2, 4, 8, 16, 32],
+  "target_pool_slots_list": [1, 2, 4, 8, 16, 32],
   "max_hexstrings_per_batch": 32,
   "repeat": 5,
   "simulate_omp_num_threads": 1,

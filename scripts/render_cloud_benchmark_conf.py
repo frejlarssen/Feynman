@@ -53,22 +53,31 @@ def _pick(payload: dict[str, Any], *keys: str) -> Any:
     raise ValueError(f"Expected one of keys {keys!r} in config.")
 
 
-def parse_target_num_pods_list(payload: dict[str, Any]) -> list[int]:
-    raw_value = payload.get("target_num_pods_list", payload.get("target_num_pods"))
+def _parse_positive_int_list(raw_value: Any, field_name: str) -> list[int]:
     if raw_value is None:
         return []
     if not isinstance(raw_value, list) or not raw_value:
         raise ValueError(
-            "target_num_pods_list must be a non-empty JSON array of positive integers."
+            f"{field_name} must be a non-empty JSON array of positive integers."
         )
 
-    pod_counts: list[int] = []
+    values: list[int] = []
     for raw_item in raw_value:
-        pod_count = int(raw_item)
-        if pod_count <= 0:
-            raise ValueError("target_num_pods_list entries must be > 0.")
-        pod_counts.append(pod_count)
-    return pod_counts
+        value = int(raw_item)
+        if value <= 0:
+            raise ValueError(f"{field_name} entries must be > 0.")
+        values.append(value)
+    return values
+
+
+def parse_target_num_pods_list(payload: dict[str, Any]) -> list[int]:
+    raw_value = payload.get("target_num_pods_list", payload.get("target_num_pods"))
+    return _parse_positive_int_list(raw_value, "target_num_pods_list")
+
+
+def parse_target_pool_slots_list(payload: dict[str, Any]) -> list[int]:
+    raw_value = payload.get("target_pool_slots_list")
+    return _parse_positive_int_list(raw_value, "target_pool_slots_list")
 
 
 def parse_repeat_count(payload: dict[str, Any]) -> int:
@@ -247,6 +256,11 @@ def parse_args() -> argparse.Namespace:
         help="Print the configured benchmark pod counts as a space-separated list.",
     )
     parser.add_argument(
+        "--print-target-pool-slots-list",
+        action="store_true",
+        help="Print the configured Airflow pool-slot counts as a space-separated list.",
+    )
+    parser.add_argument(
         "--print-repeat-count",
         action="store_true",
         help="Print the configured number of repeated runs per pod count.",
@@ -269,6 +283,12 @@ def main() -> int:
 
     if args.print_target_num_pods_list:
         sys.stdout.write(" ".join(str(pods) for pods in parse_target_num_pods_list(payload)))
+        sys.stdout.write("\n")
+        return 0
+    if args.print_target_pool_slots_list:
+        sys.stdout.write(
+            " ".join(str(slots) for slots in parse_target_pool_slots_list(payload))
+        )
         sys.stdout.write("\n")
         return 0
     if args.print_repeat_count:

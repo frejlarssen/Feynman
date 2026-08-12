@@ -78,8 +78,26 @@ def _to_groups(rows: list[dict[str, str]], *, metric: str) -> dict[int, list[flo
     return groups
 
 
-def _default_output(summary_csv: Path, *, metric: str) -> Path:
-    return summary_csv.parent / f"cloud_benchmark_{metric}_vs_pods.pdf"
+def _summary_label_kind(rows: list[dict[str, str]]) -> str:
+    kinds = {
+        (row.get("label_kind") or "").strip()
+        for row in rows
+        if (row.get("label_kind") or "").strip()
+    }
+    if len(kinds) == 1:
+        return next(iter(kinds))
+    return "target_num_pods"
+
+
+def _label_axis_text(label_kind: str) -> str:
+    if label_kind == "pool_slots":
+        return "Pool slots"
+    return "Target pods"
+
+
+def _default_output(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
+    suffix = "pool_slots" if label_kind == "pool_slots" else "pods"
+    return summary_csv.parent / f"cloud_benchmark_{metric}_vs_{suffix}.pdf"
 
 
 def _default_title(summary_csv: Path, *, metric: str, experiment_names: list[str]) -> str:
@@ -159,6 +177,7 @@ def main() -> int:
 
     rows = _load_rows(summary_csv)
     rows_success = _successful_rows(rows)
+    label_kind = _summary_label_kind(rows_success)
     groups = _to_groups(rows_success, metric=args.metric)
     experiment_names = sorted(
         {
@@ -231,7 +250,7 @@ def main() -> int:
         legend_handles.append(efficiency_line)
         legend_labels.append("Strong-scaling efficiency")
 
-    ax.set_xlabel("Target pods")
+    ax.set_xlabel(_label_axis_text(label_kind))
     ax.set_ylabel(METRIC_LABELS[args.metric])
     title = (
         args.title
@@ -257,7 +276,7 @@ def main() -> int:
     output_path = (
         args.output.resolve()
         if args.output is not None
-        else _default_output(summary_csv, metric=args.metric)
+        else _default_output(summary_csv, metric=args.metric, label_kind=label_kind)
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)

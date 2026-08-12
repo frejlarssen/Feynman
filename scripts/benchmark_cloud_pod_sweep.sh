@@ -47,11 +47,12 @@ RESULTS_FILE="${RESULTS_FILE:-}"
 CONFIG_EXPERIMENT_NAME="qft_n8_k2"
 REPEAT_COUNT=1
 CONFIG_MAX_HEXSTRINGS_PER_BATCH=""
+LABEL_KIND="target_num_pods"
 
 if [ "$#" -eq 0 ]; then
-  POD_COUNTS="1 2 4 8"
+  LABEL_VALUES="1 2 4 8"
 else
-  POD_COUNTS="$*"
+  LABEL_VALUES="$*"
 fi
 
 require_cluster_image() {
@@ -129,12 +130,21 @@ if [ -n "${CONFIG_PATH}" ]; then
   CONFIG_EXPERIMENT_NAME="$("${CONFIG_RENDER_PYTHON}" -c 'import json,sys; from pathlib import Path; print(json.load(open(sys.argv[1], encoding="utf-8")).get("experiment_name", Path(sys.argv[1]).stem or "qft_n8_k2"))' "${CONFIG_PATH}")"
   REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
   CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
+  if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+    LABEL_KIND="pool_slots"
+  fi
   if [ "$#" -eq 0 ]; then
-    CONFIG_POD_COUNTS="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
-    if [ -n "${CONFIG_POD_COUNTS}" ]; then
-      POD_COUNTS="${CONFIG_POD_COUNTS}"
+    if [ "${LABEL_KIND}" = "pool_slots" ]; then
+      CONFIG_LABEL_VALUES="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-pool-slots-list)"
     elif [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
-      echo "Fixed-batch cloud benchmark configs must set target_num_pods_list (used as labels) or pass an explicit label on the CLI." >&2
+      CONFIG_LABEL_VALUES=""
+    else
+      CONFIG_LABEL_VALUES="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-pods-list)"
+    fi
+    if [ -n "${CONFIG_LABEL_VALUES}" ]; then
+      LABEL_VALUES="${CONFIG_LABEL_VALUES}"
+    elif [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+      echo "Fixed-batch cloud benchmark configs must set target_pool_slots_list or pass explicit pool-slot labels on the CLI." >&2
       exit 1
     fi
   fi
@@ -167,7 +177,7 @@ fi
 mkdir -p "${BENCHMARK_DIR}/runs"
 
 if [ ! -f "${RESULTS_FILE}" ]; then
-  printf "dag_id,experiment_name,run_id,target_num_pods,repeat_index,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
+  printf "dag_id,experiment_name,run_id,target_num_pods,label_kind,target_label_value,repeat_index,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
 "${HELPER_PYTHON}" scripts/write_cloud_benchmark_metadata.py \
@@ -175,28 +185,37 @@ fi
   --dag-id "${DAG_ID}" \
   --config "${CONFIG_PATH}" \
   --experiment-name "${CONFIG_EXPERIMENT_NAME}" \
-  --pod-counts ${POD_COUNTS} \
-  --invocation "bash scripts/benchmark_cloud_pod_sweep.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${POD_COUNTS}" \
+  --label-kind "${LABEL_KIND}" \
+  --label-values ${LABEL_VALUES} \
+  --invocation "bash scripts/benchmark_cloud_pod_sweep.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${LABEL_VALUES}" \
   >/dev/null
 
 echo "Benchmark directory: ${BENCHMARK_DIR}"
 echo "Benchmark results will be written to ${RESULTS_FILE}"
-echo "Pod counts: ${POD_COUNTS}"
-echo "Repeats per pod count: ${REPEAT_COUNT}"
+if [ "${LABEL_KIND}" = "pool_slots" ]; then
+  echo "Pool-slot labels: ${LABEL_VALUES}"
+else
+  echo "Pod counts: ${LABEL_VALUES}"
+fi
+echo "Repeats per label: ${REPEAT_COUNT}"
 if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
   echo "Fixed batch size: ${CONFIG_MAX_HEXSTRINGS_PER_BATCH} hexstrings per batch"
 fi
 
-for pods in $POD_COUNTS
+for label_value in $LABEL_VALUES
 do
   repeat_index=1
   while [ "${repeat_index}" -le "${REPEAT_COUNT}" ]
   do
     timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-    run_id="benchmark_pods_${pods}_r${repeat_index}_${timestamp}"
+    run_label_prefix="pods"
+    if [ "${LABEL_KIND}" = "pool_slots" ]; then
+      run_label_prefix="slots"
+    fi
+    run_id="benchmark_${run_label_prefix}_${label_value}_r${repeat_index}_${timestamp}"
     start_epoch="$(date +%s)"
     start_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    conf_json="{\"target_num_pods\": ${pods}}"
+    conf_json="{\"target_num_pods\": ${label_value}}"
     experiment_name="qft_n8_k2"
     if [ -n "${CONFIG_PATH}" ]; then
       if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
@@ -208,7 +227,7 @@ do
       else
         conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
           --config "${CONFIG_PATH}" \
-          --target-num-pods "${pods}" \
+          --target-num-pods "${label_value}" \
           --run-output-dir "${BENCHMARK_DIR}/runs/${run_id}" \
           --merged-output-file "${BENCHMARK_DIR}/runs/${run_id}/${CONFIG_EXPERIMENT_NAME}_all_batches.hsv")"
       fi
@@ -219,9 +238,9 @@ do
     printf "%s\n" "${conf_json}" > "${run_dir}/dag_run_conf.json"
 
     if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
-      echo "Triggering ${DAG_ID} with label target_num_pods=${pods}, batch_size=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}, repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+      echo "Triggering ${DAG_ID} with label ${LABEL_KIND}=${label_value}, batch_size=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}, repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
     else
-      echo "Triggering ${DAG_ID} with target_num_pods=${pods} repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+      echo "Triggering ${DAG_ID} with target_num_pods=${label_value} repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
     fi
     airflow dags trigger "${DAG_ID}" \
       --run-id "${run_id}" \
@@ -313,8 +332,8 @@ EOF
           if [ -n "${simulate_autotuning_seconds_sum}" ] || [ -n "${simulate_worker_full_seconds_sum}" ]; then
             echo "  worker logs: autotune sum=${simulate_autotuning_seconds_sum}s, worker full sum=${simulate_worker_full_seconds_sum}s from ${simulate_log_file_count} log files."
           fi
-          printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-            "${DAG_ID}" "${experiment_name}" "${run_id}" "${pods}" "${repeat_index}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
+          printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+            "${DAG_ID}" "${experiment_name}" "${run_id}" "${label_value}" "${LABEL_KIND}" "${label_value}" "${repeat_index}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
             >> "${RESULTS_FILE}"
           task_states_json="${run_dir}/task_states.json"
           if airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" --output json \

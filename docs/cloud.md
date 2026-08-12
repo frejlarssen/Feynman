@@ -213,15 +213,18 @@ A simple benchmark sweep is available in:
 `bash scripts/benchmark_cloud_pod_sweep.sh`
 
 When `--config` is used, the script now looks for
-`target_num_pods_list` and `repeat` in the benchmark JSON and uses those
-pod counts and repeated runs by default.
+`target_num_pods_list` and `repeat` in ordinary pod-sweep benchmark JSON, and
+uses those pod counts and repeated runs by default.
 
 If the config also sets `max_hexstrings_per_batch`, the sweep script switches
-to fixed-batch mode for splitting. In that mode, `target_num_pods_list` is used
-only as the benchmark label in `summary.csv` and plots, while the actual DAG
-run is rendered with `max_hexstrings_per_batch`. This is useful when you want
-more total batches than the intended pool concurrency, for example a single
-Gantt-chart run with about 12 batches scheduled onto a shared 4-slot pool.
+to fixed-batch mode for splitting. In that mode, use
+`target_pool_slots_list` in the config to describe the intended shared-pool
+concurrency labels. The actual DAG run is rendered with
+`max_hexstrings_per_batch`; the pool-slot list is used only as the benchmark
+label in `summary.csv`, plots, and helper wrappers. This is useful when you
+want more total batches than the intended pool concurrency, for example a
+single Gantt-chart run with about 12 batches scheduled onto a shared 4-slot
+pool.
 
 Example:
 
@@ -238,7 +241,7 @@ Example fixed-batch Gantt config:
 ```json
 {
   "experiment_name": "qwalk_n64_it15_count1200_batch100_pool4",
-  "target_num_pods_list": [4],
+  "target_pool_slots_list": [4],
   "max_hexstrings_per_batch": 100,
   "repeat": 1
 }
@@ -266,6 +269,15 @@ Example with the quantum-walk benchmark case:
 For the single-run Gantt demo:
 
 `bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
+
+For fixed-batch configs where `target_pool_slots_list` is meant to act as a
+shared-pool slot sweep, use:
+
+`bash scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep_opencube.json`
+
+This wrapper updates the Airflow pool size before each labeled run, then calls
+`benchmark_cloud_pod_sweep.sh` one label at a time while keeping a single
+benchmark output directory.
 
 For longer local runs, consider launching the sweep inside `tmux` so a
 terminal-window close does not kill the local polling script.

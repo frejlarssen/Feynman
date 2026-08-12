@@ -1,6 +1,6 @@
 {
   "experiment_name": "qwalk_n64_it5_count1200_batch100_pool4",
-  "target_num_pods_list": [4],
+  "target_pool_slots_list": [4],
   "max_hexstrings_per_batch": 100,
   "repeat": 1,
   "simulate_omp_num_threads": 1,

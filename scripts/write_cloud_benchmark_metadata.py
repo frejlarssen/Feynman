@@ -43,6 +43,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dag-id", required=True)
     parser.add_argument("--config", default="")
     parser.add_argument("--experiment-name", required=True)
+    parser.add_argument("--label-kind", default="target_num_pods")
+    parser.add_argument("--label-values", nargs="*", default=[])
     parser.add_argument("--pod-counts", nargs="*", default=[])
     parser.add_argument("--runner-script", default="scripts/benchmark_cloud_pod_sweep.sh")
     parser.add_argument("--notes", default="")
@@ -65,12 +67,21 @@ def main() -> int:
     )
 
     input_files: dict[str, dict[str, Any]] = {}
+    label_values = [int(value) for value in args.label_values]
+    if not label_values and args.pod_counts:
+        label_values = [int(value) for value in args.pod_counts]
+
     config_snapshot: dict[str, Any] = {
         "config_file": args.config,
         "experiment_name": args.experiment_name,
         "dag_id": args.dag_id,
-        "pod_counts": [int(value) for value in args.pod_counts],
+        "label_kind": args.label_kind,
+        "label_values": label_values,
     }
+    if args.label_kind == "target_num_pods":
+        config_snapshot["pod_counts"] = label_values
+    elif args.label_kind == "pool_slots":
+        config_snapshot["pool_slots"] = label_values
 
     if args.config:
         config_path = (repo_root / args.config).resolve()
