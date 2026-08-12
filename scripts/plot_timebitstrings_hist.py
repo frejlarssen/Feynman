@@ -115,11 +115,11 @@ def _parse_cloud_summary_series(summary_csv: Path) -> list[TimingSeries]:
             if timing_path is None:
                 continue
             label_kind = (row.get("label_kind") or "").strip()
-            value = (row.get("target_label_value") or row.get("target_num_pods") or "").strip()
+            value = (row.get("target_label_value") or row.get("target_num_batches") or "").strip()
             if label_kind == "pool_slots" and value:
                 label = f"{value} pool slots"
             elif value:
-                label = f"{value} pods"
+                label = f"{value} batches"
             else:
                 label = "cloud"
             entries.append((label, timing_path))
@@ -135,7 +135,7 @@ def _parse_summary_series(summary_csv: Path) -> list[TimingSeries]:
         fieldnames = reader.fieldnames or []
     if "timing_file" in fieldnames:
         return _parse_perf_summary_series(summary_csv)
-    if "run_id" in fieldnames and "target_num_pods" in fieldnames:
+    if "run_id" in fieldnames and "target_num_batches" in fieldnames:
         return _parse_cloud_summary_series(summary_csv)
     raise ValueError(f"Unsupported summary CSV format for timing histogram: {summary_csv}")
 
@@ -191,8 +191,8 @@ def _default_title(summary_csv: Path | None, series: list[TimingSeries]) -> str:
     if summary_csv is None:
         return "Bitstrings compute time distribution"
     labels = {item.label for item in series}
-    if labels and all(label.endswith(" pods") for label in labels):
-        return "Per-bitstring compute time distribution by pod count"
+    if labels and all(label.endswith(" batches") for label in labels):
+        return "Per-bitstring compute time distribution by batch count"
     return "Bitstrings compute time distribution"
 
 

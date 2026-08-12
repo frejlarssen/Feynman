@@ -1,6 +1,6 @@
 {
   "description": "google_rqc_r2_c6_m1_fraction05_smoke64",
-  "target_num_pods_list": [
+  "target_num_batches_list": [
     2
   ],
   "repeat": 1,

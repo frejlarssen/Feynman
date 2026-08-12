@@ -18,7 +18,7 @@ MAX_HEXSTRINGS_PER_BATCH = 100
 SHARED_POOL = os.environ.get("FEYNMAN_SHARED_POOL", "simulate_pool")
 LIGHT_TASK_POOL_SLOTS = int(os.environ.get("FEYNMAN_LIGHT_TASK_POOL_SLOTS", "1"))
 SIMULATE_TASK_POOL_SLOTS = int(os.environ.get("FEYNMAN_SIMULATE_TASK_POOL_SLOTS", "1"))
-TARGET_NUM_PODS_TEMPLATE = "{{ dag_run.conf.get('target_num_pods', 0) }}"
+TARGET_NUM_BATCHES_TEMPLATE = "{{ dag_run.conf.get('target_num_batches', 0) }}"
 MAX_HEXSTRINGS_PER_BATCH_TEMPLATE = (
     "{{ dag_run.conf.get('max_hexstrings_per_batch', " + str(MAX_HEXSTRINGS_PER_BATCH) + ") }}"
 )
@@ -26,14 +26,14 @@ SIMULATE_OMP_NUM_THREADS_TEMPLATE = "{{ dag_run.conf.get('simulate_omp_num_threa
 SIMULATE_FRACTION_TEMPLATE = "{{ dag_run.conf.get('fraction', 1.0) }}"
 SIMULATE_THRESHOLD_TEMPLATE = "{{ dag_run.conf.get('threshold', 0.0) }}"
 DEFAULT_BENCHMARK_CASE = {
-    "experiment_tag": "qft_pod_sweep",
+    "experiment_tag": "qft_batch_sweep",
     "circuit_file": f"{DATA_MOUNT_PATH}/generated/circuits/qft/qft_n8_k2.qasm",
     "input_statevector_file": f"{DATA_MOUNT_PATH}/generated/statevectors/ket0_size1.hsv",
     "output_bitstrings_file": (
         f"{DATA_MOUNT_PATH}/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs"
     ),
 }
-EXPERIMENT_TAG_TEMPLATE = "{{ dag_run.conf.get('benchmark_case', {}).get('experiment_tag', 'qft_pod_sweep') }}"
+EXPERIMENT_TAG_TEMPLATE = "{{ dag_run.conf.get('benchmark_case', {}).get('experiment_tag', 'qft_batch_sweep') }}"
 HEXSTRINGS_FILE_TEMPLATE = (
     "{{ dag_run.conf.get('benchmark_case', {}).get('output_bitstrings_file', '"
     + DEFAULT_BENCHMARK_CASE["output_bitstrings_file"]
@@ -46,7 +46,7 @@ RUN_OUTPUT_DIR_TEMPLATE = (
     "{{ benchmark_case.get('run_output_dir') }}"
     "{% else %}"
     f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/"
-    "{{ benchmark_case.get('experiment_tag', 'qft_pod_sweep') }}/{{ run_id }}"
+    "{{ benchmark_case.get('experiment_tag', 'qft_batch_sweep') }}/{{ run_id }}"
     "{% endif %}"
 )
 MERGED_OUTPUT_FILE_TEMPLATE = (
@@ -55,8 +55,8 @@ MERGED_OUTPUT_FILE_TEMPLATE = (
     "{{ benchmark_case.get('merged_output_file') }}"
     "{% else %}"
     f"{DATA_MOUNT_PATH}/outputs/cloud_benchmarks/"
-    "{{ benchmark_case.get('experiment_tag', 'qft_pod_sweep') }}/{{ run_id }}/"
-    "{{ benchmark_case.get('experiment_tag', 'qft_pod_sweep') }}_all_batches.hsv"
+    "{{ benchmark_case.get('experiment_tag', 'qft_batch_sweep') }}/{{ run_id }}/"
+    "{{ benchmark_case.get('experiment_tag', 'qft_batch_sweep') }}_all_batches.hsv"
     "{% endif %}"
 )
 
@@ -227,9 +227,9 @@ def feynman():
             HEXSTRINGS_FILE_TEMPLATE,
             "-o",
             BATCH_DIR_TEMPLATE,
-            "{% if dag_run.conf.get('target_num_pods', 0) | int > 0 %}-k{% else %}-n{% endif %}",
-            "{% if dag_run.conf.get('target_num_pods', 0) | int > 0 %}"
-            + TARGET_NUM_PODS_TEMPLATE
+            "{% if dag_run.conf.get('target_num_batches', 0) | int > 0 %}-k{% else %}-n{% endif %}",
+            "{% if dag_run.conf.get('target_num_batches', 0) | int > 0 %}"
+            + TARGET_NUM_BATCHES_TEMPLATE
             + "{% else %}"
             + MAX_HEXSTRINGS_PER_BATCH_TEMPLATE
             + "{% endif %}",

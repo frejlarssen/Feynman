@@ -73,9 +73,9 @@ def _parse_positive_int_list(raw_value: Any, field_name: str) -> list[int]:
     return values
 
 
-def parse_target_num_pods_list(payload: dict[str, Any]) -> list[int]:
-    raw_value = payload.get("target_num_pods_list", payload.get("target_num_pods"))
-    return _parse_positive_int_list(raw_value, "target_num_pods_list")
+def parse_target_num_batches_list(payload: dict[str, Any]) -> list[int]:
+    raw_value = payload.get("target_num_batches_list", payload.get("target_num_batches"))
+    return _parse_positive_int_list(raw_value, "target_num_batches_list")
 
 
 def parse_target_pool_slots_list(payload: dict[str, Any]) -> list[int]:
@@ -162,7 +162,7 @@ def _validate_generator_dimensions(
 def render_conf(
     *,
     config_path: Path,
-    target_num_pods: int | None,
+    target_num_batches: int | None,
     max_hexstrings_per_batch: int | None,
     run_output_dir: str | None,
     merged_output_file: str | None,
@@ -225,10 +225,10 @@ def render_conf(
         if threshold < 0.0:
             raise ValueError("threshold must be >= 0.")
         conf["threshold"] = threshold
-    if target_num_pods is None and max_hexstrings_per_batch is None:
+    if target_num_batches is None and max_hexstrings_per_batch is None:
         max_hexstrings_per_batch = parse_max_hexstrings_per_batch(payload)
-    if target_num_pods is not None:
-        conf["target_num_pods"] = int(target_num_pods)
+    if target_num_batches is not None:
+        conf["target_num_batches"] = int(target_num_batches)
     if max_hexstrings_per_batch is not None:
         conf["max_hexstrings_per_batch"] = int(max_hexstrings_per_batch)
     return conf
@@ -239,7 +239,7 @@ def parse_args() -> argparse.Namespace:
         description="Render an Airflow dag_run.conf JSON payload for cloud benchmarks."
     )
     parser.add_argument("--config", required=True, help="Path to cloud benchmark config JSON.")
-    parser.add_argument("--target-num-pods", type=int, default=None)
+    parser.add_argument("--target-num-batches", type=int, default=None)
     parser.add_argument("--max-hexstrings-per-batch", type=int, default=None)
     parser.add_argument(
         "--run-output-dir",
@@ -252,9 +252,9 @@ def parse_args() -> argparse.Namespace:
         help="Optional host-side merged output file path; converted to the /data mount path.",
     )
     parser.add_argument(
-        "--print-target-num-pods-list",
+        "--print-target-num-batches-list",
         action="store_true",
-        help="Print the configured benchmark pod counts as a space-separated list.",
+        help="Print the configured benchmark batch counts as a space-separated list.",
     )
     parser.add_argument(
         "--print-target-pool-slots-list",
@@ -269,7 +269,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--print-repeat-count",
         action="store_true",
-        help="Print the configured number of repeated runs per pod count.",
+        help="Print the configured number of repeated runs per batch count.",
     )
     parser.add_argument(
         "--print-max-hexstrings-per-batch",
@@ -281,14 +281,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.target_num_pods is not None and args.max_hexstrings_per_batch is not None:
-        raise ValueError("Pass only one of --target-num-pods or --max-hexstrings-per-batch.")
+    if args.target_num_batches is not None and args.max_hexstrings_per_batch is not None:
+        raise ValueError("Pass only one of --target-num-batches or --max-hexstrings-per-batch.")
 
     config_path = _resolve_config_path(args.config)
     payload = _load_config(config_path)
 
-    if args.print_target_num_pods_list:
-        sys.stdout.write(" ".join(str(pods) for pods in parse_target_num_pods_list(payload)))
+    if args.print_target_num_batches_list:
+        sys.stdout.write(" ".join(str(batches) for batches in parse_target_num_batches_list(payload)))
         sys.stdout.write("\n")
         return 0
     if args.print_target_pool_slots_list:
@@ -314,7 +314,7 @@ def main() -> int:
 
     conf = render_conf(
         config_path=config_path,
-        target_num_pods=args.target_num_pods,
+        target_num_batches=args.target_num_batches,
         max_hexstrings_per_batch=args.max_hexstrings_per_batch,
         run_output_dir=args.run_output_dir,
         merged_output_file=args.merged_output_file,

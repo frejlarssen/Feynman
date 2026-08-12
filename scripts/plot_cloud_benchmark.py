@@ -65,14 +65,20 @@ def _successful_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
 def _to_groups(rows: list[dict[str, str]], *, metric: str) -> dict[int, list[float]]:
     groups: dict[int, list[float]] = {}
     for row in rows:
-        pods = int(row["target_num_pods"])
+        label_kind = (row.get("label_kind") or "").strip()
+        raw_x = (row.get("target_label_value") or "").strip()
+        if not raw_x and label_kind == "target_num_batches":
+            raw_x = (row.get("target_num_batches") or "").strip()
+        if not raw_x:
+            continue
+        x_value = int(raw_x)
         raw_value = row.get(metric, "").strip()
         if not raw_value:
             continue
         elapsed = float(raw_value)
         if math.isnan(elapsed):
             continue
-        groups.setdefault(pods, []).append(elapsed)
+        groups.setdefault(x_value, []).append(elapsed)
     if not groups:
         raise RuntimeError(f"No plottable {metric} rows found.")
     return groups
@@ -86,17 +92,17 @@ def _summary_label_kind(rows: list[dict[str, str]]) -> str:
     }
     if len(kinds) == 1:
         return next(iter(kinds))
-    return "target_num_pods"
+    return "target_num_batches"
 
 
 def _label_axis_text(label_kind: str) -> str:
     if label_kind == "pool_slots":
         return "Pool slots"
-    return "Target pods"
+    return "Target batches"
 
 
 def _default_output(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
-    suffix = "pool_slots" if label_kind == "pool_slots" else "pods"
+    suffix = "pool_slots" if label_kind == "pool_slots" else "batches"
     return summary_csv.parent / f"cloud_benchmark_{metric}_vs_{suffix}.pdf"
 
 
@@ -114,17 +120,17 @@ def _strong_scaling_efficiency_percent(
     if not x_sorted:
         return []
 
-    baseline_pods = x_sorted[0]
+    baseline_x = x_sorted[0]
     baseline_time = mean_ys[0]
-    if baseline_pods <= 0 or baseline_time <= 0.0:
-        raise ValueError("Baseline pod count and baseline time must be positive.")
+    if baseline_x <= 0 or baseline_time <= 0.0:
+        raise ValueError("Baseline x value and baseline time must be positive.")
 
     efficiencies: list[float] = []
-    for pods, elapsed in zip(x_sorted, mean_ys, strict=True):
-        if pods <= 0 or elapsed <= 0.0:
+    for x_value, elapsed in zip(x_sorted, mean_ys, strict=True):
+        if x_value <= 0 or elapsed <= 0.0:
             efficiencies.append(float("nan"))
             continue
-        efficiencies.append(100.0 * baseline_time * baseline_pods / (elapsed * pods))
+        efficiencies.append(100.0 * baseline_time * baseline_x / (elapsed * x_value))
     return efficiencies
 
 
@@ -200,9 +206,9 @@ def main() -> int:
 
     scatter_xs: list[int] = []
     scatter_ys: list[float] = []
-    for pods in x_sorted:
-        for elapsed in groups[pods]:
-            scatter_xs.append(pods)
+    for x_value in x_sorted:
+        for elapsed in groups[x_value]:
+            scatter_xs.append(x_value)
             scatter_ys.append(elapsed)
 
     ax.scatter(
@@ -214,8 +220,11 @@ def main() -> int:
         label="Runs",
     )
 
-    mean_ys = [statistics.mean(groups[pods]) for pods in x_sorted]
-    std_ys = [statistics.stdev(groups[pods]) if len(groups[pods]) > 1 else 0.0 for pods in x_sorted]
+    mean_ys = [statistics.mean(groups[x_value]) for x_value in x_sorted]
+    std_ys = [
+        statistics.stdev(groups[x_value]) if len(groups[x_value]) > 1 else 0.0
+        for x_value in x_sorted
+    ]
     ax.errorbar(
         x_sorted,
         mean_ys,

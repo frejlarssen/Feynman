@@ -1,6 +1,6 @@
 {
   "description": "google_rqc_r4_c6_m12_count1024",
-  "target_num_pods_list": [
+  "target_num_batches_list": [
     1,
     2,
     4

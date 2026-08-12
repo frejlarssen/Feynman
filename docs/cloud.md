@@ -111,16 +111,17 @@ Choose the `feynman` DAG and trigger it.
 
 ## Benchmark
 
-For benchmarking a fixed problem at different pod counts, keep the circuit and
-hexstring file fixed and vary the target pod count at trigger time. While running airflow standalone, trigger from another terminal:
+For benchmarking a fixed problem at different batch counts, keep the circuit and
+hexstring file fixed and vary the target batch count at trigger time. While running airflow standalone, trigger from another terminal:
 
 ```bash
-airflow dags trigger feynman --conf '{"target_num_pods": 4}'
+airflow dags trigger feynman --conf '{"target_num_batches": 4}'
 ```
 
 The split stage will derive an appropriate batch size from the input hexstring
-count and emit approximately that many `simulate_batch` pods. You can also
-override the batch size directly:
+count and emit approximately that many batch files, which in turn become that
+many `simulate_batch` task instances. You can also override the batch size
+directly:
 
 ```bash
 airflow dags trigger feynman --conf '{"max_hexstrings_per_batch": 125}'
@@ -212,8 +213,8 @@ A simple benchmark sweep is available in:
 
 `sh scripts/benchmark_cloud_runner.sh`
 
-When `--config` is used, the script looks for `target_num_pods_list` and
-`repeat` in ordinary pod-sweep benchmark JSON, and uses those pod counts and
+When `--config` is used, the script looks for `target_num_batches_list` and
+`repeat` in ordinary batch-sweep benchmark JSON, and uses those batch counts and
 repeated runs by default.
 
 `benchmark_cloud_runner.sh` is intentionally strict in direct use: treat it as
@@ -227,7 +228,7 @@ Example:
 ```json
 {
   "description": "qwalk_n64_it4",
-  "target_num_pods_list": [1, 2, 4],
+  "target_num_batches_list": [1, 2, 4],
   "repeat": 3
 }
 ```
@@ -246,11 +247,11 @@ Example fixed-batch Gantt config:
 This produces roughly 12 batches for 1200 requested output bitstrings, while a
 shared Airflow pool of size 4 keeps only four pooled tasks active at once.
 
-Explicit pod counts on the command line still override the JSON list:
+Explicit batch counts on the command line still override the JSON list:
 
-`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json 1 2`
+`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_batch_sweep.json 1 2`
 
-You can also pass an explicit DAG id and pod counts:
+You can also pass an explicit DAG id and batch counts:
 
 `sh scripts/benchmark_cloud_runner.sh feynman 1 2 4 8`
 
@@ -260,7 +261,7 @@ same high-level sections as the non-cloud configs: `circuit`,
 
 Example with the quantum-walk benchmark case:
 
-`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
+`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_batch_sweep.json`
 
 For the single-run Gantt demo:
 
@@ -278,7 +279,7 @@ benchmark output directory.
 For longer local runs, consider launching the sweep inside `tmux` so a
 terminal-window close does not kill the local polling script.
 
-The script runs pod counts sequentially, repeats each pod count according to the
+The script runs batch counts sequentially, repeats each batch count according to the
 config's `repeat` value, waits for each DAG run to finish, and prints the
 wall-clock time per run. By default it saves a timestamped summary CSV under
 `data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv`.
@@ -296,7 +297,7 @@ If you prefer not to change the default directory, point the script elsewhere:
 
 ```bash
 RESULTS_FILE=data/outputs/somewhere_else/summary.csv \
-  sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json
+  sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_batch_sweep.json
 ```
 
 The benchmark output now follows the repo's experiment-artifact pattern more
@@ -321,7 +322,7 @@ For config-driven sweeps, this also avoids creating a second top-level
 
 Each summary row now includes both:
 
-- `repeat_index`: which repeated run this was for the given pod count
+- `repeat_index`: which repeated run this was for the given batch count
 - `elapsed_seconds`: full DAG wall-clock time
 - `simulate_stage_elapsed_seconds`: the span from the first `simulate_batch`
   task instance start to the last `simulate_batch` task instance end
@@ -396,9 +397,9 @@ python scripts/plot_cloud_benchmark.py \
 ```
 
 The plot now also overlays a strong-scaling efficiency line by default. It uses
-the smallest plotted pod count as the baseline, so efficiency is computed as:
+the smallest plotted batch count as the baseline, so efficiency is computed as:
 
-`efficiency(p) = 100 * T_base * pods_base / (T_p * p)`
+`efficiency(b) = 100 * T_base * batches_base / (T_b * b)`
 
 Disable it with:
 

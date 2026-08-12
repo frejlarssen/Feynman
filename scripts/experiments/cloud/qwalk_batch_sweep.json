@@ -1,23 +1,22 @@
 {
-  "description": "qft_n8_k2",
-  "target_num_pods_list": [
+  "description": "qwalk_n64_it14",
+  "target_num_batches_list": [
     1,
     2,
-    4,
-    8
+    4
   ],
   "repeat": 3,
   "simulate_omp_num_threads": 1,
   "circuit": {
-    "generator": "qft",
-    "n": 8,
-    "k": 2
+    "generator": "qwalk",
+    "n": 64,
+    "it": 14
   },
   "input_statevector": {
     "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "count": 10
+    "count": 512
   }
 }
