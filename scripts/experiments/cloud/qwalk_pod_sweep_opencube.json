@@ -1,6 +1,7 @@
 {
-  "experiment_name": "qwalk_n100_it15_count8192_exact_opencube",
-  "target_num_pods_list": [1, 2, 4, 8, 16],
+  "experiment_name": "qwalk_n100_it17_count1024_exact_opencube",
+  "target_num_pods_list": [1, 2, 4, 8, 16, 32],
+  "max_hexstrings_per_batch": 32,
   "repeat": 5,
   "simulate_omp_num_threads": 1,
   "fraction": 1.0,
@@ -8,7 +9,7 @@
   "circuit": {
     "generator": "qwalk",
     "n": 100,
-    "it": 18
+    "it": 17
   },
   "input_statevector": {
     "generator": "ket0",
