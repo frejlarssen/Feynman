@@ -50,7 +50,7 @@ docker build --target concat --tag feynman-concat:latest .
 ```bash
 k3d cluster create feynman-cluster
 kubectl apply -f storage.yaml
-bash scripts/build_and_import_cloud_images.sh feynman-cluster
+sh scripts/build_and_import_cloud_images.sh feynman-cluster
 ```
 
 ### Airflow
@@ -65,7 +65,7 @@ When airflow is installed:
 
 ```bash
 pip install apache-airflow-providers-cncf-kubernetes
-bash scripts/prepare_airflow_local.sh
+sh scripts/prepare_airflow_local.sh
 airflow standalone
 ```
 
@@ -86,7 +86,7 @@ docker ps
 k3d cluster list
 k3d cluster start feynman-cluster
 kubectl get pods
-bash scripts/prepare_airflow_local.sh
+sh scripts/prepare_airflow_local.sh
 airflow standalone
 ```
 
@@ -99,12 +99,12 @@ Notes:
   DAG run is active. That is expected: the DAG uses `on_finish_action="delete_pod"`
   for the task pods, so they disappear after the run completes.
 - If the cluster no longer exists, recreate it with the `k3d cluster create ...`
-  commands above, then rerun `bash scripts/prepare_airflow_local.sh`.
+  commands above, then rerun `sh scripts/prepare_airflow_local.sh`.
 
 If you only changed DAG Python, use:
 
 ```bash
-bash scripts/copy_dags.sh
+sh scripts/copy_dags.sh
 ```
 
 Choose the `feynman` DAG and trigger it.
@@ -137,7 +137,7 @@ your Airflow environment:
 
 ```bash
 source "$HOME/micromamba/bin/activate" airflow
-bash scripts/setup_airflow_pool.sh simulate_pool 4
+sh scripts/setup_airflow_pool.sh simulate_pool 4
 ```
 
 Or equivalently, run the Airflow CLI directly:
@@ -160,7 +160,7 @@ export FEYNMAN_SIMULATE_TASK_POOL_SLOTS=1
 Then copy the updated DAG into the local Airflow DAG directory:
 
 ```bash
-bash scripts/copy_dags.sh
+sh scripts/copy_dags.sh
 ```
 
 With that in place, a run can have, for example, about 12 batches total while
@@ -210,7 +210,7 @@ airflow dags trigger feynman --conf '{"simulate_omp_num_threads": 2}'
 
 A simple benchmark sweep is available in:
 
-`bash scripts/benchmark_cloud_pod_sweep.sh`
+`sh scripts/benchmark_cloud_pod_sweep.sh`
 
 When `--config` is used, the script now looks for
 `target_num_pods_list` and `repeat` in ordinary pod-sweep benchmark JSON, and
@@ -252,11 +252,11 @@ shared Airflow pool of size 4 keeps only four pooled tasks active at once.
 
 Explicit pod counts on the command line still override the JSON list:
 
-`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json 1 2`
+`sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json 1 2`
 
 You can also pass an explicit DAG id and pod counts:
 
-`bash scripts/benchmark_cloud_pod_sweep.sh feynman 1 2 4 8`
+`sh scripts/benchmark_cloud_pod_sweep.sh feynman 1 2 4 8`
 
 Cloud benchmark configs live under `scripts/experiments/cloud/` and reuse the
 same high-level sections as the non-cloud configs: `circuit`,
@@ -264,16 +264,16 @@ same high-level sections as the non-cloud configs: `circuit`,
 
 Example with the quantum-walk benchmark case:
 
-`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
+`sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json`
 
 For the single-run Gantt demo:
 
-`bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
+`sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
 
 For fixed-batch configs where `target_pool_slots_list` is meant to act as a
 shared-pool slot sweep, use:
 
-`bash scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep_opencube.json`
+`sh scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep_opencube.json`
 
 This wrapper updates the Airflow pool size before each labeled run, then calls
 `benchmark_cloud_pod_sweep.sh` one label at a time while keeping a single
@@ -300,7 +300,7 @@ If you prefer not to change the default directory, point the script elsewhere:
 
 ```bash
 RESULTS_FILE=data/outputs/somewhere_else/summary.csv \
-  bash scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json
+  sh scripts/benchmark_cloud_pod_sweep.sh --config scripts/experiments/cloud/qwalk_pod_sweep.json
 ```
 
 The benchmark output now follows the repo's experiment-artifact pattern more
@@ -356,7 +356,7 @@ Before triggering anything, it checks that `feynman-simulate`, `feynman-split`,
 and `feynman-concat` are present inside the `feynman-cluster` k3d node. If any
 are missing, it fails loudly and tells you to rerun:
 
-`bash scripts/build_and_import_cloud_images.sh feynman-cluster`
+`sh scripts/build_and_import_cloud_images.sh feynman-cluster`
 
 It warns once node usage reaches 80%, because that is the “start paying
 attention” level for this setup.
@@ -367,11 +367,11 @@ garbage-collect unused task images out from under the benchmark.
 
 You can override the destination if you want:
 
-`RESULTS_FILE=data/outputs/cloud_benchmark_results.csv bash scripts/benchmark_cloud_pod_sweep.sh`
+`RESULTS_FILE=data/outputs/cloud_benchmark_results.csv sh scripts/benchmark_cloud_pod_sweep.sh`
 
 If you need to abort a running benchmark:
 
-- Press `Ctrl-C` in the terminal running `bash scripts/benchmark_cloud_pod_sweep.sh`
+- Press `Ctrl-C` in the terminal running `sh scripts/benchmark_cloud_pod_sweep.sh`
   to stop the local polling script.
 - That does not stop the already-triggered Airflow DAG run.
 - To stop the actual running cloud task, find the pod and delete it:

@@ -61,7 +61,7 @@ require_cluster_image() {
     echo "Missing required image in k3d node ${K3D_NODE_NAME}: docker.io/library/${image_name}:latest" >&2
     echo "Refusing to run benchmark with a half-prepared cluster." >&2
     echo "Re-import the cloud images first:" >&2
-    echo "  bash scripts/build_and_import_cloud_images.sh ${K3D_CLUSTER_NAME}" >&2
+    echo "  sh scripts/build_and_import_cloud_images.sh ${K3D_CLUSTER_NAME}" >&2
     exit 1
   fi
 }
@@ -103,7 +103,7 @@ if [ "${usage_percent}" -ge "${K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT}" ]; the
   echo "This is above the kubelet image-GC high threshold of ${K3D_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT}%." >&2
   echo "Unused task images may be garbage-collected during or before the benchmark." >&2
   echo "Free disk space before benchmarking, then re-import the cloud images:" >&2
-  echo "  bash scripts/build_and_import_cloud_images.sh ${K3D_CLUSTER_NAME}" >&2
+  echo "  sh scripts/build_and_import_cloud_images.sh ${K3D_CLUSTER_NAME}" >&2
   exit 1
 fi
 
@@ -123,7 +123,7 @@ if [ -n "${CONFIG_PATH}" ]; then
     echo "Config rendering requires the repo's development Python environment." >&2
     echo "Tried: ${CONFIG_RENDER_PYTHON}" >&2
     echo "If needed, rerun with:" >&2
-    echo "  CONFIG_RENDER_PYTHON=\$HOME/micromamba/envs/feynman/bin/python bash scripts/benchmark_cloud_pod_sweep.sh --config ${CONFIG_PATH}" >&2
+    echo "  CONFIG_RENDER_PYTHON=\$HOME/micromamba/envs/feynman/bin/python sh scripts/benchmark_cloud_pod_sweep.sh --config ${CONFIG_PATH}" >&2
     exit 1
   fi
   echo "Using config-render Python: ${CONFIG_RENDER_PYTHON}"
@@ -187,7 +187,7 @@ fi
   --experiment-name "${CONFIG_EXPERIMENT_NAME}" \
   --label-kind "${LABEL_KIND}" \
   --label-values ${LABEL_VALUES} \
-  --invocation "bash scripts/benchmark_cloud_pod_sweep.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${LABEL_VALUES}" \
+  --invocation "sh scripts/benchmark_cloud_pod_sweep.sh${CONFIG_PATH:+ --config ${CONFIG_PATH}} ${DAG_ID} ${LABEL_VALUES}" \
   >/dev/null
 
 echo "Benchmark directory: ${BENCHMARK_DIR}"

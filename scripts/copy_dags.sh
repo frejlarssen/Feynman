@@ -11,4 +11,4 @@ mkdir -p "${AIRFLOW_DAGS_DIR}"
 cp "${REPO_ROOT}/airflow-dags/feynman_dag.py" "${AIRFLOW_DAGS_DIR}/"
 
 echo "Copied DAGs to ${AIRFLOW_DAGS_DIR}."
-echo "If task images changed, run bash scripts/prepare_airflow_local.sh."
+echo "If task images changed, run sh scripts/prepare_airflow_local.sh."

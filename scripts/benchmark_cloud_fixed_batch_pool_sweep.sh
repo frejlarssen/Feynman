@@ -36,7 +36,7 @@ do
 done
 
 if [ -z "${CONFIG_PATH}" ]; then
-  echo "Usage: bash scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config <path> [--dag-id feynman] [--pool-name simulate_pool] [pool_size ...]" >&2
+  echo "Usage: sh scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config <path> [--dag-id feynman] [--pool-name simulate_pool] [pool_size ...]" >&2
   exit 1
 fi
 
@@ -103,7 +103,7 @@ echo "  max_hexstrings_per_batch: ${CONFIG_MAX_HEXSTRINGS_PER_BATCH}"
 for slots in ${POOL_SLOTS_LIST}
 do
   echo "Setting Airflow pool ${POOL_NAME} to ${slots} slots..."
-  bash scripts/setup_airflow_pool.sh "${POOL_NAME}" "${slots}" \
+  sh scripts/setup_airflow_pool.sh "${POOL_NAME}" "${slots}" \
     "Limit concurrent simulate_batch Kubernetes pods during fixed-batch pool sweep"
 
   BENCHMARK_STAMP="${BENCHMARK_STAMP}" \
@@ -111,7 +111,7 @@ do
   RESULTS_FILE="${RESULTS_FILE}" \
   HELPER_PYTHON="${HELPER_PYTHON}" \
   CONFIG_RENDER_PYTHON="${HELPER_PYTHON}" \
-  bash scripts/benchmark_cloud_pod_sweep.sh \
+  sh scripts/benchmark_cloud_pod_sweep.sh \
     --config "${CONFIG_PATH}" \
     --dag-id "${DAG_ID}" \
     "${slots}"
@@ -126,7 +126,7 @@ done
   --label-values ${POOL_SLOTS_LIST} \
   --runner-script "scripts/benchmark_cloud_fixed_batch_pool_sweep.sh" \
   --notes "Fixed-batch benchmark sweep. Airflow pool ${POOL_NAME} was resized before each labeled run; summary rows use label_kind=pool_slots." \
-  --invocation "bash scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config ${CONFIG_PATH} --dag-id ${DAG_ID} --pool-name ${POOL_NAME} ${POOL_SLOTS_LIST}" \
+  --invocation "sh scripts/benchmark_cloud_fixed_batch_pool_sweep.sh --config ${CONFIG_PATH} --dag-id ${DAG_ID} --pool-name ${POOL_NAME} ${POOL_SLOTS_LIST}" \
   >/dev/null
 
 echo "Pool sweep complete. Results in ${RESULTS_FILE}"
