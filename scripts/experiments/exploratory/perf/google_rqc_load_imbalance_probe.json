@@ -1,0 +1,55 @@
+{
+  "experiment_name": "google_rqc_load_imbalance_probe",
+  "repo_root": ".",
+  "vary": "batch_size",
+  "values": [
+    32
+  ],
+  "repeat": 1,
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "batch_size": 32,
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 4,
+    "cycles": 2,
+    "seed": 11,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 1
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "size": 1,
+    "count": 128,
+    "seed": 17,
+    "n_qubits": 8
+  },
+  "cases": [
+    {
+      "name": "no_cp",
+      "p": 0,
+      "r": 0
+    },
+    {
+      "name": "thirds_cp",
+      "p": "thirds",
+      "r": "thirds"
+    },
+    {
+      "name": "autotuned_cp",
+      "p": null,
+      "r": null
+    }
+  ],
+  "output_root": "data/outputs/experiments",
+  "notes": "Exact single-rank single-thread Google-RQC probe for per-output timing imbalance; inspect timeBitstrings.tm across checkpoint strategies.",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+}

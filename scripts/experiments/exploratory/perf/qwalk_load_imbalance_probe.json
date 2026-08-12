@@ -1,0 +1,57 @@
+{
+  "experiment_name": "qwalk_load_imbalance_probe_near_origin",
+  "repo_root": ".",
+  "vary": "batch_size",
+  "values": [
+    32
+  ],
+  "repeat": 1,
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "batch_size": 32,
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "qwalk",
+    "n": 16,
+    "it": 8
+  },
+  "input_statevector": {
+    "generator": "ket0",
+    "size": 2
+  },
+  "output_bitstrings": {
+    "generator": "two_intervals",
+    "size": 2,
+    "interval1": {
+      "start": 0,
+      "count": 34
+    },
+    "interval2": {
+      "start": 65504,
+      "count": 32
+    }
+  },
+  "cases": [
+    {
+      "name": "no_cp",
+      "p": 0,
+      "r": 0
+    },
+    {
+      "name": "thirds_cp",
+      "p": "thirds",
+      "r": "thirds"
+    },
+    {
+      "name": "autotuned_cp",
+      "p": null,
+      "r": null
+    }
+  ],
+  "output_root": "data/outputs/experiments",
+  "notes": "Exact single-rank single-thread qwalk probe for per-output timing imbalance near the initialized walk position; includes both coin values for a cyclic window around position 0 so timeBitstrings.tm covers reachable outputs and nearby near-misses across checkpoint strategies.",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+}

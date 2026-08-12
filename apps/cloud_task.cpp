@@ -333,11 +333,13 @@ void run(Options &opts) {
       auto end_simulate_bitstring = get_time();
       const duration<double> clocktime_bitstring =
           end_simulate_bitstring - start_simulate_bitstring;
+      const bool supported = (std::abs(output_amp) > opts.threshold);
       local_buf_timing += bitvector_to_hexstring(output_bits) + ":" +
-                          std::to_string(clocktime_bitstring.count()) + "\n";
+                          std::to_string(clocktime_bitstring.count()) + ":" +
+                          (supported ? "supported" : "rejected") + "\n";
 
       // Write to output file
-      bool writeFlag = (opts.dense || (std::abs(output_amp) > opts.threshold));
+      bool writeFlag = (opts.dense || supported);
       if (writeFlag) {
         local_buf += bitvector_to_hexstring(output_bits) + ":" +
                      complex_to_string(output_amp) + "\n";

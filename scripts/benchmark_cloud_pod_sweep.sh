@@ -356,6 +356,9 @@ fi
 if ! "${HELPER_PYTHON}" scripts/plot_cloud_benchmark.py --summary-csv "${RESULTS_FILE}" --metric simulate_stage_elapsed_seconds >/dev/null; then
   echo "WARNING: failed to generate simulate-stage cloud benchmark plot." >&2
 fi
+if ! "${HELPER_PYTHON}" scripts/plot_timebitstrings_hist.py --summary-csv "${RESULTS_FILE}" --auto-all-statuses >/dev/null; then
+  echo "WARNING: failed to generate per-bitstring timing histogram." >&2
+fi
 if ! "${HELPER_PYTHON}" scripts/plot_gantt_multiexec.py \
   --input-glob "${BENCHMARK_DIR}/runs/*/task_instances.json" \
   --output "${BENCHMARK_DIR}/gantt_multiexec.pdf" \

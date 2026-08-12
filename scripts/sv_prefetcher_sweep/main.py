@@ -16,6 +16,7 @@ from sweeplib.plot_style import (
     single_column_figure_size,
 )
 from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
+from plot_timebitstrings_hist import auto_plot_timebitstrings_histograms
 
 from .cli import build_config
 from .project import build_metadata, build_run_points, make_run_one, resolve_paths
@@ -244,6 +245,12 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
             print(f"Auto-generated structure case plot: {structure_case_plot}")
         except (RuntimeError, ValueError, FileNotFoundError):
             pass
+        try:
+            hist_plots = auto_plot_timebitstrings_histograms(summary_csv=summary_csv)
+            for plot_path in hist_plots:
+                print(f"Auto-generated timing histogram: {plot_path}")
+        except (RuntimeError, ValueError, FileNotFoundError) as exc:
+            print(f"Auto timing-histogram plot skipped: {exc}", file=sys.stderr)
 
     return run_sweep(
         output_root=paths.output_root,

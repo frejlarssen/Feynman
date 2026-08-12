@@ -5,6 +5,8 @@ This file is the full command catalog for the unified pipeline in
 
 All runs write into `data/outputs/experiments/` or `data/outputs/validation/`.
 Experiment and validation runs generate their associated plots automatically.
+Perf sweeps now also auto-generate per-bitstring timing histograms from
+`timeBitstrings.tm` when those artifacts are present.
 
 For perf experiments, build the release binary first:
 
@@ -52,6 +54,10 @@ python scripts/run_pipeline.py plot perf-sweep \
   --y-column total_full_s \
   --mode meanstd
 ```
+
+That plot command also regenerates `timebitstrings_hist.pdf`, plus
+`timebitstrings_hist_supported.pdf` and `timebitstrings_hist_rejected.pdf` when
+the timing files include the embedded support status.
 
 ### Checkpoint Ablations
 

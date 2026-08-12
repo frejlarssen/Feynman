@@ -300,6 +300,7 @@ closely. By default it creates a directory named
 - `git_diff_airflow_scripts_docs.patch`
 - one run directory per Airflow run under `runs/<run_id>/`
 - the raw simulator batch outputs and merged `.hsv` output for that run stored directly inside `runs/<run_id>/`
+- per-benchmark per-bitstring timing histograms from `timeBitstrings.tm`
 - per-run `task_states.json`, normalized `task_instances.json`, task/log summaries, and single-run Gantt PDFs
 - a sweep-level `gantt_multiexec.pdf`
 - the usual cloud benchmark PDFs from `plot_cloud_benchmark.py`

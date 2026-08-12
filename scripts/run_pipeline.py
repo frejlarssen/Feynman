@@ -445,6 +445,7 @@ def _resolve_summary_csv_arg(
 
 
 def _plot_perf_sweep(args: argparse.Namespace) -> int:
+    from plot_timebitstrings_hist import auto_plot_timebitstrings_histograms
     from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
 
     summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
@@ -475,6 +476,15 @@ def _plot_perf_sweep(args: argparse.Namespace) -> int:
         label_fontsize=args.label_fontsize,
     )
     print(f"Saved plot: {output_path}")
+    try:
+        hist_plots = auto_plot_timebitstrings_histograms(
+            summary_csv=summary_path,
+            label_fontsize=args.label_fontsize,
+        )
+        for hist_path in hist_plots:
+            print(f"Saved timing histogram: {hist_path}")
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"Skipped timing histogram plot: {exc}", file=sys.stderr)
     return 0
 
 
