@@ -57,12 +57,7 @@ BENCHMARK_DIR="${BENCHMARK_DIR:-}"
 RESULTS_FILE="${RESULTS_FILE:-}"
 CONFIG_EXPERIMENT_TAG="qft_batch_sweep"
 REPEAT_COUNT=1
-
-if [ "$#" -eq 0 ]; then
-  LABEL_VALUES="1 2 4 8"
-else
-  LABEL_VALUES="$*"
-fi
+LABEL_VALUES="$*"
 
 require_cluster_image() {
   image_name="$1"
@@ -157,6 +152,10 @@ if [ -n "${CONFIG_PATH}" ]; then
       CONFIG_LABEL_VALUES="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-target-num-batches-list)"
       if [ -n "${CONFIG_LABEL_VALUES}" ]; then
         LABEL_VALUES="${CONFIG_LABEL_VALUES}"
+      else
+        echo "Config ${CONFIG_PATH} does not define target_num_batches_list." >&2
+        echo "Pass explicit batch counts on the CLI or add target_num_batches_list to the config." >&2
+        exit 1
       fi
     else
       echo "Explicit pool-slot mode requires explicit label values on the CLI." >&2
@@ -166,6 +165,12 @@ if [ -n "${CONFIG_PATH}" ]; then
   fi
 elif [ "${LABEL_KIND}" = "pool_slots" ]; then
   echo "benchmark_cloud_runner.sh --label-kind pool_slots requires --config with max_hexstrings_per_batch set." >&2
+  exit 1
+fi
+
+if [ -z "${LABEL_VALUES}" ]; then
+  echo "No benchmark label values provided." >&2
+  echo "Pass explicit batch counts on the CLI, or use --config with target_num_batches_list." >&2
   exit 1
 fi
 

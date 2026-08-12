@@ -215,7 +215,11 @@ A simple benchmark sweep is available in:
 
 When `--config` is used, the script looks for `target_num_batches_list` and
 `repeat` in ordinary batch-sweep benchmark JSON, and uses those batch counts and
-repeated runs by default.
+repeated runs from the config.
+
+The runner does not invent any benchmark sweep on its own. You must provide
+batch counts explicitly, either on the command line or through
+`target_num_batches_list` in the config.
 
 `benchmark_cloud_runner.sh` is intentionally strict in direct use: treat it as
 the pod-count benchmark entrypoint. If a config sets
