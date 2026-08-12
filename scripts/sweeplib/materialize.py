@@ -365,11 +365,9 @@ def resolve_output_bitstrings_input(
         start = int(output_cfg.get("start", 0))
         if count <= 0:
             raise ValueError("output_bitstrings one_interval requires count > 0.")
-        if start != 0:
-            raise ValueError(
-                "one_interval generator currently supports only start=0. Use two_intervals for other ranges."
-            )
-        path = write_one_interval(size=size, nr_hexstrings=count, out_dir=out_dir).resolve()
+        if start < 0:
+            raise ValueError("output_bitstrings one_interval requires start >= 0.")
+        path = write_one_interval(size=size, nr_hexstrings=count, out_dir=out_dir, start=start).resolve()
         return path, {
             "generator": generator,
             "size": size,

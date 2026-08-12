@@ -18,8 +18,9 @@
     "size": 1
   },
   "output_bitstrings": {
-    "generator": "explicit",
+    "generator": "one_interval",
     "size": 1,
-    "values": ["0x12"]
+    "start": 18,
+    "count": 1
   }
 }

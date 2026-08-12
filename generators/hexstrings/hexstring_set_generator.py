@@ -33,15 +33,16 @@ HEAVY_ONE_INTERVAL = [(1, 256), (2, 65536), (3, 16777216)]
 INTERVAL_SIZES = [1, 2, 3, 4, 5, 6, 7, 8]
 
 
-def write_one_interval(size: int, nr_hexstrings: int, out_dir: Path) -> Path:
+def write_one_interval(size: int, nr_hexstrings: int, out_dir: Path, start: int = 0) -> Path:
     if size <= 0:
         raise ValueError("size must be > 0")
     if nr_hexstrings <= 0:
         raise ValueError("nr_hexstrings must be > 0")
+    if start < 0:
+        raise ValueError("start must be >= 0")
 
     # Range
-    start = 0
-    end = nr_hexstrings  # exclusive
+    end = start + nr_hexstrings  # exclusive
     nr_nibbles = size * 2
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -235,6 +236,12 @@ def parse_args() -> argparse.Namespace:
         help="Number of bitstrings to generate for --single.",
     )
     parser.add_argument(
+        "--start",
+        type=int,
+        default=0,
+        help="Starting value for --generator one_interval.",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=0,
@@ -287,6 +294,7 @@ def main() -> None:
                     size=args.size,
                     nr_hexstrings=args.count,
                     out_dir=args.output_dir,
+                    start=args.start,
                 )
             )
             return
