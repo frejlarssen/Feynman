@@ -33,17 +33,14 @@
   },
   "cases": [
     {
-      "name": "no_cp",
       "p": 0,
       "r": 0
     },
     {
-      "name": "fixed_cp_thirds",
       "p": "thirds",
       "r": "thirds"
     },
     {
-      "name": "autotuned_cp",
       "p": null,
       "r": null
     }

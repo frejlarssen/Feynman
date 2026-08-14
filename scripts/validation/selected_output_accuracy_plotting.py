@@ -233,7 +233,7 @@ def plot_selected_output_tradeoff(
                 for row in approx_rows
                 if (str(row.get("population_estimator", "")).strip() or "unspecified") == estimator
             ],
-            key=lambda item: (float(item["fraction"]), str(item["case_name"])),
+            key=lambda item: (float(item[tradeoff_param]), str(item["case_name"])),
         )
         for estimator in estimator_keys
     }

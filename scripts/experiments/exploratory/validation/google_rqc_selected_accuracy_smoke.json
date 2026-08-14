@@ -25,26 +25,22 @@
     "seed": 11
   },
   "reference": {
-    "name": "exact_reference",
     "fraction": 1.0,
     "threshold": 0.0,
     "verbosity": 1
   },
   "cases": [
     {
-      "name": "fraction_0.5",
       "fraction": 0.5,
       "threshold": 0.0,
       "verbosity": 1
     },
     {
-      "name": "threshold_1e-1",
       "fraction": 1.0,
       "threshold": 0.01,
       "verbosity": 1
     },
     {
-      "name": "combo_fraction_0.5_threshold_1e-1",
       "fraction": 0.5,
       "threshold": 0.01,
       "verbosity": 1

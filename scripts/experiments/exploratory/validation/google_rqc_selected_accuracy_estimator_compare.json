@@ -25,7 +25,6 @@
     "seed": 11
   },
   "reference": {
-    "name": "exact_reference",
     "fraction": 1.0,
     "threshold": 0.0,
     "verbosity": 1,
@@ -35,7 +34,6 @@
   "nonzero_eps": 1e-26,
   "cases": [
     {
-      "name": "fraction_0.99_amplitude_square",
       "fraction": 0.99,
       "threshold": 0.0,
       "verbosity": 1,
@@ -43,7 +41,6 @@
       "history_seed": 1
     },
     {
-      "name": "fraction_0.99_cross_seeded",
       "fraction": 0.99,
       "threshold": 0.0,
       "verbosity": 1,
@@ -54,7 +51,6 @@
       ]
     },
     {
-      "name": "fraction_0.9_amplitude_square",
       "fraction": 0.9,
       "threshold": 0.0,
       "verbosity": 1,
@@ -62,7 +58,6 @@
       "history_seed": 1
     },
     {
-      "name": "fraction_0.9_cross_seeded",
       "fraction": 0.9,
       "threshold": 0.0,
       "verbosity": 1,
@@ -73,7 +68,6 @@
       ]
     },
     {
-      "name": "fraction_0.75_amplitude_square",
       "fraction": 0.75,
       "threshold": 0.0,
       "verbosity": 1,
@@ -81,7 +75,6 @@
       "history_seed": 1
     },
     {
-      "name": "fraction_0.75_cross_seeded",
       "fraction": 0.75,
       "threshold": 0.0,
       "verbosity": 1,
@@ -92,7 +85,6 @@
       ]
     },
     {
-      "name": "fraction_0.5_amplitude_square",
       "fraction": 0.5,
       "threshold": 0.0,
       "verbosity": 1,
@@ -100,7 +92,6 @@
       "history_seed": 1
     },
     {
-      "name": "fraction_0.5_cross_seeded",
       "fraction": 0.5,
       "threshold": 0.0,
       "verbosity": 1,
@@ -111,7 +102,6 @@
       ]
     },
     {
-      "name": "fraction_0.25_amplitude_square",
       "fraction": 0.25,
       "threshold": 0.0,
       "verbosity": 1,
@@ -119,7 +109,6 @@
       "history_seed": 1
     },
     {
-      "name": "fraction_0.25_cross_seeded",
       "fraction": 0.25,
       "threshold": 0.0,
       "verbosity": 1,
@@ -130,7 +119,6 @@
       ]
     },
     {
-      "name": "fraction_0.10_amplitude_square",
       "fraction": 0.1,
       "threshold": 0.0,
       "verbosity": 1,
@@ -138,7 +126,6 @@
       "history_seed": 1
     },
     {
-      "name": "fraction_0.10_cross_seeded",
       "fraction": 0.1,
       "threshold": 0.0,
       "verbosity": 1,

@@ -28,17 +28,14 @@
   },
   "cases": [
     {
-      "name": "no_cp",
       "p": 0,
       "r": 0
     },
     {
-      "name": "fixed_cp",
       "p": 23,
       "r": 23
     },
     {
-      "name": "autotuned_cp",
       "p": null,
       "r": null
     }

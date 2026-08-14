@@ -96,6 +96,35 @@ def _default_case_name(*, fraction: float, threshold: float, vary: str | None) -
     )
 
 
+def _default_explicit_case_name(
+    raw_case: dict[str, Any],
+    *,
+    defaults: dict[str, Any],
+    idx: int,
+) -> str:
+    parts: list[str] = []
+    if "fraction" in raw_case:
+        parts.append(f"fraction_{_format_sweep_value(float(raw_case['fraction']))}")
+    if "threshold" in raw_case:
+        parts.append(f"threshold_{_format_sweep_value(float(raw_case['threshold']))}")
+    if "population_estimator" in raw_case:
+        parts.append(str(raw_case["population_estimator"]))
+    if "history_seed" in raw_case and raw_case["history_seed"] is not None:
+        parts.append(f"history_seed_{int(raw_case['history_seed'])}")
+    if "history_seeds" in raw_case and raw_case["history_seeds"] is not None:
+        seeds = "_".join(str(int(seed)) for seed in raw_case["history_seeds"])
+        parts.append(f"history_seeds_{seeds}")
+    if "batch_size" in raw_case and raw_case["batch_size"] is not None:
+        parts.append(f"batch_size_{int(raw_case['batch_size'])}")
+    if "dense" in raw_case:
+        parts.append(f"dense_{bool(raw_case['dense'])}")
+    if "verbosity" in raw_case and int(raw_case["verbosity"]) != int(defaults["verbosity"]):
+        parts.append(f"verbosity_{int(raw_case['verbosity'])}")
+    if not parts:
+        return f"case_{idx:02d}"
+    return _sanitize("_".join(parts))
+
+
 def _normalize_run_case(
     raw_case: dict[str, Any],
     *,
@@ -193,7 +222,11 @@ def _parse_sweep_cases(cfg: dict[str, Any], *, defaults: dict[str, Any]) -> list
             case = _normalize_run_case(
                 raw_case,
                 defaults=defaults,
-                fallback_name=f"case_{idx:02d}",
+                fallback_name=_default_explicit_case_name(
+                    raw_case,
+                    defaults=defaults,
+                    idx=idx,
+                ),
             )
             if case["name"] in seen_names:
                 raise ValueError(f"Duplicate case name: {case['name']}")

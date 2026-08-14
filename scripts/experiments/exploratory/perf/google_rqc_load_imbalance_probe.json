@@ -31,17 +31,14 @@
   },
   "cases": [
     {
-      "name": "no_cp",
       "p": 0,
       "r": 0
     },
     {
-      "name": "thirds_cp",
       "p": "thirds",
       "r": "thirds"
     },
     {
-      "name": "autotuned_cp",
       "p": null,
       "r": null
     }

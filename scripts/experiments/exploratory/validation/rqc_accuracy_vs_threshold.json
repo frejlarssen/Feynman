@@ -1,5 +1,5 @@
 {
-  "description": "google_rqc_r2_c6_m1_fraction05_threshold_gap_bracket_probe32",
+  "description": "Google RQC accuracy vs threshold",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "feynman_env": {
     "OMP_NUM_THREADS": "4"
@@ -19,7 +19,7 @@
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "count": 32,
+    "count": 128,
     "seed": 11
   },
   "compute_reference": true,
@@ -27,6 +27,6 @@
   "population_estimator": "cross_seeded",
   "history_seeds": [1, 2],
   "vary": "threshold",
-  "values": [0.0, 2e-162],
+  "values": [0.0, 1e-5, 1e-4],
   "nonzero_eps": 1e-307
 }
