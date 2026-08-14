@@ -69,6 +69,14 @@ sh scripts/prepare_airflow_local.sh
 airflow standalone
 ```
 
+For larger cloud pool sweeps, raise Airflow's global scheduler parallelism
+before starting Airflow, for example:
+
+```bash
+export AIRFLOW__CORE__PARALLELISM=512
+airflow config get-value core parallelism
+```
+
 Use `scripts/prepare_airflow_local.sh` when you want the full local sync: DAG
 files plus the three task images imported into the `feynman-cluster` k3d node.
 
