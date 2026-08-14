@@ -265,6 +265,11 @@ TypeAmp chunk_contribution(const Chunk &chunk, TypeLongInt thread,
       exit(1);
     }
 
+    // Exact zero is absorbing: no later gate can revive the branch.
+    if (std::norm(contribution) == 0.0) {
+      return TypeAmp(0.0, 0.0);
+    }
+
     // Each gate contributes a single matrix element whose magnitude is at most
     // 1. Once the running product falls below threshold, the remaining gates in
     // this chunk cannot bring the full contribution back above threshold.
