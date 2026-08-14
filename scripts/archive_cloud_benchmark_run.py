@@ -20,6 +20,12 @@ from scripts.airflow_gantt import (  # noqa: E402
     render_gantt_bytask,
     task_states_to_task_instances_payload,
 )
+from scripts.plot_timebitstrings_hist import (  # noqa: E402
+    TimingSeries,
+    _filter_series,
+    _parse_tm,
+    plot_histogram,
+)
 from scripts.summarize_airflow_task_timing import summarize_task_states  # noqa: E402
 from scripts.summarize_cloud_task_logs import _default_airflow_log_root, summarize_logs  # noqa: E402
 
@@ -28,6 +34,12 @@ _BATCH_OUTPUT_RE = re.compile(r"_batch_(\d+)\.hsv$")
 _BATCH_TIMING_RE = re.compile(r"_batch_(\d+)\.timeBitstrings\.(?:csv|tm)$")
 _BATCH_CONTRIBUTION0_ABS_STATS_RE = re.compile(
     r"_batch_(\d+)\.contribution0AbsMinMax\.(?:csv|tm)$"
+)
+_BATCH_CONTRIBUTION1_ABS_STATS_RE = re.compile(
+    r"_batch_(\d+)\.contribution1AbsMinMax\.(?:csv|tm)$"
+)
+_BATCH_CONTRIBUTION2_ABS_STATS_RE = re.compile(
+    r"_batch_(\d+)\.contribution2AbsMinMax\.(?:csv|tm)$"
 )
 
 
@@ -64,27 +76,68 @@ def _find_timing_files(output_dir: Path) -> list[Path]:
     return []
 
 
-def _find_contribution0_abs_stats_files(output_dir: Path) -> list[Path]:
+def _find_contribution_abs_stats_files(output_dir: Path, contribution_name: str) -> list[Path]:
     per_batch = sorted(
-        path.resolve() for path in output_dir.glob("*.contribution0AbsMinMax.csv")
+        path.resolve() for path in output_dir.glob(f"*.{contribution_name}AbsMinMax.csv")
     )
     if per_batch:
         return per_batch
 
     per_batch = sorted(
-        path.resolve() for path in output_dir.glob("*.contribution0AbsMinMax.tm")
+        path.resolve() for path in output_dir.glob(f"*.{contribution_name}AbsMinMax.tm")
     )
     if per_batch:
         return per_batch
 
-    legacy = output_dir / "contribution0AbsMinMax.csv"
+    legacy = output_dir / f"{contribution_name}AbsMinMax.csv"
     if legacy.exists():
         return [legacy.resolve()]
 
-    legacy = output_dir / "contribution0AbsMinMax.tm"
+    legacy = output_dir / f"{contribution_name}AbsMinMax.tm"
     if legacy.exists():
         return [legacy.resolve()]
     return []
+
+
+def _render_run_timing_histograms(*, output_dir: Path, run_id: str) -> list[Path]:
+    timing_files = _find_timing_files(output_dir)
+    if not timing_files:
+        return []
+
+    combined_times: list[float] = []
+    combined_statuses: list[str] = []
+    for timing_file in timing_files:
+        times, statuses = _parse_tm(timing_file)
+        combined_times.extend(times)
+        combined_statuses.extend(statuses)
+
+    series = [
+        TimingSeries(
+            label=run_id,
+            paths=tuple(timing_files),
+            times=combined_times,
+            statuses=combined_statuses,
+        )
+    ]
+    statuses_present = set(combined_statuses)
+    status_filters = ["all"]
+    for status in ("supported", "rejected"):
+        if status in statuses_present:
+            status_filters.append(status)
+
+    saved: list[Path] = []
+    for status_filter in status_filters:
+        filtered = _filter_series(series, status_filter)
+        suffix = "" if status_filter == "all" else f"_{status_filter}"
+        output_path = output_dir / f"timebitstrings_hist{suffix}.pdf"
+        saved.append(
+            plot_histogram(
+                series=filtered,
+                output_path=output_path,
+                title=f"Bitstrings compute time distribution ({run_id})",
+            )
+        )
+    return saved
 
 
 def _parse_timestamp(value: object) -> datetime | None:
@@ -119,6 +172,12 @@ def _build_simulate_batch_instances(
     batch_contribution0_abs_stats = _index_batch_files(
         output_dir, pattern=_BATCH_CONTRIBUTION0_ABS_STATS_RE
     )
+    batch_contribution1_abs_stats = _index_batch_files(
+        output_dir, pattern=_BATCH_CONTRIBUTION1_ABS_STATS_RE
+    )
+    batch_contribution2_abs_stats = _index_batch_files(
+        output_dir, pattern=_BATCH_CONTRIBUTION2_ABS_STATS_RE
+    )
 
     instances: list[dict[str, object]] = []
     for row in rows:
@@ -149,6 +208,14 @@ def _build_simulate_batch_instances(
                 instance["timing_file"] = batch_timings[map_index]
             if map_index in batch_contribution0_abs_stats:
                 instance["contribution0_abs_stats_file"] = batch_contribution0_abs_stats[
+                    map_index
+                ]
+            if map_index in batch_contribution1_abs_stats:
+                instance["contribution1_abs_stats_file"] = batch_contribution1_abs_stats[
+                    map_index
+                ]
+            if map_index in batch_contribution2_abs_stats:
+                instance["contribution2_abs_stats_file"] = batch_contribution2_abs_stats[
                     map_index
                 ]
         instances.append(instance)
@@ -229,6 +296,10 @@ def main() -> int:
         records,
         output_path=output_dir / "gantt_bytask.pdf",
     )
+    timing_histograms = _render_run_timing_histograms(
+        output_dir=output_dir,
+        run_id=args.run_id,
+    )
 
     manifest = {
         "dag_id": args.dag_id,
@@ -241,8 +312,18 @@ def main() -> int:
         "gantt_byresources_pdf": str(byresources),
         "gantt_bytask_pdf": str(bytask),
         "timing_files": [str(path) for path in _find_timing_files(output_dir)],
+        "timing_histograms": [str(path) for path in timing_histograms],
         "contribution0_abs_stats_files": [
-            str(path) for path in _find_contribution0_abs_stats_files(output_dir)
+            str(path)
+            for path in _find_contribution_abs_stats_files(output_dir, "contribution0")
+        ],
+        "contribution1_abs_stats_files": [
+            str(path)
+            for path in _find_contribution_abs_stats_files(output_dir, "contribution1")
+        ],
+        "contribution2_abs_stats_files": [
+            str(path)
+            for path in _find_contribution_abs_stats_files(output_dir, "contribution2")
         ],
     }
     if task_states_path is not None:

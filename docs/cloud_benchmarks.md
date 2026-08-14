@@ -172,6 +172,11 @@ use:
 
 `sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pool_sweep_opencube.json`
 
+For the RQC load-imbalance scheduler stress test with one output bitstring per
+batch, use:
+
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/google_rqc_load_imbalance_stress_pool_sweep_laptop.json`
+
 This wrapper updates the Airflow pool size before each labeled run, then calls
 `benchmark_cloud_runner.sh` one label at a time while keeping a single
 benchmark output directory.
@@ -213,6 +218,8 @@ closely. By default it creates a directory named
 - the raw simulator batch outputs and merged `.hsv` output for that run stored directly inside `runs/<run_id>/`
 - one per-batch timing file per worker batch as `*.timeBitstrings.csv`
 - per-benchmark per-bitstring timing histograms generated from those timing files
+- one combined per-run timing histogram per archived run as `runs/<run_id>/timebitstrings_hist*.pdf`
+- archived per-batch contribution stats as `*.contribution2AbsMinMax.csv`, `*.contribution1AbsMinMax.csv`, and `*.contribution0AbsMinMax.csv`
 - per-run `task_states.json`, normalized `task_instances.json`, `simulate_batch_instances.json`, task/log summaries, and single-run Gantt PDFs
 - a sweep-level `gantt_multiexec.pdf`
 - the usual cloud benchmark PDFs from `plot_cloud_benchmark.py`

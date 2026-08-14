@@ -69,8 +69,20 @@ fi
 
 CONFIG_EXPERIMENT_TAG="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-experiment-tag)"
 CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
+CONFIG_OUTPUT_BITSTRING_COUNT="$("${HELPER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-output-bitstring-count)"
 if [ -z "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
   echo "This wrapper is only for fixed-batch configs with max_hexstrings_per_batch set." >&2
+  exit 1
+fi
+
+EXPECTED_NUM_BATCHES=$(( (CONFIG_OUTPUT_BITSTRING_COUNT + CONFIG_MAX_HEXSTRINGS_PER_BATCH - 1) / CONFIG_MAX_HEXSTRINGS_PER_BATCH ))
+AIRFLOW_MAX_MAP_LENGTH=""
+if command -v airflow >/dev/null 2>&1; then
+  AIRFLOW_MAX_MAP_LENGTH="$(airflow config get-value core max_map_length 2>/dev/null || true)"
+fi
+if [ -n "${AIRFLOW_MAX_MAP_LENGTH}" ] && [ "${EXPECTED_NUM_BATCHES}" -gt "${AIRFLOW_MAX_MAP_LENGTH}" ]; then
+  echo "Fixed-batch config would create ${EXPECTED_NUM_BATCHES} batches, but Airflow max_map_length is ${AIRFLOW_MAX_MAP_LENGTH}." >&2
+  echo "Reduce the number of output bitstrings, increase max_hexstrings_per_batch, or restart Airflow with a larger AIRFLOW__CORE__MAX_MAP_LENGTH." >&2
   exit 1
 fi
 
@@ -98,7 +110,12 @@ echo "  pool_name: ${POOL_NAME}"
 echo "  benchmark_dir: ${BENCHMARK_DIR}"
 echo "  results_file: ${RESULTS_FILE}"
 echo "  pool slots: ${POOL_SLOTS_LIST}"
+echo "  output bitstrings: ${CONFIG_OUTPUT_BITSTRING_COUNT}"
 echo "  max_hexstrings_per_batch: ${CONFIG_MAX_HEXSTRINGS_PER_BATCH}"
+echo "  expected batches: ${EXPECTED_NUM_BATCHES}"
+if [ -n "${AIRFLOW_MAX_MAP_LENGTH}" ]; then
+  echo "  airflow max_map_length: ${AIRFLOW_MAX_MAP_LENGTH}"
+fi
 
 for slots in ${POOL_SLOTS_LIST}
 do

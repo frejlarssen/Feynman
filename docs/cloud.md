@@ -77,12 +77,20 @@ export AIRFLOW__CORE__PARALLELISM=512
 airflow config get-value core parallelism
 ```
 
+If a fixed-batch benchmark maps many `simulate_batch` tasks, also raise
+Airflow's dynamic-task mapping limit before starting Airflow, for example:
+
+```bash
+export AIRFLOW__CORE__MAX_MAP_LENGTH=4096
+airflow config get-value core max_map_length
+```
+
 Use `scripts/prepare_airflow_local.sh` when you want the full local sync: DAG
 files plus the three task images imported into the `feynman-cluster` k3d node.
 
-Be aware that the k3d node shares the host filesystem usage. On July 22, 2026
-we observed kubelet image garbage collection removing unused `feynman-*` images
-once node usage rose above the default 85% image-GC high threshold.
+Be aware that the k3d node shares the host filesystem usage. Kubelet may remove
+unused `feynman-*` images once node usage rises above the default 85%
+image-GC high threshold.
 
 ### After reboot
 
