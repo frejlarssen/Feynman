@@ -1,10 +1,5 @@
 {
   "description": "google_rqc_selected_accuracy_fraction",
-  "repo_root": ".",
-  "output_root": "data/outputs/validation",
-  "binary": "build-cloud/cloud_task.x",
-  "mpirun": "mpirun",
-  "ranks": 1,
   "feynman_env": {
     "OMP_NUM_THREADS": "1"
   },
@@ -24,49 +19,7 @@
     "count": 256,
     "seed": 11
   },
-  "reference": {
-    "name": "exact_reference",
-    "fraction": 1.0,
-    "threshold": 0.0,
-    "verbosity": 1
-  },
-  "cases": [
-    {
-      "name": "fraction_0.99",
-      "fraction": 0.99,
-      "threshold": 0.0,
-      "verbosity": 1
-    },
-    {
-      "name": "fraction_0.9",
-      "fraction": 0.9,
-      "threshold": 0.0,
-      "verbosity": 1
-    },
-    {
-      "name": "fraction_0.75",
-      "fraction": 0.75,
-      "threshold": 0.0,
-      "verbosity": 1
-    },
-    {
-      "name": "fraction_0.5",
-      "fraction": 0.5,
-      "threshold": 0.0,
-      "verbosity": 1
-    },
-    {
-      "name": "fraction_0.25",
-      "fraction": 0.25,
-      "threshold": 0.0,
-      "verbosity": 1
-    },
-    {
-      "name": "fraction_0.10",
-      "fraction": 0.1,
-      "threshold": 0.0,
-      "verbosity": 1
-    }
-  ],
+  "vary": "fraction",
+  "values": [0.99, 0.9, 0.75, 0.5, 0.25, 0.1],
   "nonzero_eps": 1e-26
 }

@@ -32,6 +32,7 @@ from validation.selected_output_accuracy_plotting import plot_fraction_tradeoff
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
+SWEEP_PARAMS = ("fraction", "threshold")
 _AMP_RE = re.compile(
     r"^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)i$"
 )
@@ -70,16 +71,40 @@ def _pick(cfg: dict[str, Any], key: str, cli_value: Any, default: Any = None) ->
     return cli_value if cli_value is not None else cfg.get(key, default)
 
 
+def _format_sweep_value(value: float) -> str:
+    return f"{float(value):.12g}"
+
+
+def _default_case_name(*, fraction: float, threshold: float, vary: str | None) -> str:
+    if vary == "fraction":
+        return _sanitize(f"fraction_{_format_sweep_value(fraction)}")
+    if vary == "threshold":
+        return _sanitize(f"threshold_{_format_sweep_value(threshold)}")
+    if abs(threshold) < 1e-300:
+        return _sanitize(f"fraction_{_format_sweep_value(fraction)}")
+    return _sanitize(
+        "fraction_"
+        f"{_format_sweep_value(fraction)}"
+        "_threshold_"
+        f"{_format_sweep_value(threshold)}"
+    )
+
+
 def _normalize_run_case(
     raw_case: dict[str, Any],
     *,
     defaults: dict[str, Any],
-    fallback_name: str,
+    fallback_name: str | None,
 ) -> dict[str, Any]:
-    name_raw = raw_case.get("name", fallback_name)
-    name = _sanitize(str(name_raw))
     fraction = float(raw_case.get("fraction", defaults["fraction"]))
     threshold = float(raw_case.get("threshold", defaults["threshold"]))
+    name_raw = raw_case.get(
+        "name",
+        fallback_name
+        if fallback_name is not None
+        else _default_case_name(fraction=fraction, threshold=threshold, vary=None),
+    )
+    name = _sanitize(str(name_raw))
     verbosity = int(raw_case.get("verbosity", defaults["verbosity"]))
     batch_size_raw = raw_case.get("batch_size", defaults["batch_size"])
     batch_size = None if batch_size_raw is None else int(batch_size_raw)
@@ -143,6 +168,65 @@ def _normalize_run_case(
     }
 
 
+def _parse_sweep_cases(cfg: dict[str, Any], *, defaults: dict[str, Any]) -> list[dict[str, Any]]:
+    cases_raw = cfg.get("cases")
+    vary_raw = cfg.get("vary")
+    values_raw = cfg.get("values")
+
+    if cases_raw is not None and (vary_raw is not None or values_raw is not None):
+        raise ValueError("Use either explicit 'cases' or sweep-style 'vary'/'values', not both.")
+
+    if cases_raw is not None:
+        if not isinstance(cases_raw, list) or not cases_raw:
+            raise ValueError("Config 'cases' must be a non-empty array.")
+        cases: list[dict[str, Any]] = []
+        seen_names: set[str] = set()
+        for idx, raw_case in enumerate(cases_raw):
+            if not isinstance(raw_case, dict):
+                raise ValueError(f"cases[{idx}] must be an object.")
+            case = _normalize_run_case(
+                raw_case,
+                defaults=defaults,
+                fallback_name=f"case_{idx:02d}",
+            )
+            if case["name"] in seen_names:
+                raise ValueError(f"Duplicate case name: {case['name']}")
+            seen_names.add(case["name"])
+            cases.append(case)
+        return cases
+
+    if vary_raw is None or values_raw is None:
+        raise ValueError("Config must define either 'cases' or both 'vary' and 'values'.")
+
+    vary = str(vary_raw).strip()
+    if vary not in SWEEP_PARAMS:
+        raise ValueError(f"'vary' must be one of {SWEEP_PARAMS}, got: {vary!r}")
+    if not isinstance(values_raw, list) or not values_raw:
+        raise ValueError("'values' must be a non-empty array.")
+
+    cases: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for idx, raw_value in enumerate(values_raw):
+        value = float(raw_value)
+        raw_case = {vary: value}
+        case = _normalize_run_case(
+            raw_case,
+            defaults=defaults,
+            fallback_name=_default_case_name(
+                fraction=value if vary == "fraction" else float(defaults["fraction"]),
+                threshold=value if vary == "threshold" else float(defaults["threshold"]),
+                vary=vary,
+            ),
+        )
+        if case["name"] in seen_names:
+            raise ValueError(
+                f"Duplicate auto-generated case name {case['name']!r} at values[{idx}]."
+            )
+        seen_names.add(case["name"])
+        cases.append(case)
+    return cases
+
+
 def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     cfg: dict[str, Any] = {}
     if args.config:
@@ -167,6 +251,14 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     reference_defaults = dict(defaults)
     reference_defaults["fraction"] = 1.0
     reference_defaults["threshold"] = 0.0
+    reference_defaults["population_estimator"] = "amplitude_square"
+    if defaults["history_seed"] is not None:
+        reference_defaults["history_seed"] = defaults["history_seed"]
+    elif defaults["history_seeds"] is not None and defaults["history_seeds"]:
+        reference_defaults["history_seed"] = int(defaults["history_seeds"][0])
+    else:
+        reference_defaults["history_seed"] = 1
+    reference_defaults["history_seeds"] = None
     reference = _normalize_run_case(
         reference_raw,
         defaults=reference_defaults,
@@ -175,19 +267,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     if reference["population_estimator"] != "amplitude_square":
         raise ValueError("Reference run must use population_estimator='amplitude_square'.")
 
-    cases_raw = cfg.get("cases")
-    if not isinstance(cases_raw, list) or not cases_raw:
-        raise ValueError("Config must define a non-empty 'cases' array.")
-    cases: list[dict[str, Any]] = []
-    seen_names: set[str] = set()
-    for idx, raw_case in enumerate(cases_raw):
-        if not isinstance(raw_case, dict):
-            raise ValueError(f"cases[{idx}] must be an object.")
-        case = _normalize_run_case(raw_case, defaults=defaults, fallback_name=f"case_{idx:02d}")
-        if case["name"] in seen_names:
-            raise ValueError(f"Duplicate case name: {case['name']}")
-        seen_names.add(case["name"])
-        cases.append(case)
+    cases = _parse_sweep_cases(cfg, defaults=defaults)
 
     merged = {
         "description": _pick(cfg, "description", args.description, ""),
@@ -201,6 +281,8 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "input_statevector": _pick(cfg, "input_statevector", args.input_statevector, None),
         "output_bitstrings": _pick(cfg, "output_bitstrings", args.output_bitstrings, None),
         "nonzero_eps": float(_pick(cfg, "nonzero_eps", args.nonzero_eps, 1e-12)),
+        "vary": cfg.get("vary"),
+        "values": list(cfg.get("values", [])) if isinstance(cfg.get("values"), list) else None,
         "defaults": defaults,
         "reference": reference,
         "cases": cases,

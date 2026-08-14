@@ -177,19 +177,27 @@ experiments you can instead request a cross-seeded population estimator:
 
 ```json
 {
-  "name": "fraction_0.9_cross_seeded",
-  "fraction": 0.9,
-  "threshold": 0.0,
   "population_estimator": "cross_seeded",
-  "history_seeds": [1, 2]
+  "history_seeds": [1, 2],
+  "vary": "fraction",
+  "values": [0.9, 0.75, 0.5]
 }
 ```
 
-That runs the same approximate amplitude job once per seed, then scores the
-selected-output populations using the average of `Re(A_i conj(A_j))` over all
-seed pairs. In `summary.csv`, `fidelity_to_reference` remains the primary
-one-number score; for cross-seeded cases it is the selected-population
-Bhattacharyya fidelity rather than amplitude-overlap fidelity.
+For ordinary selected-output-accuracy configs, prefer this sweep style over an
+explicit `cases` array:
+
+- set shared defaults once at top level
+- set `vary` to either `fraction` or `threshold`
+- list the sweep points in `values`
+
+The script auto-generates one run per sweep value and derives case names from
+the varied parameter. That runs the same approximate amplitude job once per
+seed, then scores the selected-output populations using the average of
+`Re(A_i conj(A_j))` over all seed pairs. In `summary.csv`,
+`fidelity_to_reference` remains the primary one-number score; for cross-seeded
+cases it is the selected-population Bhattacharyya fidelity rather than
+amplitude-overlap fidelity.
 
 Google-RQC scaling ladder configs are available for fixed `m=1` at:
 

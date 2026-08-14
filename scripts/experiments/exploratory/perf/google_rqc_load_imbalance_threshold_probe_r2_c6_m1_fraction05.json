@@ -1,0 +1,47 @@
+{
+  "description": "google_rqc_load_imbalance_threshold_probe_r2_c6_m1_fraction05",
+  "repo_root": ".",
+  "vary": "threshold",
+  "values": [
+    0.0,
+    1e-27,
+    1e-26,
+    1e-25,
+    1e-24,
+    1e-23
+  ],
+  "repeat": 1,
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "batch_size": 16,
+  "fraction": 0.5,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 6,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 128,
+    "seed": 17
+  },
+  "cases": [
+    {
+      "name": "autotuned_cp",
+      "p": null,
+      "r": null
+    }
+  ],
+  "output_root": "data/outputs/experiments",
+  "notes": "Approximate single-rank single-thread Google-RQC threshold probe for per-output timing imbalance; use after the matching validation sweep to pick a cloud-worthy threshold.",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+}

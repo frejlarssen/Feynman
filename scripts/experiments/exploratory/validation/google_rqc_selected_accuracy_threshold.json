@@ -1,10 +1,5 @@
 {
   "description": "google_rqc_selected_accuracy_threshold",
-  "repo_root": ".",
-  "output_root": "data/outputs/validation",
-  "binary": "build-cloud/cloud_task.x",
-  "mpirun": "mpirun",
-  "ranks": 1,
   "feynman_env": {
     "OMP_NUM_THREADS": "1"
   },
@@ -24,85 +19,7 @@
     "count": 64,
     "seed": 11
   },
-  "reference": {
-    "name": "exact_reference",
-    "fraction": 1.0,
-    "threshold": 0.0,
-    "verbosity": 1
-  },
-  "cases": [
-    {
-      "name": "threshold_1e-1",
-      "fraction": 1.0,
-      "threshold": 0.1,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-3",
-      "fraction": 1.0,
-      "threshold": 0.001,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-5",
-      "fraction": 1.0,
-      "threshold": 1e-05,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-8",
-      "fraction": 1.0,
-      "threshold": 1e-08,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-11",
-      "fraction": 1.0,
-      "threshold": 1e-11,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-14",
-      "fraction": 1.0,
-      "threshold": 1e-14,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-17",
-      "fraction": 1.0,
-      "threshold": 1e-17,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-20",
-      "fraction": 1.0,
-      "threshold": 1e-20,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-21",
-      "fraction": 1.0,
-      "threshold": 1e-21,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-22",
-      "fraction": 1.0,
-      "threshold": 1e-22,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-23",
-      "fraction": 1.0,
-      "threshold": 1e-23,
-      "verbosity": 1
-    },
-    {
-      "name": "threshold_1e-26",
-      "fraction": 1.0,
-      "threshold": 1e-26,
-      "verbosity": 1
-    }
-  ],
+  "vary": "threshold",
+  "values": [0.1, 0.001, 1e-05, 1e-08, 1e-11, 1e-14, 1e-17, 1e-20, 1e-21, 1e-22, 1e-23, 1e-26],
   "nonzero_eps": 1e-26
 }

@@ -1,12 +1,13 @@
 {
-  "description": "google_rqc_selected_accuracy_cross_seeded_smoke",
+  "description": "google_rqc_selected_accuracy_threshold_fraction05_r2_c6_m1_probe64",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "feynman_env": {
     "OMP_NUM_THREADS": "1"
   },
   "circuit": {
     "generator": "google_rqc",
     "rows": 2,
-    "cols": 4,
+    "cols": 6,
     "cycles": 1,
     "seed": 1,
     "variant": "sycamore"
@@ -19,9 +20,10 @@
     "count": 64,
     "seed": 11
   },
+  "fraction": 0.5,
   "population_estimator": "cross_seeded",
   "history_seeds": [1, 2],
-  "vary": "fraction",
-  "values": [0.5],
-  "nonzero_eps": 1e-12
+  "vary": "threshold",
+  "values": [0.0, 1e-27, 3e-27, 1e-26, 3e-26, 1e-25, 3e-25, 1e-24, 3e-24, 1e-23],
+  "nonzero_eps": 1e-26
 }

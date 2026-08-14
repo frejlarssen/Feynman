@@ -1,10 +1,5 @@
 {
   "description": "google_rqc_selected_accuracy_threshold_fraction025_r2_c5_m1_ultraultratiny",
-  "repo_root": ".",
-  "output_root": "data/outputs/validation",
-  "binary": "build-cloud/cloud_task.x",
-  "mpirun": "mpirun",
-  "ranks": 1,
   "feynman_env": {
     "OMP_NUM_THREADS": "1"
   },
@@ -24,23 +19,10 @@
     "count": 1024,
     "seed": 11
   },
-  "reference": {
-    "name": "exact_reference",
-    "fraction": 1.0,
-    "threshold": 0.0,
-    "verbosity": 1
-  },
-  "cases": [
-    {
-      "name": "fraction_0.25_threshold_1e-120",
-      "fraction": 0.25,
-      "threshold": 1e-120,
-      "verbosity": 1,
-      "population_estimator": "amplitude_square",
-      "history_seeds": [
-        1
-      ]
-    }
-  ],
+  "fraction": 0.25,
+  "population_estimator": "amplitude_square",
+  "history_seed": 1,
+  "vary": "threshold",
+  "values": [1e-120],
   "nonzero_eps": 1e-320
 }
