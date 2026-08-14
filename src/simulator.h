@@ -279,11 +279,15 @@ struct AmplitudeAbsStats {
   TypeAmpReal min_nonzero_abs = std::numeric_limits<TypeAmpReal>::infinity();
   TypeAmpReal max_abs = TypeAmpReal(0.0);
   TypeLongInt count = 0;
+  TypeLongInt count_nonzero = 0;
 
   void observe(const TypeAmp &value) {
     const TypeAmpReal abs_value = std::abs(value);
-    if (abs_value > TypeAmpReal(0.0) && abs_value < min_nonzero_abs) {
-      min_nonzero_abs = abs_value;
+    if (abs_value > TypeAmpReal(0.0)) {
+      if (abs_value < min_nonzero_abs) {
+        min_nonzero_abs = abs_value;
+      }
+      ++count_nonzero;
     }
     if (abs_value > max_abs) {
       max_abs = abs_value;
@@ -302,6 +306,7 @@ struct AmplitudeAbsStats {
       max_abs = other.max_abs;
     }
     count += other.count;
+    count_nonzero += other.count_nonzero;
   }
 };
 

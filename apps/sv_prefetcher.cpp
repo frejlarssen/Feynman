@@ -214,13 +214,19 @@ void run(Options &opts, const int world_rank, const int world_size,
       (world_rank == 0) ? "bitstring_hex,elapsed_seconds,status\n" : "";
   local_buf_timing.reserve(1 << 16);
   std::string local_buf_contribution2_abs_stats =
-      (world_rank == 0) ? "bitstring_hex,min_nonzero_abs,max_abs,count\n" : "";
+      (world_rank == 0)
+          ? "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n"
+          : "";
   local_buf_contribution2_abs_stats.reserve(1 << 16);
   std::string local_buf_contribution1_abs_stats =
-      (world_rank == 0) ? "bitstring_hex,min_nonzero_abs,max_abs,count\n" : "";
+      (world_rank == 0)
+          ? "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n"
+          : "";
   local_buf_contribution1_abs_stats.reserve(1 << 16);
   std::string local_buf_contribution0_abs_stats =
-      (world_rank == 0) ? "bitstring_hex,min_nonzero_abs,max_abs,count\n" : "";
+      (world_rank == 0)
+          ? "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n"
+          : "";
   local_buf_contribution0_abs_stats.reserve(1 << 16);
 
   const std::size_t batch_size =
@@ -255,9 +261,10 @@ void run(Options &opts, const int world_rank, const int world_size,
                    ? real_to_string(stats.min_nonzero_abs)
                    : string("nan")) +
               "," + real_to_string(stats.max_abs) + "," +
-              type_long_int_to_string(stats.count) + "\n";
+              type_long_int_to_string(stats.count) + "," +
+              type_long_int_to_string(stats.count_nonzero) + "\n";
         } else {
-          buffer += ",nan,nan,0\n";
+          buffer += ",nan,nan,0,0\n";
         }
       };
 

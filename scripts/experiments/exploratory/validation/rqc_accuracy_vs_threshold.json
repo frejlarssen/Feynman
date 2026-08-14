@@ -22,11 +22,11 @@
     "count": 32,
     "seed": 11
   },
-  "compute_reference": false,
+  "compute_reference": true,
   "fraction": 0.5,
   "population_estimator": "cross_seeded",
   "history_seeds": [1, 2],
   "vary": "threshold",
-  "values": [1.571725e-162],
+  "values": [0.0, 1e-50],
   "nonzero_eps": 1e-307
 }
