@@ -377,6 +377,11 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     TypeAmp local_sum(0, 0);
 
     const int thread_ind = t_idx;
+    const auto reset_thread_chunks = [&]() {
+      for (int i = 0; i < 3; ++i) {
+        Circuit::chunks.at(i).reset_values(thread_ind);
+      }
+    };
     const TypeLongInt history2 =
         (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
 
@@ -390,6 +395,7 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
       // Input, output and artificial not compatible with deterministic gates.
       // The history is rejected.
       amplitudes[history2_ind] = TypeAmp{0.0, 0.0};
+      reset_thread_chunks();
       return;
     }
 
@@ -401,6 +407,7 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     // Check if amplitude so far is small enough to neglect.
     if (std::norm(contribution2) < threshold2) {
       amplitudes[history2_ind] = TypeAmp{0.0, 0.0};
+      reset_thread_chunks();
       return;
     }
 
@@ -474,9 +481,7 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     // printf("h2ind-%ld: local_sum: %f + i%f\n", history2_ind,
     // local_sum.real(), local_sum.imag());
     amplitudes.at(history2_ind) = local_sum;
-    for (int i = 0; i < 3; ++i) {
-      Circuit::chunks.at(i).reset_values(thread_ind);
-    }
+    reset_thread_chunks();
   });
 
   auto total_amplitude = parallel_reduce(
