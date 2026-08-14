@@ -14,7 +14,7 @@
   "circuit": {
     "generator": "google_rqc",
     "rows": 2,
-    "cols": 6,
+    "cols": 8,
     "cycles": 1,
     "seed": 11,
     "variant": "sycamore"
@@ -24,21 +24,13 @@
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "count": 256,
-    "seed": 17
+    "count": 16384,
+    "seed": 18
   },
   "cases": [
     {
-      "fraction": 0.5,
-      "threshold": 0.0
-    },
-    {
-      "fraction": 0.25,
-      "threshold": 1e-5
-    },
-    {
-      "fraction": 0.25,
-      "threshold": 1e-3
+      "fraction": 0.00005,
+      "threshold": 1e-6
     }
   ],
   "output_root": "data/outputs/experiments",
