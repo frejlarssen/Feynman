@@ -103,6 +103,54 @@ triggers:
 airflow dags trigger feynman --conf '{"simulate_omp_num_threads": 2}'
 ```
 
+For fixed-batch scheduler experiments, the `.hs` order controls which output
+bitstrings end up in the same Airflow batch. The `output_bitstrings` generator
+therefore also accepts an optional `ordering` object:
+
+```json
+{
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 1024,
+    "ordering": {
+      "method": "shuffle",
+      "seed": 11,
+      "label": "random"
+    }
+  }
+}
+```
+
+Supported ordering methods are:
+
+- `contiguous`: keep the generated order unchanged
+- `shuffle`: shuffle the same output set with a fixed `seed`
+- `heavy_first`: sort the same output set by a ranking CSV, descending
+- `light_first`: sort the same output set by a ranking CSV, ascending
+- `sort_by_csv`: generic CSV-based ordering with an explicit `descending` flag
+
+For the CSV-based methods, use a per-output CSV such as `timeBitstrings.csv`
+and point at the relevant score column:
+
+```json
+{
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 1024,
+    "ordering": {
+      "method": "heavy_first",
+      "csv": "data/outputs/experiments/20260814_220534_rqc_load_imbalance_stress/run_0001_fraction_0.00625_threshold_1e-06_batch_size-32_rep01/timeBitstrings.csv",
+      "index_column": "bitstring_hex",
+      "value_column": "elapsed_seconds",
+      "label": "heavy_with_heavy"
+    }
+  }
+}
+```
+
+That keeps the requested output set fixed while changing only how fixed-size
+batches are packed, which is useful for scheduler-stress experiments.
+
 ## Sweep scripts
 
 A simple benchmark sweep is available in:
@@ -177,6 +225,11 @@ batch, use:
 
 `sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/google_rqc_load_imbalance_stress_pool_sweep_laptop.json`
 
+For paper-style batching comparisons, keep `max_hexstrings_per_batch` fixed and
+run separate configs or copies of the same config with different
+`output_bitstrings.ordering.label` values such as `contiguous`, `random`, and
+`heavy_with_heavy`.
+
 This wrapper updates the Airflow pool size before each labeled run, then calls
 `benchmark_cloud_runner.sh` one label at a time while keeping a single
 benchmark output directory.
@@ -218,6 +271,7 @@ closely. By default it creates a directory named
 - the raw simulator batch outputs and merged `.hsv` output for that run stored directly inside `runs/<run_id>/`
 - one per-batch timing file per worker batch as `*.timeBitstrings.csv`
 - per-benchmark per-bitstring timing histograms generated from those timing files
+- `summary.csv` rows also record `output_ordering_method` and `output_ordering_label`
 - one combined per-run timing histogram per archived run as `runs/<run_id>/timebitstrings_hist*.pdf`
 - archived per-batch contribution stats as `*.contribution2AbsMinMax.csv`, `*.contribution1AbsMinMax.csv`, and `*.contribution0AbsMinMax.csv`
 - per-run `task_states.json`, normalized `task_instances.json`, `simulate_batch_instances.json`, task/log summaries, and single-run Gantt PDFs

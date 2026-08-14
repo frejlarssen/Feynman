@@ -60,6 +60,8 @@ RESULTS_FILE="${RESULTS_FILE:-}"
 CONFIG_EXPERIMENT_TAG="qft_batch_sweep"
 REPEAT_COUNT=1
 LABEL_VALUES="$*"
+OUTPUT_ORDERING_METHOD=""
+OUTPUT_ORDERING_LABEL=""
 
 require_cluster_image() {
   image_name="$1"
@@ -136,6 +138,8 @@ if [ -n "${CONFIG_PATH}" ]; then
   CONFIG_EXPERIMENT_TAG="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-experiment-tag)"
   REPEAT_COUNT="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-repeat-count)"
   CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
+  OUTPUT_ORDERING_METHOD="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-output-ordering-method)"
+  OUTPUT_ORDERING_LABEL="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-output-ordering-label)"
   if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
     if [ "${LABEL_KIND}" != "pool_slots" ]; then
       echo "benchmark_cloud_runner.sh only accepts fixed-batch configs in explicit pool-slot mode." >&2
@@ -203,7 +207,7 @@ fi
 mkdir -p "${BENCHMARK_DIR}/runs"
 
 if [ ! -f "${RESULTS_FILE}" ]; then
-  printf "dag_id,experiment_tag,run_id,target_num_batches,label_kind,target_label_value,num_batches,repeat_index,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_stage_start_utc,simulate_stage_end_utc,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,start_utc,end_utc\n" > "${RESULTS_FILE}"
+  printf "dag_id,experiment_tag,run_id,target_num_batches,label_kind,target_label_value,num_batches,repeat_index,state,elapsed_seconds,simulate_stage_elapsed_seconds,simulate_task_instance_seconds_sum,simulate_task_instance_count,simulate_finished_task_instance_count,simulate_log_file_count,simulate_autotune_match_count,simulate_autotuning_seconds_sum,simulate_autotuning_seconds_mean,simulate_autotuning_seconds_max,simulate_worker_sim_seconds_sum,simulate_worker_sim_seconds_mean,simulate_worker_sim_seconds_max,simulate_worker_simulate_calls_seconds_sum,simulate_worker_simulate_calls_seconds_mean,simulate_worker_simulate_calls_seconds_max,simulate_worker_write_seconds_sum,simulate_worker_write_seconds_mean,simulate_worker_write_seconds_max,simulate_worker_full_seconds_sum,simulate_worker_full_seconds_mean,simulate_worker_full_seconds_max,output_ordering_method,output_ordering_label,simulate_stage_start_utc,simulate_stage_end_utc,start_utc,end_utc\n" > "${RESULTS_FILE}"
 fi
 
 "${HELPER_PYTHON}" scripts/write_cloud_benchmark_metadata.py \
@@ -226,6 +230,9 @@ fi
 echo "Repeats per label: ${REPEAT_COUNT}"
 if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH:-}" ]; then
   echo "Fixed batch size: ${CONFIG_MAX_HEXSTRINGS_PER_BATCH} hexstrings per batch"
+fi
+if [ -n "${OUTPUT_ORDERING_METHOD}" ]; then
+  echo "Output ordering: ${OUTPUT_ORDERING_METHOD} (${OUTPUT_ORDERING_LABEL})"
 fi
 
 for label_value in $LABEL_VALUES
@@ -363,8 +370,8 @@ EOF
             target_num_batches_csv="${label_value}"
           fi
           num_batches_csv="${simulate_task_instance_count}"
-          printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-            "${DAG_ID}" "${experiment_tag}" "${run_id}" "${target_num_batches_csv}" "${LABEL_KIND}" "${label_value}" "${num_batches_csv}" "${repeat_index}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${start_utc}" "${end_utc}" \
+          printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+            "${DAG_ID}" "${experiment_tag}" "${run_id}" "${target_num_batches_csv}" "${LABEL_KIND}" "${label_value}" "${num_batches_csv}" "${repeat_index}" "${state}" "${elapsed_seconds}" "${simulate_stage_elapsed_seconds}" "${simulate_task_instance_seconds_sum}" "${simulate_task_instance_count}" "${simulate_finished_task_instance_count}" "${simulate_log_file_count}" "${simulate_autotune_match_count}" "${simulate_autotuning_seconds_sum}" "${simulate_autotuning_seconds_mean}" "${simulate_autotuning_seconds_max}" "${simulate_worker_sim_seconds_sum}" "${simulate_worker_sim_seconds_mean}" "${simulate_worker_sim_seconds_max}" "${simulate_worker_simulate_calls_seconds_sum}" "${simulate_worker_simulate_calls_seconds_mean}" "${simulate_worker_simulate_calls_seconds_max}" "${simulate_worker_write_seconds_sum}" "${simulate_worker_write_seconds_mean}" "${simulate_worker_write_seconds_max}" "${simulate_worker_full_seconds_sum}" "${simulate_worker_full_seconds_mean}" "${simulate_worker_full_seconds_max}" "${OUTPUT_ORDERING_METHOD}" "${OUTPUT_ORDERING_LABEL}" "${simulate_stage_start_utc}" "${simulate_stage_end_utc}" "${start_utc}" "${end_utc}" \
             >> "${RESULTS_FILE}"
           task_states_json="${run_dir}/task_states.json"
           if airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" --output json \

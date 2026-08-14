@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts.render_cloud_benchmark_conf import _load_config  # noqa: E402
 from scripts.sweeplib.materialize import (  # noqa: E402
+    describe_output_ordering,
     normalize_generator_specs,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
@@ -91,6 +92,7 @@ def main() -> int:
         circuit_cfg = _pick(payload, "circuit", "circuit_file")
         statevector_cfg = _pick(payload, "input_statevector", "input_statevector_file")
         output_cfg = _pick(payload, "output_bitstrings", "output_bitstrings_file")
+        config_snapshot["output_ordering"] = describe_output_ordering(output_cfg)
         circuit_cfg, statevector_cfg, output_cfg, circuit_qubits = normalize_generator_specs(
             circuit_cfg,
             statevector_cfg,

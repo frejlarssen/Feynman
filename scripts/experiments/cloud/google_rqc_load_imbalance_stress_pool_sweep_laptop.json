@@ -3,7 +3,7 @@
   "target_pool_slots_list": [
     2
   ],
-  "max_hexstrings_per_batch": 128,
+  "max_hexstrings_per_batch": 1024,
   "repeat": 1,
   "simulate_omp_num_threads": 1,
   "fraction": 0.00625,
@@ -11,7 +11,7 @@
   "circuit": {
     "generator": "google_rqc",
     "rows": 2,
-    "cols": 6,
+    "cols": 7,
     "cycles": 1,
     "seed": 11,
     "variant": "sycamore"
@@ -21,6 +21,10 @@
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "count": 1024
+    "count": 16384,
+    "ordering": {
+      "method": "shuffle",
+      "label": "Shuffle"
+    }
   }
 }

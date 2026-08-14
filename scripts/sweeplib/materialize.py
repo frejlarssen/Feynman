@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 import math
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -78,6 +80,34 @@ def _resolve_output_dir(spec: dict[str, Any], repo_root: Path, default_dir: Path
         return default_dir.resolve()
     out_dir = Path(str(out_dir_raw))
     return out_dir.resolve() if out_dir.is_absolute() else (repo_root / out_dir).resolve()
+
+
+def _read_hs(path: Path) -> tuple[list[int], int]:
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if len(lines) < 2:
+        raise ValueError(f"Invalid .hs file (missing header): {path}")
+    try:
+        expected_count = int(lines[0], 10)
+        size_bytes = int(lines[1], 10)
+    except ValueError as exc:
+        raise ValueError(f"Invalid .hs header in {path}") from exc
+    values = [int(raw, 16) for raw in lines[2:]]
+    if len(values) != expected_count:
+        raise ValueError(
+            f"Invalid .hs file {path}: header says {expected_count} values but found {len(values)}."
+        )
+    return values, size_bytes
+
+
+def _write_hs(path: Path, *, values: list[int], size_bytes: int) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    nr_nibbles = size_bytes * 2
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(f"{len(values)}\n")
+        handle.write(f"{size_bytes}\n")
+        for value in values:
+            handle.write(f"0x{value:0{nr_nibbles}X}\n")
+    return path
 
 
 def infer_size_bytes_for_qubits(n_qubits: int) -> int:
@@ -213,6 +243,147 @@ def _number_token(value: Any) -> str:
         .replace("+", "")
         .replace("/", "_")
     )
+
+
+def _normalize_output_ordering_spec(ordering_cfg: Any) -> dict[str, Any]:
+    if ordering_cfg is None:
+        return {"method": "contiguous", "label": "contiguous"}
+    if isinstance(ordering_cfg, str):
+        method = ordering_cfg.strip().lower()
+        return {"method": method or "contiguous", "label": method or "contiguous"}
+    if not isinstance(ordering_cfg, dict):
+        raise ValueError("output_bitstrings.ordering must be a string or object.")
+
+    method = str(ordering_cfg.get("method", "contiguous")).strip().lower() or "contiguous"
+    normalized = dict(ordering_cfg)
+    normalized["method"] = method
+    if not str(normalized.get("label", "")).strip():
+        normalized["label"] = method
+    return normalized
+
+
+def describe_output_ordering(output_cfg: Any) -> dict[str, str]:
+    if not isinstance(output_cfg, dict):
+        return {"method": "contiguous", "label": "contiguous"}
+
+    ordering = _normalize_output_ordering_spec(output_cfg.get("ordering"))
+    method = ordering["method"]
+    if method in {"", "contiguous", "none"}:
+        return {"method": "contiguous", "label": str(ordering.get("label", "contiguous"))}
+    if method in {"shuffle", "random"}:
+        seed = int(ordering.get("seed", 0))
+        label = str(ordering.get("label", f"random_seed{seed}"))
+        return {"method": "random", "label": label}
+    if method in {"heavy_first", "runtime_desc"}:
+        metric = str(ordering.get("value_column", "elapsed_seconds"))
+        label = str(ordering.get("label", f"heavy_first_{metric}"))
+        return {"method": "heavy_first", "label": label}
+    if method in {"light_first", "runtime_asc"}:
+        metric = str(ordering.get("value_column", "elapsed_seconds"))
+        label = str(ordering.get("label", f"light_first_{metric}"))
+        return {"method": "light_first", "label": label}
+    if method == "sort_by_csv":
+        descending = _as_bool(ordering.get("descending", True), default=True)
+        metric = str(ordering.get("value_column", "elapsed_seconds"))
+        direction = "desc" if descending else "asc"
+        label = str(ordering.get("label", f"sort_{metric}_{direction}"))
+        return {"method": f"sort_by_csv_{direction}", "label": label}
+    raise ValueError(f"Unsupported output_bitstrings ordering method: {method!r}")
+
+
+def _score_map_from_csv(
+    csv_path: Path,
+    *,
+    index_column: str,
+    value_column: str,
+) -> dict[int, float]:
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError(f"Ordering CSV is missing a header row: {csv_path}")
+        scores: dict[int, float] = {}
+        for row in reader:
+            index_raw = (row.get(index_column) or "").strip()
+            value_raw = (row.get(value_column) or "").strip()
+            if not index_raw or not value_raw:
+                continue
+            index = int(index_raw, 16) if index_raw.lower().startswith("0x") else int(index_raw, 10)
+            scores[index] = float(value_raw)
+    if not scores:
+        raise ValueError(f"No usable ordering rows found in {csv_path}.")
+    return scores
+
+
+def _ordered_output_path(base_path: Path, ordering: dict[str, Any], suffix: str) -> Path:
+    label = _sanitize_identifier(str(ordering.get("label", ordering["method"])))
+    return base_path.with_name(f"{base_path.stem}__{label}_{suffix}.hs")
+
+
+def _apply_output_ordering(
+    path: Path,
+    output_cfg: dict[str, Any],
+    *,
+    repo_root: Path,
+) -> tuple[Path, dict[str, Any] | None]:
+    ordering = _normalize_output_ordering_spec(output_cfg.get("ordering"))
+    method = ordering["method"]
+    described = describe_output_ordering(output_cfg)
+    if method in {"", "contiguous", "none"}:
+        return path, {
+            "ordering_method": described["method"],
+            "ordering_label": described["label"],
+        }
+
+    values, size_bytes = _read_hs(path)
+    original_positions = {value: idx for idx, value in enumerate(values)}
+    ordered_values = list(values)
+
+    if method in {"shuffle", "random"}:
+        random.Random(int(ordering.get("seed", 0))).shuffle(ordered_values)
+        out_path = _ordered_output_path(path, ordering, "shuffle")
+    elif method in {"heavy_first", "runtime_desc", "light_first", "runtime_asc", "sort_by_csv"}:
+        csv_raw = ordering.get("csv") or ordering.get("csv_file") or ordering.get("ranking_csv")
+        if not csv_raw:
+            raise ValueError(
+                f"output_bitstrings.ordering method {method!r} requires csv=<path>."
+            )
+        csv_path = resolve_path_like(str(csv_raw), repo_root)
+        index_column = str(ordering.get("index_column", "bitstring_hex"))
+        value_column = str(ordering.get("value_column", "elapsed_seconds"))
+        descending = True
+        if method in {"light_first", "runtime_asc"}:
+            descending = False
+        elif method == "sort_by_csv":
+            descending = _as_bool(ordering.get("descending", True), default=True)
+        scores = _score_map_from_csv(
+            csv_path,
+            index_column=index_column,
+            value_column=value_column,
+        )
+        missing = [value for value in values if value not in scores]
+        if missing:
+            preview = ", ".join(f"0x{value:X}" for value in missing[:5])
+            raise ValueError(
+                f"Ordering CSV {csv_path} is missing {len(missing)} requested bitstrings "
+                f"(for example {preview})."
+            )
+        ordered_values.sort(
+            key=lambda value: (
+                scores[value],
+                -original_positions[value] if descending else original_positions[value],
+            ),
+            reverse=descending,
+        )
+        out_path = _ordered_output_path(path, ordering, "ordered")
+    else:
+        raise ValueError(f"Unsupported output_bitstrings ordering method: {method!r}")
+
+    _write_hs(out_path, values=ordered_values, size_bytes=size_bytes)
+    return out_path.resolve(), {
+        "ordering_method": described["method"],
+        "ordering_label": described["label"],
+        "ordering_output_file": str(out_path.resolve()),
+    }
 
 
 def derive_circuit_identifier(circuit_cfg: str | dict[str, Any], repo_root: Path) -> str:
@@ -630,26 +801,34 @@ def resolve_output_bitstrings_input(
         if start < 0:
             raise ValueError("output_bitstrings one_interval requires start >= 0.")
         path = write_one_interval(size=size, nr_hexstrings=count, out_dir=out_dir, start=start).resolve()
-        return path, {
+        ordered_path, ordering_meta = _apply_output_ordering(path, output_cfg, repo_root=repo_root)
+        meta = {
             "generator": generator,
             "size": size,
             "start": start,
             "count": count,
             "output_dir": str(out_dir),
         }
+        if ordering_meta:
+            meta.update(ordering_meta)
+        return ordered_path, meta
 
     if generator == "two_intervals":
         size = _require_int(output_cfg, "size", "output_bitstrings")
         interval1 = _build_interval(output_cfg.get("interval1"), "output_bitstrings.interval1")
         interval2 = _build_interval(output_cfg.get("interval2"), "output_bitstrings.interval2")
         path = write_two_intervals(size=size, interval1=interval1, interval2=interval2, out_dir=out_dir).resolve()
-        return path, {
+        ordered_path, ordering_meta = _apply_output_ordering(path, output_cfg, repo_root=repo_root)
+        meta = {
             "generator": generator,
             "size": size,
             "interval1_count": len(interval1),
             "interval2_count": len(interval2),
             "output_dir": str(out_dir),
         }
+        if ordering_meta:
+            meta.update(ordering_meta)
+        return ordered_path, meta
 
     if generator in {"random_uniform", "uniform_random", "random"}:
         size = _require_int(output_cfg, "size", "output_bitstrings")
@@ -666,7 +845,8 @@ def resolve_output_bitstrings_input(
             out_dir=out_dir,
             n_qubits=n_qubits,
         ).resolve()
-        return path, {
+        ordered_path, ordering_meta = _apply_output_ordering(path, output_cfg, repo_root=repo_root)
+        meta = {
             "generator": generator,
             "size": size,
             "count": count,
@@ -674,16 +854,23 @@ def resolve_output_bitstrings_input(
             "n_qubits": n_qubits,
             "output_dir": str(out_dir),
         }
+        if ordering_meta:
+            meta.update(ordering_meta)
+        return ordered_path, meta
 
     if generator in {"explicit", "values"}:
         size = _require_int(output_cfg, "size", "output_bitstrings")
         values = _build_values(output_cfg.get("values"), "output_bitstrings.values")
         path = write_explicit_values(size=size, values=values, out_dir=out_dir).resolve()
-        return path, {
+        ordered_path, ordering_meta = _apply_output_ordering(path, output_cfg, repo_root=repo_root)
+        meta = {
             "generator": generator,
             "size": size,
             "count": len(values),
             "output_dir": str(out_dir),
         }
+        if ordering_meta:
+            meta.update(ordering_meta)
+        return ordered_path, meta
 
     raise ValueError(f"Unsupported output_bitstrings generator: {generator!r}")
