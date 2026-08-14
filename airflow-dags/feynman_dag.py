@@ -163,6 +163,8 @@ SIMULATE_ENV_VARS = [
     schedule=None,
     start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
+    max_active_tasks=256,
+    max_active_runs=1,
     tags=["feynman"],
     default_args={
         "retries": 1,
