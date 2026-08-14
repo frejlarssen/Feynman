@@ -30,12 +30,29 @@ class TimingSeries:
 
 
 def _parse_tm(path: Path) -> tuple[list[float], list[str]]:
+    lines = [raw.strip() for raw in path.read_text(encoding="utf-8").splitlines() if raw.strip()]
+    if not lines:
+        raise ValueError(f"No timing rows found in {path}")
+
+    header = lines[0].lower()
+    if header == "bitstring_hex,elapsed_seconds,status":
+        times: list[float] = []
+        statuses: list[str] = []
+        reader = csv.DictReader(lines)
+        for row in reader:
+            time_raw = (row.get("elapsed_seconds") or "").strip()
+            if not time_raw:
+                raise ValueError(f"Missing elapsed_seconds in {path}: {row!r}")
+            status = (row.get("status") or "unknown").strip().lower() or "unknown"
+            times.append(float(time_raw))
+            statuses.append(status)
+        if not times:
+            raise ValueError(f"No timing rows found in {path}")
+        return times, statuses
+
     times: list[float] = []
     statuses: list[str] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line:
-            continue
+    for line in lines:
         parts = line.split(":")
         if len(parts) == 2:
             _, time_raw = parts

@@ -210,8 +210,12 @@ void run(Options &opts, const int world_rank, const int world_size,
   const std::size_t my_worker = world_rank;
   std::string local_buf;
   local_buf.reserve(1 << 20);
-  std::string local_buf_timing;
+  std::string local_buf_timing =
+      (world_rank == 0) ? "bitstring_hex,elapsed_seconds,status\n" : "";
   local_buf_timing.reserve(1 << 16);
+  std::string local_buf_contribution0_abs_stats =
+      (world_rank == 0) ? "bitstring_hex,min_nonzero_abs,max_abs,count\n" : "";
+  local_buf_contribution0_abs_stats.reserve(1 << 16);
 
   const std::size_t batch_size =
       (opts.batch_size > 0)
@@ -251,6 +255,7 @@ void run(Options &opts, const int world_rank, const int world_size,
       ++count_processed_bitstrings;
 
       TypeAmp output_amp(0.0, 0.0);
+      Contribution0AbsStats output_contribution0_abs_stats;
 
       // Loop through the input bitstrings specified in input file
       for (const auto &input : input_bitstrings) {
@@ -260,7 +265,8 @@ void run(Options &opts, const int world_rank, const int world_size,
 
         auto start_simulate = get_time();
         output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction,
-                               opts.threshold, 3);
+                               opts.threshold, 3,
+                               &output_contribution0_abs_stats);
         auto end_simulate = get_time();
         num_calls_simulate++;
 
@@ -286,9 +292,22 @@ void run(Options &opts, const int world_rank, const int world_size,
       const duration<double> clocktime_bitstring =
           end_simulate_bitstring - start_simulate_bitstring;
       const bool supported = (std::abs(output_amp) > opts.threshold);
-      local_buf_timing += bitvector_to_hexstring(output_bits) + ":" +
-                          std::to_string(clocktime_bitstring.count()) + ":" +
+      local_buf_timing += bitvector_to_hexstring(output_bits) + "," +
+                          real_to_string(clocktime_bitstring.count()) + "," +
                           (supported ? "supported" : "rejected") + "\n";
+      local_buf_contribution0_abs_stats += bitvector_to_hexstring(output_bits);
+      if (output_contribution0_abs_stats.count > 0) {
+        local_buf_contribution0_abs_stats +=
+            "," +
+            (std::isfinite(output_contribution0_abs_stats.min_nonzero_abs)
+                 ? real_to_string(
+                       output_contribution0_abs_stats.min_nonzero_abs)
+                 : string("nan")) +
+            "," + real_to_string(output_contribution0_abs_stats.max_abs) + "," +
+            type_long_int_to_string(output_contribution0_abs_stats.count) + "\n";
+      } else {
+        local_buf_contribution0_abs_stats += ",nan,nan,0\n";
+      }
 
       // Write to output file
       bool writeFlag = (opts.dense || supported);
@@ -341,6 +360,11 @@ void run(Options &opts, const int world_rank, const int world_size,
       replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
   int err1 = write_output_to_disk(timing_file_path, local_buf_timing,
                                   world_rank, MPI_COMM_WORLD);
+  auto contribution0_abs_stats_file_path = replace_filename(
+      opts.output_statevector_file, "contribution0AbsMinMax.tm");
+  int err2 = write_output_to_disk(contribution0_abs_stats_file_path,
+                                  local_buf_contribution0_abs_stats, world_rank,
+                                  MPI_COMM_WORLD);
 
   int tot_num_calls_simulate = 0;
   MPI_Reduce(&num_calls_simulate, &tot_num_calls_simulate, 1, MPI_INT, MPI_SUM,

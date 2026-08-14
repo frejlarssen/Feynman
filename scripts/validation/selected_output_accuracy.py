@@ -482,6 +482,13 @@ def _run_case(
             timing_file=archived_timing_file,
             title=f"Bitstrings compute time distribution ({case['name']}, {component_label})",
         )
+    contribution0_abs_stats_file = case_dir / "contribution0AbsMinMax.tm"
+    archived_contribution0_abs_stats_file: Path | None = None
+    if contribution0_abs_stats_file.exists():
+        archived_contribution0_abs_stats_file = (
+            case_dir / f"{component_label}.contribution0AbsMinMax.tm"
+        )
+        contribution0_abs_stats_file.replace(archived_contribution0_abs_stats_file)
 
     return {
         "name": case["name"],
@@ -498,6 +505,7 @@ def _run_case(
         "history_seed": case.get("history_seed"),
         "timing_file": archived_timing_file,
         "timing_histograms": timing_histograms,
+        "contribution0_abs_stats_file": archived_contribution0_abs_stats_file,
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "wall_time_s": wall_time_s,
@@ -1013,6 +1021,11 @@ def _run_case_estimator(
                 for run in component_runs
                 for path in run.get("timing_histograms", [])
             ],
+            "contribution0_abs_stats_files": [
+                str(run["contribution0_abs_stats_file"])
+                for run in component_runs
+                if run.get("contribution0_abs_stats_file") is not None
+            ],
             "approx_vec": None,
             "approx_pop": approx_pop,
             "wall_time_s": float(sum(run["wall_time_s"] for run in component_runs)),
@@ -1055,6 +1068,11 @@ def _run_case_estimator(
             [str(single_run["timing_file"])] if single_run.get("timing_file") is not None else []
         ),
         "timing_histograms": [str(path) for path in single_run.get("timing_histograms", [])],
+        "contribution0_abs_stats_files": (
+            [str(single_run["contribution0_abs_stats_file"])]
+            if single_run.get("contribution0_abs_stats_file") is not None
+            else []
+        ),
         "approx_vec": approx_vec,
         "approx_pop": np.abs(approx_vec) ** 2,
         "wall_time_s": single_run["wall_time_s"],
@@ -1292,6 +1310,9 @@ def main(argv: list[str] | None = None) -> int:
                 "output_file": str(reference_run["output_file"]),
                 "timing_files": reference_run.get("timing_files", []),
                 "timing_histograms": reference_run.get("timing_histograms", []),
+                "contribution0_abs_stats_files": reference_run.get(
+                    "contribution0_abs_stats_files", []
+                ),
             }
             if reference_run is not None
             else None

@@ -27,6 +27,6 @@
   "population_estimator": "cross_seeded",
   "history_seeds": [1, 2],
   "vary": "threshold",
-  "values": [1.5716e-162],
+  "values": [1.571725e-162],
   "nonzero_eps": 1e-308
 }

@@ -26,6 +26,9 @@ from scripts.summarize_cloud_task_logs import _default_airflow_log_root, summari
 
 _BATCH_OUTPUT_RE = re.compile(r"_batch_(\d+)\.hsv$")
 _BATCH_TIMING_RE = re.compile(r"_batch_(\d+)\.timeBitstrings\.tm$")
+_BATCH_CONTRIBUTION0_ABS_STATS_RE = re.compile(
+    r"_batch_(\d+)\.contribution0AbsMinMax\.tm$"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,6 +51,19 @@ def _find_timing_files(output_dir: Path) -> list[Path]:
         return per_batch
 
     legacy = output_dir / "timeBitstrings.tm"
+    if legacy.exists():
+        return [legacy.resolve()]
+    return []
+
+
+def _find_contribution0_abs_stats_files(output_dir: Path) -> list[Path]:
+    per_batch = sorted(
+        path.resolve() for path in output_dir.glob("*.contribution0AbsMinMax.tm")
+    )
+    if per_batch:
+        return per_batch
+
+    legacy = output_dir / "contribution0AbsMinMax.tm"
     if legacy.exists():
         return [legacy.resolve()]
     return []
@@ -82,6 +98,9 @@ def _build_simulate_batch_instances(
 ) -> list[dict[str, object]]:
     batch_outputs = _index_batch_files(output_dir, pattern=_BATCH_OUTPUT_RE)
     batch_timings = _index_batch_files(output_dir, pattern=_BATCH_TIMING_RE)
+    batch_contribution0_abs_stats = _index_batch_files(
+        output_dir, pattern=_BATCH_CONTRIBUTION0_ABS_STATS_RE
+    )
 
     instances: list[dict[str, object]] = []
     for row in rows:
@@ -110,6 +129,10 @@ def _build_simulate_batch_instances(
                 instance["output_hsv"] = batch_outputs[map_index]
             if map_index in batch_timings:
                 instance["timing_file"] = batch_timings[map_index]
+            if map_index in batch_contribution0_abs_stats:
+                instance["contribution0_abs_stats_file"] = batch_contribution0_abs_stats[
+                    map_index
+                ]
         instances.append(instance)
 
     return sorted(instances, key=lambda item: int(item["map_index"]))
@@ -200,6 +223,9 @@ def main() -> int:
         "gantt_byresources_pdf": str(byresources),
         "gantt_bytask_pdf": str(bytask),
         "timing_files": [str(path) for path in _find_timing_files(output_dir)],
+        "contribution0_abs_stats_files": [
+            str(path) for path in _find_contribution0_abs_stats_files(output_dir)
+        ],
     }
     if task_states_path is not None:
         manifest["task_states_json"] = str(task_states_path)

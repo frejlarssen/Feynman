@@ -121,8 +121,14 @@ void run(Options &opts) {
   const fs::path timing_file_path =
       output_path.parent_path() /
       (output_path.stem().string() + ".timeBitstrings.tm");
+  const fs::path contribution0_abs_stats_file_path =
+      output_path.parent_path() /
+      (output_path.stem().string() + ".contribution0AbsMinMax.tm");
   if (timing_file_path.has_parent_path()) {
     fs::create_directories(timing_file_path.parent_path());
+  }
+  if (contribution0_abs_stats_file_path.has_parent_path()) {
+    fs::create_directories(contribution0_abs_stats_file_path.parent_path());
   }
 
   if (opts.verbosity >= 1) {
@@ -253,8 +259,11 @@ void run(Options &opts) {
   // input statevector.
   std::string local_buf;
   local_buf.reserve(1 << 20);
-  std::string local_buf_timing;
+  std::string local_buf_timing = "bitstring_hex,elapsed_seconds,status\n";
   local_buf_timing.reserve(1 << 16);
+  std::string local_buf_contribution0_abs_stats =
+      "bitstring_hex,min_nonzero_abs,max_abs,count\n";
+  local_buf_contribution0_abs_stats.reserve(1 << 16);
 
   if (opts.verbosity >= 1) {
     std::cout << "Starting simulation over all input-output pairs:\n"
@@ -300,6 +309,7 @@ void run(Options &opts) {
     ++count_processed_bitstrings;
 
     TypeAmp output_amp(0.0, 0.0);
+    Contribution0AbsStats output_contribution0_abs_stats;
 
     // Loop through the input bitstrings specified in input file
     for (const auto &input : input_bitstrings) {
@@ -309,7 +319,8 @@ void run(Options &opts) {
 
       auto start_simulate = get_time();
       output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction,
-                               opts.threshold, 3);
+                               opts.threshold, 3,
+                               &output_contribution0_abs_stats);
       auto end_simulate = get_time();
       num_calls_simulate++;
 
@@ -335,9 +346,22 @@ void run(Options &opts) {
       const duration<double> clocktime_bitstring =
           end_simulate_bitstring - start_simulate_bitstring;
       const bool supported = (std::abs(output_amp) > opts.threshold);
-      local_buf_timing += bitvector_to_hexstring(output_bits) + ":" +
-                          std::to_string(clocktime_bitstring.count()) + ":" +
+      local_buf_timing += bitvector_to_hexstring(output_bits) + "," +
+                          real_to_string(clocktime_bitstring.count()) + "," +
                           (supported ? "supported" : "rejected") + "\n";
+      local_buf_contribution0_abs_stats += bitvector_to_hexstring(output_bits);
+      if (output_contribution0_abs_stats.count > 0) {
+        local_buf_contribution0_abs_stats +=
+            "," +
+            (std::isfinite(output_contribution0_abs_stats.min_nonzero_abs)
+                 ? real_to_string(
+                       output_contribution0_abs_stats.min_nonzero_abs)
+                 : string("nan")) +
+            "," + real_to_string(output_contribution0_abs_stats.max_abs) + "," +
+            type_long_int_to_string(output_contribution0_abs_stats.count) + "\n";
+      } else {
+        local_buf_contribution0_abs_stats += ",nan,nan,0\n";
+      }
 
       // Write to output file
       bool writeFlag = (opts.dense || supported);
@@ -379,6 +403,8 @@ void run(Options &opts) {
   // parallel output to disk
   write_string_to_file(opts.output_statevector_file, local_buf);
   write_string_to_file(timing_file_path.string(), local_buf_timing);
+  write_string_to_file(contribution0_abs_stats_file_path.string(),
+                       local_buf_contribution0_abs_stats);
 
   if (opts.verbosity >= 1) {
     printf("Number of simulate calls: %d\n", num_calls_simulate);

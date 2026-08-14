@@ -269,6 +269,7 @@ def _run_group(
     internal_runtimes: list[float] = []
     timing_files: list[str] = []
     timing_histograms: list[str] = []
+    contribution0_abs_stats_files: list[str] = []
 
     for history_seed in group["history_seeds"]:
         output_file = group_dir / f"seed_{history_seed}.hsv"
@@ -324,6 +325,13 @@ def _run_group(
                     ),
                 )
             )
+        contribution0_abs_stats_file = group_dir / "contribution0AbsMinMax.tm"
+        if contribution0_abs_stats_file.exists():
+            archived_contribution0_abs_stats_file = (
+                group_dir / f"seed_{history_seed}.contribution0AbsMinMax.tm"
+            )
+            contribution0_abs_stats_file.replace(archived_contribution0_abs_stats_file)
+            contribution0_abs_stats_files.append(str(archived_contribution0_abs_stats_file))
         sparse = parse_hsv_sparse(output_file)
         component_vectors.append(_ordered_vector(sparse, subset_indices))
         component_files.append(str(output_file))
@@ -355,6 +363,7 @@ def _run_group(
         "command_logs": command_logs,
         "timing_files": timing_files,
         "timing_histograms": timing_histograms,
+        "contribution0_abs_stats_files": contribution0_abs_stats_files,
         "wall_time_s": float(sum(wall_times)),
         "internal_runtime_s": (
             float(sum(internal_runtimes)) if len(internal_runtimes) == len(wall_times) else None
