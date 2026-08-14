@@ -112,7 +112,7 @@ def normalize_task_instances_payload(
     payload: dict[str, Any],
     *,
     default_run_id: str = "",
-    default_pool: str = "default_pool",
+    default_pool: str = "unknown_pool",
     default_pool_slots: int = 1,
 ) -> dict[str, Any]:
     task_instances = payload.get("task_instances")
@@ -124,6 +124,8 @@ def normalize_task_instances_payload(
         if not isinstance(task_instance, dict):
             continue
         normalized = dict(task_instance)
+        # `airflow tasks states-for-dag-run --output json` does not include pool
+        # metadata, so use an explicit unknown placeholder.
         normalized["pool"] = str(task_instance.get("pool") or default_pool)
         try:
             normalized["pool_slots"] = int(task_instance.get("pool_slots", default_pool_slots))
