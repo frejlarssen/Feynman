@@ -50,6 +50,6 @@
     }
   ],
   "output_root": "data/outputs/experiments",
-  "notes": "Exact single-rank single-thread qwalk probe for per-output timing imbalance near the initialized walk position; includes both coin values for a cyclic window around position 0 so timeBitstrings.tm covers reachable outputs and nearby near-misses across checkpoint strategies.",
+  "notes": "Exact single-rank single-thread qwalk probe for per-output timing imbalance near the initialized walk position; includes both coin values for a cyclic window around position 0 so timeBitstrings.csv covers reachable outputs and nearby near-misses across checkpoint strategies.",
   "binary": "build-release/sv_prefetcher_subset_mpi.x"
 }

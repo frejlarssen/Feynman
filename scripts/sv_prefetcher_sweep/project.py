@@ -324,7 +324,7 @@ def make_run_one(
         run_dir.mkdir(parents=True, exist_ok=False)
 
         output_file = run_dir / "output.hsv"
-        timing_file = run_dir / "timeBitstrings.tm"
+        timing_file = run_dir / "timeBitstrings.csv"
         stdout_file = run_dir / "stdout.log"
         stderr_file = run_dir / "stderr.log"
 

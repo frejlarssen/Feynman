@@ -25,9 +25,9 @@ from scripts.summarize_cloud_task_logs import _default_airflow_log_root, summari
 
 
 _BATCH_OUTPUT_RE = re.compile(r"_batch_(\d+)\.hsv$")
-_BATCH_TIMING_RE = re.compile(r"_batch_(\d+)\.timeBitstrings\.tm$")
+_BATCH_TIMING_RE = re.compile(r"_batch_(\d+)\.timeBitstrings\.(?:csv|tm)$")
 _BATCH_CONTRIBUTION0_ABS_STATS_RE = re.compile(
-    r"_batch_(\d+)\.contribution0AbsMinMax\.tm$"
+    r"_batch_(\d+)\.contribution0AbsMinMax\.(?:csv|tm)$"
 )
 
 
@@ -46,9 +46,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def _find_timing_files(output_dir: Path) -> list[Path]:
+    per_batch = sorted(path.resolve() for path in output_dir.glob("*.timeBitstrings.csv"))
+    if per_batch:
+        return per_batch
+
     per_batch = sorted(path.resolve() for path in output_dir.glob("*.timeBitstrings.tm"))
     if per_batch:
         return per_batch
+
+    legacy = output_dir / "timeBitstrings.csv"
+    if legacy.exists():
+        return [legacy.resolve()]
 
     legacy = output_dir / "timeBitstrings.tm"
     if legacy.exists():
@@ -58,10 +66,20 @@ def _find_timing_files(output_dir: Path) -> list[Path]:
 
 def _find_contribution0_abs_stats_files(output_dir: Path) -> list[Path]:
     per_batch = sorted(
+        path.resolve() for path in output_dir.glob("*.contribution0AbsMinMax.csv")
+    )
+    if per_batch:
+        return per_batch
+
+    per_batch = sorted(
         path.resolve() for path in output_dir.glob("*.contribution0AbsMinMax.tm")
     )
     if per_batch:
         return per_batch
+
+    legacy = output_dir / "contribution0AbsMinMax.csv"
+    if legacy.exists():
+        return [legacy.resolve()]
 
     legacy = output_dir / "contribution0AbsMinMax.tm"
     if legacy.exists():

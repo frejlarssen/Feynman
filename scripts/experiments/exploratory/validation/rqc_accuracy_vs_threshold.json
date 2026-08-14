@@ -28,5 +28,5 @@
   "history_seeds": [1, 2],
   "vary": "threshold",
   "values": [1.571725e-162],
-  "nonzero_eps": 1e-308
+  "nonzero_eps": 1e-307
 }

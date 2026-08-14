@@ -472,21 +472,21 @@ def _run_case(
             f"See {stdout_log} and {stderr_log}"
         )
 
-    timing_file = case_dir / "timeBitstrings.tm"
+    timing_file = case_dir / "timeBitstrings.csv"
     archived_timing_file: Path | None = None
     timing_histograms: list[Path] = []
     if timing_file.exists():
-        archived_timing_file = case_dir / f"{component_label}.timeBitstrings.tm"
+        archived_timing_file = case_dir / f"{component_label}.timeBitstrings.csv"
         timing_file.replace(archived_timing_file)
         timing_histograms = auto_plot_timing_file_histograms(
             timing_file=archived_timing_file,
             title=f"Bitstrings compute time distribution ({case['name']}, {component_label})",
         )
-    contribution0_abs_stats_file = case_dir / "contribution0AbsMinMax.tm"
+    contribution0_abs_stats_file = case_dir / "contribution0AbsMinMax.csv"
     archived_contribution0_abs_stats_file: Path | None = None
     if contribution0_abs_stats_file.exists():
         archived_contribution0_abs_stats_file = (
-            case_dir / f"{component_label}.contribution0AbsMinMax.tm"
+            case_dir / f"{component_label}.contribution0AbsMinMax.csv"
         )
         contribution0_abs_stats_file.replace(archived_contribution0_abs_stats_file)
 

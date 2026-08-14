@@ -120,10 +120,10 @@ void run(Options &opts) {
   }
   const fs::path timing_file_path =
       output_path.parent_path() /
-      (output_path.stem().string() + ".timeBitstrings.tm");
+      (output_path.stem().string() + ".timeBitstrings.csv");
   const fs::path contribution0_abs_stats_file_path =
       output_path.parent_path() /
-      (output_path.stem().string() + ".contribution0AbsMinMax.tm");
+      (output_path.stem().string() + ".contribution0AbsMinMax.csv");
   if (timing_file_path.has_parent_path()) {
     fs::create_directories(timing_file_path.parent_path());
   }

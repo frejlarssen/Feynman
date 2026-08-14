@@ -310,9 +310,9 @@ def _run_group(
                 f"Group {group['name']!r}, seed {history_seed} failed with return code {proc.returncode}. "
                 f"See {stderr_log}"
             )
-        timing_file = group_dir / "timeBitstrings.tm"
+        timing_file = group_dir / "timeBitstrings.csv"
         if timing_file.exists():
-            archived_timing_file = group_dir / f"seed_{history_seed}.timeBitstrings.tm"
+            archived_timing_file = group_dir / f"seed_{history_seed}.timeBitstrings.csv"
             timing_file.replace(archived_timing_file)
             timing_files.append(str(archived_timing_file))
             timing_histograms.extend(
@@ -325,10 +325,10 @@ def _run_group(
                     ),
                 )
             )
-        contribution0_abs_stats_file = group_dir / "contribution0AbsMinMax.tm"
+        contribution0_abs_stats_file = group_dir / "contribution0AbsMinMax.csv"
         if contribution0_abs_stats_file.exists():
             archived_contribution0_abs_stats_file = (
-                group_dir / f"seed_{history_seed}.contribution0AbsMinMax.tm"
+                group_dir / f"seed_{history_seed}.contribution0AbsMinMax.csv"
             )
             contribution0_abs_stats_file.replace(archived_contribution0_abs_stats_file)
             contribution0_abs_stats_files.append(str(archived_contribution0_abs_stats_file))

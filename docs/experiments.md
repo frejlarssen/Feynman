@@ -6,7 +6,7 @@ This file is the full command catalog for the unified pipeline in
 All runs write into `data/outputs/experiments/` or `data/outputs/validation/`.
 Experiment and validation runs generate their associated plots automatically.
 Perf sweeps also auto-generate per-bitstring timing histograms from
-`timeBitstrings.tm` when those artifacts are present.
+`timeBitstrings.csv` when those artifacts are present.
 
 For perf experiments, build the release binary first:
 

@@ -119,9 +119,15 @@ def _cloud_timing_paths(summary_csv: Path, row: dict[str, str]) -> tuple[Path, .
     for run_dir in run_dirs:
         if not run_dir.exists():
             continue
+        per_batch = tuple(sorted(path.resolve() for path in run_dir.glob("*.timeBitstrings.csv")))
+        if per_batch:
+            return per_batch
         per_batch = tuple(sorted(path.resolve() for path in run_dir.glob("*.timeBitstrings.tm")))
         if per_batch:
             return per_batch
+        legacy = run_dir / "timeBitstrings.csv"
+        if legacy.exists():
+            return (legacy.resolve(),)
         legacy = run_dir / "timeBitstrings.tm"
         if legacy.exists():
             return (legacy.resolve(),)
@@ -217,7 +223,7 @@ def _default_output(summary_csv: Path | None, status_filter: str) -> Path:
 def _timing_file_output_name(timing_file: Path, status_filter: str) -> str:
     suffix = "" if status_filter == "all" else f"_{status_filter}"
     name = timing_file.name
-    for ext in (".timeBitstrings.tm", ".tm"):
+    for ext in (".timeBitstrings.csv", ".timeBitstrings.tm", ".csv", ".tm"):
         if name.endswith(ext):
             stem = name[: -len(ext)]
             break
@@ -370,7 +376,7 @@ def auto_plot_timing_file_histograms(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot histogram(s) of per-bitstring compute time from timeBitstrings.tm artifacts."
+        description="Plot histogram(s) of per-bitstring compute time from timeBitstrings.csv artifacts."
     )
     parser.add_argument(
         "--summary-csv",
@@ -382,7 +388,7 @@ def parse_args() -> argparse.Namespace:
         "--series",
         action="append",
         default=[],
-        help="Explicit series in the form LABEL=/path/to/timeBitstrings.tm. Can be repeated.",
+        help="Explicit series in the form LABEL=/path/to/timeBitstrings.csv. Can be repeated.",
     )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--title", default="")

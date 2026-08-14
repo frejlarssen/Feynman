@@ -47,6 +47,6 @@
     }
   ],
   "output_root": "data/outputs/experiments",
-  "notes": "Exact single-rank single-thread Google-RQC probe for per-output timing imbalance; inspect timeBitstrings.tm across checkpoint strategies.",
+  "notes": "Exact single-rank single-thread Google-RQC probe for per-output timing imbalance; inspect timeBitstrings.csv across checkpoint strategies.",
   "binary": "build-release/sv_prefetcher_subset_mpi.x"
 }

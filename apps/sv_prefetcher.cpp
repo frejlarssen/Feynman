@@ -357,11 +357,11 @@ void run(Options &opts, const int world_rank, const int world_size,
   int err = write_output_to_disk(opts.output_statevector_file, local_buf,
                                  world_rank, MPI_COMM_WORLD);
   auto timing_file_path =
-      replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
+      replace_filename(opts.output_statevector_file, "timeBitstrings.csv");
   int err1 = write_output_to_disk(timing_file_path, local_buf_timing,
                                   world_rank, MPI_COMM_WORLD);
   auto contribution0_abs_stats_file_path = replace_filename(
-      opts.output_statevector_file, "contribution0AbsMinMax.tm");
+      opts.output_statevector_file, "contribution0AbsMinMax.csv");
   int err2 = write_output_to_disk(contribution0_abs_stats_file_path,
                                   local_buf_contribution0_abs_stats, world_rank,
                                   MPI_COMM_WORLD);
