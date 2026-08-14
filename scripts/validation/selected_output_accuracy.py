@@ -40,6 +40,11 @@ _AMP_RE = re.compile(
 _INTERNAL_RUNTIME_RE = re.compile(
     r"Total clocktime \(including I/O\) for sv\.cpp:\s+([0-9eE+.\-]+) seconds"
 )
+_ABS_STATS_ARTIFACT_BASENAMES = (
+    "contribution2AbsMinMax.csv",
+    "contribution1AbsMinMax.csv",
+    "contribution0AbsMinMax.csv",
+)
 
 
 def _utc_stamp() -> str:
@@ -365,6 +370,26 @@ def _parse_internal_runtime(stdout: str) -> float | None:
     return float(match.group(1))
 
 
+def _archive_abs_stats_files(case_dir: Path, component_label: str) -> dict[str, Path]:
+    archived: dict[str, Path] = {}
+    for basename in _ABS_STATS_ARTIFACT_BASENAMES:
+        path = case_dir / basename
+        if not path.exists():
+            continue
+        archived_path = case_dir / f"{component_label}.{basename}"
+        path.replace(archived_path)
+        archived[path.stem] = archived_path
+    return archived
+
+
+def _collect_abs_stats_files(runs: list[dict[str, Any]]) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {}
+    for run in runs:
+        for stem, path in run.get("abs_stats_files", {}).items():
+            merged.setdefault(str(stem), []).append(str(path))
+    return merged
+
+
 def _build_command(
     *,
     binary: Path,
@@ -482,13 +507,7 @@ def _run_case(
             timing_file=archived_timing_file,
             title=f"Bitstrings compute time distribution ({case['name']}, {component_label})",
         )
-    contribution0_abs_stats_file = case_dir / "contribution0AbsMinMax.csv"
-    archived_contribution0_abs_stats_file: Path | None = None
-    if contribution0_abs_stats_file.exists():
-        archived_contribution0_abs_stats_file = (
-            case_dir / f"{component_label}.contribution0AbsMinMax.csv"
-        )
-        contribution0_abs_stats_file.replace(archived_contribution0_abs_stats_file)
+    archived_abs_stats_files = _archive_abs_stats_files(case_dir, component_label)
 
     return {
         "name": case["name"],
@@ -505,7 +524,8 @@ def _run_case(
         "history_seed": case.get("history_seed"),
         "timing_file": archived_timing_file,
         "timing_histograms": timing_histograms,
-        "contribution0_abs_stats_file": archived_contribution0_abs_stats_file,
+        "abs_stats_files": archived_abs_stats_files,
+        "contribution0_abs_stats_file": archived_abs_stats_files.get("contribution0AbsMinMax"),
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "wall_time_s": wall_time_s,
@@ -1021,6 +1041,7 @@ def _run_case_estimator(
                 for run in component_runs
                 for path in run.get("timing_histograms", [])
             ],
+            "abs_stats_files": _collect_abs_stats_files(component_runs),
             "contribution0_abs_stats_files": [
                 str(run["contribution0_abs_stats_file"])
                 for run in component_runs
@@ -1068,6 +1089,7 @@ def _run_case_estimator(
             [str(single_run["timing_file"])] if single_run.get("timing_file") is not None else []
         ),
         "timing_histograms": [str(path) for path in single_run.get("timing_histograms", [])],
+        "abs_stats_files": _collect_abs_stats_files([single_run]),
         "contribution0_abs_stats_files": (
             [str(single_run["contribution0_abs_stats_file"])]
             if single_run.get("contribution0_abs_stats_file") is not None
@@ -1310,6 +1332,7 @@ def main(argv: list[str] | None = None) -> int:
                 "output_file": str(reference_run["output_file"]),
                 "timing_files": reference_run.get("timing_files", []),
                 "timing_histograms": reference_run.get("timing_histograms", []),
+                "abs_stats_files": reference_run.get("abs_stats_files", {}),
                 "contribution0_abs_stats_files": reference_run.get(
                     "contribution0_abs_stats_files", []
                 ),

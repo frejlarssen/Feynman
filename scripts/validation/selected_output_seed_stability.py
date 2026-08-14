@@ -40,6 +40,11 @@ _AMP_RE = re.compile(
 _INTERNAL_RUNTIME_RE = re.compile(
     r"Total clocktime \(including I/O\) for sv\.cpp:\s+([0-9eE+.\-]+) seconds"
 )
+_ABS_STATS_ARTIFACT_BASENAMES = (
+    "contribution2AbsMinMax.csv",
+    "contribution1AbsMinMax.csv",
+    "contribution0AbsMinMax.csv",
+)
 
 
 def _utc_stamp() -> str:
@@ -270,6 +275,7 @@ def _run_group(
     timing_files: list[str] = []
     timing_histograms: list[str] = []
     contribution0_abs_stats_files: list[str] = []
+    abs_stats_files: dict[str, list[str]] = {}
 
     for history_seed in group["history_seeds"]:
         output_file = group_dir / f"seed_{history_seed}.hsv"
@@ -325,13 +331,17 @@ def _run_group(
                     ),
                 )
             )
-        contribution0_abs_stats_file = group_dir / "contribution0AbsMinMax.csv"
-        if contribution0_abs_stats_file.exists():
-            archived_contribution0_abs_stats_file = (
-                group_dir / f"seed_{history_seed}.contribution0AbsMinMax.csv"
+        for basename in _ABS_STATS_ARTIFACT_BASENAMES:
+            abs_stats_file = group_dir / basename
+            if not abs_stats_file.exists():
+                continue
+            archived_abs_stats_file = group_dir / f"seed_{history_seed}.{basename}"
+            abs_stats_file.replace(archived_abs_stats_file)
+            abs_stats_files.setdefault(abs_stats_file.stem, []).append(
+                str(archived_abs_stats_file)
             )
-            contribution0_abs_stats_file.replace(archived_contribution0_abs_stats_file)
-            contribution0_abs_stats_files.append(str(archived_contribution0_abs_stats_file))
+            if abs_stats_file.stem == "contribution0AbsMinMax":
+                contribution0_abs_stats_files.append(str(archived_abs_stats_file))
         sparse = parse_hsv_sparse(output_file)
         component_vectors.append(_ordered_vector(sparse, subset_indices))
         component_files.append(str(output_file))
@@ -363,6 +373,7 @@ def _run_group(
         "command_logs": command_logs,
         "timing_files": timing_files,
         "timing_histograms": timing_histograms,
+        "abs_stats_files": abs_stats_files,
         "contribution0_abs_stats_files": contribution0_abs_stats_files,
         "wall_time_s": float(sum(wall_times)),
         "internal_runtime_s": (

@@ -97,8 +97,8 @@ inline unsigned int history_sampling_seed() {
 }
 
 TypeAmp chunk_contribution(const Chunk &chunk, TypeLongInt thread,
+                           TypeAmp contribution,
                            TypeAmpReal threshold2 = 0.0) {
-  TypeAmp contribution(1.0, 0.0);
   for (const shared_ptr<Gate> &gateptr : chunk.gates) {
     Gate &gate = *gateptr;
     const auto &qubits_vector = gate.qubits;
@@ -266,8 +266,8 @@ TypeAmp chunk_contribution(const Chunk &chunk, TypeLongInt thread,
     }
 
     // Each gate contributes a single matrix element whose magnitude is at most
-    // 1. Once the running product falls below threshold, the rest of the chunk
-    // cannot bring it back above threshold.
+    // 1. Once the running product falls below threshold, the remaining gates in
+    // this chunk cannot bring the full contribution back above threshold.
     if (threshold2 > 0.0 && std::norm(contribution) < threshold2) {
       return TypeAmp(0.0, 0.0);
     }
@@ -275,7 +275,7 @@ TypeAmp chunk_contribution(const Chunk &chunk, TypeLongInt thread,
   return contribution;
 }
 
-struct Contribution0AbsStats {
+struct AmplitudeAbsStats {
   TypeAmpReal min_nonzero_abs = std::numeric_limits<TypeAmpReal>::infinity();
   TypeAmpReal max_abs = TypeAmpReal(0.0);
   TypeLongInt count = 0;
@@ -291,7 +291,7 @@ struct Contribution0AbsStats {
     ++count;
   }
 
-  void merge_from(const Contribution0AbsStats &other) {
+  void merge_from(const AmplitudeAbsStats &other) {
     if (other.count == 0) {
       return;
     }
@@ -305,10 +305,22 @@ struct Contribution0AbsStats {
   }
 };
 
+struct SimulateAbsStats {
+  AmplitudeAbsStats contribution2;
+  AmplitudeAbsStats contribution1;
+  AmplitudeAbsStats contribution0;
+
+  void merge_from(const SimulateAbsStats &other) {
+    contribution2.merge_from(other.contribution2);
+    contribution1.merge_from(other.contribution1);
+    contribution0.merge_from(other.contribution0);
+  }
+};
+
 TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
                  TypeAmp input_amp, TypeAmpReal fraction,
                  TypeAmpReal threshold = 0.0, int verbosity = 1,
-                 Contribution0AbsStats *contribution0_abs_stats = nullptr) {
+                 SimulateAbsStats *simulate_abs_stats = nullptr) {
   Circuit::validate_chunk_history_capacity("Simulation");
 
   // Debugging that should be printed only by one rank.
@@ -347,8 +359,7 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
   vector<TypeLongInt> par_histories(num_par_histories);
 
   vector<TypeAmp> amplitudes(num_par_histories);
-  vector<Contribution0AbsStats> thread_contribution0_abs_stats(
-      static_cast<size_t>(t_omp));
+  vector<SimulateAbsStats> thread_simulate_abs_stats(static_cast<size_t>(t_omp));
 
   std::srand(history_sampling_seed());
 
@@ -378,7 +389,9 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     }
 
     TypeAmp contribution2 =
-        input_amp * chunk_contribution(chunk2, thread_ind, threshold2);
+        chunk_contribution(chunk2, thread_ind, input_amp, threshold2);
+    thread_simulate_abs_stats.at(static_cast<size_t>(thread_ind))
+        .contribution2.observe(contribution2);
 
     // Check if amplitude so far is small enough to neglect.
     if (std::norm(contribution2) < threshold2) {
@@ -411,7 +424,9 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
       }
 
       const TypeAmp contribution1 =
-          contribution2 * chunk_contribution(chunk1, thread_ind, threshold2);
+          chunk_contribution(chunk1, thread_ind, contribution2, threshold2);
+      thread_simulate_abs_stats.at(static_cast<size_t>(thread_ind))
+          .contribution1.observe(contribution1);
       if (std::norm(contribution1) < threshold2)
         continue;
 
@@ -437,9 +452,9 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
         // contribution1.imag());
 
         TypeAmp contribution0 =
-            contribution1 * chunk_contribution(chunk0, thread_ind, threshold2);
-        thread_contribution0_abs_stats.at(static_cast<size_t>(thread_ind))
-            .observe(contribution0);
+            chunk_contribution(chunk0, thread_ind, contribution1, threshold2);
+        thread_simulate_abs_stats.at(static_cast<size_t>(thread_ind))
+            .contribution0.observe(contribution0);
 
         // std::printf("    Contribution from history %ld%ld%ld: %f + i%f\n",
         // history0, history1, history2, contribution0.real(),
@@ -462,10 +477,9 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
   auto total_amplitude = parallel_reduce(
       0, num_par_histories, [&](size_t i) { return amplitudes[i]; });
 
-  if (contribution0_abs_stats != nullptr) {
-    for (const Contribution0AbsStats &thread_stats :
-         thread_contribution0_abs_stats) {
-      contribution0_abs_stats->merge_from(thread_stats);
+  if (simulate_abs_stats != nullptr) {
+    for (const SimulateAbsStats &thread_stats : thread_simulate_abs_stats) {
+      simulate_abs_stats->merge_from(thread_stats);
     }
   }
 
