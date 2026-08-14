@@ -197,6 +197,20 @@ def _default_output(summary_csv: Path | None, status_filter: str) -> Path:
     return REPO_ROOT / "untracked" / f"timebitstrings_hist{suffix}.pdf"
 
 
+def _timing_file_output_name(timing_file: Path, status_filter: str) -> str:
+    suffix = "" if status_filter == "all" else f"_{status_filter}"
+    name = timing_file.name
+    for ext in (".timeBitstrings.tm", ".tm"):
+        if name.endswith(ext):
+            stem = name[: -len(ext)]
+            break
+    else:
+        stem = timing_file.stem
+    if stem in ("", "timeBitstrings"):
+        return f"timebitstrings_hist{suffix}.pdf"
+    return f"{stem}_timebitstrings_hist{suffix}.pdf"
+
+
 def _default_title(summary_csv: Path | None, series: list[TimingSeries]) -> str:
     if summary_csv is None:
         return "Bitstrings compute time distribution"
@@ -204,6 +218,11 @@ def _default_title(summary_csv: Path | None, series: list[TimingSeries]) -> str:
     if labels and all(label.endswith(" batches") for label in labels):
         return "Per-bitstring compute time distribution by batch count"
     return "Bitstrings compute time distribution"
+
+
+def _default_title_for_timing_file(timing_file: Path) -> str:
+    parent = timing_file.parent.name
+    return f"Bitstrings compute time distribution ({parent})"
 
 
 def plot_histogram(
@@ -289,6 +308,42 @@ def auto_plot_timebitstrings_histograms(
                 series=filtered,
                 output_path=output_path,
                 title=title or _default_title(summary_path, filtered),
+                bins=bins,
+                label_fontsize=label_fontsize,
+            )
+        )
+    return saved
+
+
+def auto_plot_timing_file_histograms(
+    *,
+    timing_file: Path,
+    output_dir: Path | None = None,
+    title: str | None = None,
+    bins: int = 40,
+    label_fontsize: float | None = None,
+) -> list[Path]:
+    timing_path = timing_file.resolve()
+    if not timing_path.exists():
+        raise FileNotFoundError(f"Timing file not found: {timing_path}")
+    times, statuses = _parse_tm(timing_path)
+    base_series = [TimingSeries(label=timing_path.parent.name or timing_path.stem, paths=(timing_path,), times=times, statuses=statuses)]
+    statuses_present = {status for status in statuses}
+    status_filters = ["all"]
+    for status in ("supported", "rejected"):
+        if status in statuses_present:
+            status_filters.append(status)
+
+    saved: list[Path] = []
+    dest_dir = output_dir.resolve() if output_dir is not None else timing_path.parent
+    for status_filter in status_filters:
+        filtered = _filter_series(base_series, status_filter)
+        output_path = dest_dir / _timing_file_output_name(timing_path, status_filter)
+        saved.append(
+            plot_histogram(
+                series=filtered,
+                output_path=output_path,
+                title=title or _default_title_for_timing_file(timing_path),
                 bins=bins,
                 label_fontsize=label_fontsize,
             )

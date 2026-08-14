@@ -101,12 +101,25 @@ def recompute_population_fidelity_by_case(comparison_csv: Path) -> dict[str, flo
     return fidelities
 
 
-def load_fraction_tradeoff_rows(
+def _infer_tradeoff_param(rows: list[dict[str, Any]]) -> str:
+    approx_rows = [row for row in rows if not bool(row["is_reference"])]
+    fractions = {float(row["fraction"]) for row in approx_rows}
+    thresholds = {float(row["threshold"]) for row in approx_rows}
+    if len(fractions) >= 2 and len(thresholds) <= 1:
+        return "fraction"
+    if len(thresholds) >= 2 and len(fractions) <= 1:
+        return "threshold"
+    raise ValueError(
+        "Selected-output tradeoff auto-plot requires a one-parameter sweep in fraction or threshold."
+    )
+
+
+def load_tradeoff_rows(
     *,
     summary_csv: Path,
     comparison_csv: Path,
     time_column: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], str]:
     summary_rows = _load_summary_rows(summary_csv)
     fidelities = recompute_population_fidelity_by_case(comparison_csv)
 
@@ -114,13 +127,15 @@ def load_fraction_tradeoff_rows(
     for row in summary_rows:
         case_name = row.get("case_name", "")
         fraction = _to_float(row.get("fraction"))
+        threshold = _to_float(row.get("threshold"))
         runtime_s = _to_float(row.get(time_column))
-        if not case_name or fraction is None or runtime_s is None:
+        if not case_name or fraction is None or threshold is None or runtime_s is None:
             continue
         rows.append(
             {
                 "case_name": case_name,
                 "fraction": fraction,
+                "threshold": threshold,
                 "runtime_s": runtime_s,
                 "population_estimator": row.get("population_estimator", ""),
                 "population_fidelity": 1.0 if case_name == "exact_reference" else fidelities.get(case_name, 0.0),
@@ -131,19 +146,15 @@ def load_fraction_tradeoff_rows(
     if not rows:
         raise ValueError(f"No plottable rows found in summary CSV: {summary_csv}")
 
-    non_reference_fractions = {
-        float(row["fraction"]) for row in rows if not bool(row["is_reference"])
-    }
-    if len(non_reference_fractions) < 2:
-        raise ValueError(
-            "Need at least two distinct non-reference fraction values to plot a fraction tradeoff."
-        )
-
-    return sorted(rows, key=lambda item: (float(item["fraction"]), str(item["case_name"])))
+    tradeoff_param = _infer_tradeoff_param(rows)
+    return (
+        sorted(rows, key=lambda item: (float(item[tradeoff_param]), str(item["case_name"]))),
+        tradeoff_param,
+    )
 
 
 def default_output(summary_csv: Path) -> Path:
-    return summary_csv.parent / "fraction_tradeoff.pdf"
+    return summary_csv.parent / "selected_output_tradeoff.pdf"
 
 
 def _format_fraction_tick(value: float, *, has_reference_one: bool) -> str:
@@ -156,7 +167,23 @@ def _format_fraction_tick(value: float, *, has_reference_one: bool) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
-def plot_fraction_tradeoff(
+def _default_output_for_param(summary_csv: Path, tradeoff_param: str) -> Path:
+    if tradeoff_param == "fraction":
+        return summary_csv.parent / "fraction_tradeoff.pdf"
+    if tradeoff_param == "threshold":
+        return summary_csv.parent / "threshold_tradeoff.pdf"
+    return default_output(summary_csv)
+
+
+def _tradeoff_axis_label(tradeoff_param: str) -> str:
+    if tradeoff_param == "fraction":
+        return "Chunk-2 sampling fraction"
+    if tradeoff_param == "threshold":
+        return "Threshold $t$"
+    return tradeoff_param.replace("_", " ").title()
+
+
+def plot_selected_output_tradeoff(
     *,
     summary_csv: Path,
     comparison_csv: Path | None = None,
@@ -176,7 +203,7 @@ def plot_fraction_tradeoff(
     if not comparison_path.exists():
         raise FileNotFoundError(f"Comparison CSV not found: {comparison_path}")
 
-    rows = load_fraction_tradeoff_rows(
+    rows, tradeoff_param = load_tradeoff_rows(
         summary_csv=summary_path,
         comparison_csv=comparison_path,
         time_column=time_column,
@@ -231,7 +258,7 @@ def plot_fraction_tradeoff(
         if not series:
             continue
         color, marker = estimator_styles[index % len(estimator_styles)]
-        x_values = [float(row["fraction"]) for row in series]
+        x_values = [float(row[tradeoff_param]) for row in series]
         runtime_values = [float(row["runtime_s"]) for row in series]
         fidelity_values = [float(row["population_fidelity"]) for row in series]
         label = (
@@ -259,31 +286,68 @@ def plot_fraction_tradeoff(
     ax_time.set_ylabel("Runtime [s]")
     ax_time.grid(True, alpha=0.3, linewidth=0.5)
 
-    ax_fidelity.set_xlabel("Chunk-2 sampling fraction")
+    ax_fidelity.set_xlabel(_tradeoff_axis_label(tradeoff_param))
     ax_fidelity.set_ylabel("Population fidelity")
     ax_fidelity.set_ylim(0.0, 1.05)
     ax_fidelity.grid(True, alpha=0.3, linewidth=0.5)
 
     if reference_row is not None:
-        x_ref = [float(reference_row["fraction"])]
+        x_ref = [float(reference_row[tradeoff_param])]
         y_ref_runtime = [float(reference_row["runtime_s"])]
         y_ref_fidelity = [float(reference_row["population_fidelity"])]
         ax_time.scatter(x_ref, y_ref_runtime, color="black", marker="*", s=42, zorder=3, label="Exact reference")
         ax_fidelity.scatter(x_ref, y_ref_fidelity, color="black", marker="*", s=42, zorder=3)
     ax_time.legend(loc="upper left", frameon=False, handlelength=1.8)
 
-    all_fractions = sorted({float(row["fraction"]) for row in rows})
-    ax_fidelity.set_xticks(all_fractions)
-    has_reference_one = any(abs(value - 1.0) < 1e-12 for value in all_fractions)
-    ax_fidelity.set_xticklabels(
-        [_format_fraction_tick(value, has_reference_one=has_reference_one) for value in all_fractions]
-    )
-    ax_fidelity.set_xlim(min(all_fractions) - 0.02, max(all_fractions) + 0.02)
+    all_x = sorted({float(row[tradeoff_param]) for row in rows})
+    if tradeoff_param == "fraction":
+        ax_fidelity.set_xticks(all_x)
+        has_reference_one = any(abs(value - 1.0) < 1e-12 for value in all_x)
+        ax_fidelity.set_xticklabels(
+            [_format_fraction_tick(value, has_reference_one=has_reference_one) for value in all_x]
+        )
+        ax_fidelity.set_xlim(min(all_x) - 0.02, max(all_x) + 0.02)
+    elif tradeoff_param == "threshold":
+        positives = [value for value in all_x if value > 0.0]
+        linthresh = min(positives) if positives else 1e-12
+        ax_time.set_xscale("symlog", linthresh=linthresh)
+        ax_fidelity.set_xscale("symlog", linthresh=linthresh)
+        ax_fidelity.set_xticks(all_x)
+        labels = []
+        for value in all_x:
+            if abs(value) < 1e-300:
+                labels.append("0")
+            else:
+                labels.append(f"{value:.0e}".replace("+0", "").replace("+", ""))
+        ax_fidelity.set_xticklabels(labels)
 
     ax_time.set_title(plot_title)
 
-    output_path = output.resolve() if output is not None else default_output(summary_path)
+    output_path = (
+        output.resolve()
+        if output is not None
+        else _default_output_for_param(summary_path, tradeoff_param)
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
     return output_path
+
+
+def plot_fraction_tradeoff(
+    *,
+    summary_csv: Path,
+    comparison_csv: Path | None = None,
+    output: Path | None = None,
+    time_column: str = "internal_runtime_s",
+    title: str | None = None,
+    label_fontsize: float | None = None,
+) -> Path:
+    return plot_selected_output_tradeoff(
+        summary_csv=summary_csv,
+        comparison_csv=comparison_csv,
+        output=output,
+        time_column=time_column,
+        title=title,
+        label_fontsize=label_fontsize,
+    )

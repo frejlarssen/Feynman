@@ -23,6 +23,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from plot_timebitstrings_hist import auto_plot_timing_file_histograms
 from sweeplib.materialize import (
     infer_circuit_qubits,
     resolve_circuit_input,
@@ -266,6 +267,8 @@ def _run_group(
     command_logs: list[str] = []
     wall_times: list[float] = []
     internal_runtimes: list[float] = []
+    timing_files: list[str] = []
+    timing_histograms: list[str] = []
 
     for history_seed in group["history_seeds"]:
         output_file = group_dir / f"seed_{history_seed}.hsv"
@@ -306,6 +309,21 @@ def _run_group(
                 f"Group {group['name']!r}, seed {history_seed} failed with return code {proc.returncode}. "
                 f"See {stderr_log}"
             )
+        timing_file = group_dir / "timeBitstrings.tm"
+        if timing_file.exists():
+            archived_timing_file = group_dir / f"seed_{history_seed}.timeBitstrings.tm"
+            timing_file.replace(archived_timing_file)
+            timing_files.append(str(archived_timing_file))
+            timing_histograms.extend(
+                str(path)
+                for path in auto_plot_timing_file_histograms(
+                    timing_file=archived_timing_file,
+                    title=(
+                        "Bitstrings compute time distribution "
+                        f"({group['name']}, seed {history_seed})"
+                    ),
+                )
+            )
         sparse = parse_hsv_sparse(output_file)
         component_vectors.append(_ordered_vector(sparse, subset_indices))
         component_files.append(str(output_file))
@@ -335,6 +353,8 @@ def _run_group(
         "stdout_logs": stdout_logs,
         "stderr_logs": stderr_logs,
         "command_logs": command_logs,
+        "timing_files": timing_files,
+        "timing_histograms": timing_histograms,
         "wall_time_s": float(sum(wall_times)),
         "internal_runtime_s": (
             float(sum(internal_runtimes)) if len(internal_runtimes) == len(wall_times) else None

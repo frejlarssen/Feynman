@@ -21,6 +21,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import numpy as np
+from plot_timebitstrings_hist import auto_plot_timing_file_histograms
 from sweeplib.materialize import (
     infer_circuit_qubits,
     resolve_circuit_input,
@@ -28,7 +29,7 @@ from sweeplib.materialize import (
     resolve_statevector_input,
 )
 from sweeplib.utils import experiment_tag_from_config
-from validation.selected_output_accuracy_plotting import plot_fraction_tradeoff
+from validation.selected_output_accuracy_plotting import plot_selected_output_tradeoff
 
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -464,6 +465,17 @@ def _run_case(
             f"See {stdout_log} and {stderr_log}"
         )
 
+    timing_file = case_dir / "timeBitstrings.tm"
+    archived_timing_file: Path | None = None
+    timing_histograms: list[Path] = []
+    if timing_file.exists():
+        archived_timing_file = case_dir / f"{component_label}.timeBitstrings.tm"
+        timing_file.replace(archived_timing_file)
+        timing_histograms = auto_plot_timing_file_histograms(
+            timing_file=archived_timing_file,
+            title=f"Bitstrings compute time distribution ({case['name']}, {component_label})",
+        )
+
     return {
         "name": case["name"],
         "fraction": float(case["fraction"]),
@@ -477,6 +489,8 @@ def _run_case(
         "stderr_log": stderr_log,
         "command_log": command_log,
         "history_seed": case.get("history_seed"),
+        "timing_file": archived_timing_file,
+        "timing_histograms": timing_histograms,
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "wall_time_s": wall_time_s,
@@ -939,6 +953,14 @@ def _run_case_estimator(
             "output_file": population_file,
             "stdout_log": component_runs[0]["stdout_log"],
             "stderr_log": component_runs[0]["stderr_log"],
+            "timing_files": [
+                str(run["timing_file"]) for run in component_runs if run.get("timing_file") is not None
+            ],
+            "timing_histograms": [
+                str(path)
+                for run in component_runs
+                for path in run.get("timing_histograms", [])
+            ],
             "approx_vec": None,
             "approx_pop": approx_pop,
             "wall_time_s": float(sum(run["wall_time_s"] for run in component_runs)),
@@ -977,6 +999,10 @@ def _run_case_estimator(
         "output_file": single_run["output_file"],
         "stdout_log": single_run["stdout_log"],
         "stderr_log": single_run["stderr_log"],
+        "timing_files": (
+            [str(single_run["timing_file"])] if single_run.get("timing_file") is not None else []
+        ),
+        "timing_histograms": [str(path) for path in single_run.get("timing_histograms", [])],
         "approx_vec": approx_vec,
         "approx_pop": np.abs(approx_vec) ** 2,
         "wall_time_s": single_run["wall_time_s"],
@@ -1023,7 +1049,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.plot_only:
         if args.summary_csv is None:
             raise ValueError("--plot-only requires --summary-csv.")
-        saved_path = plot_fraction_tradeoff(
+        saved_path = plot_selected_output_tradeoff(
             summary_csv=args.summary_csv,
             comparison_csv=args.comparison_csv,
             output=args.plot_output,
@@ -1148,16 +1174,16 @@ def main(argv: list[str] | None = None) -> int:
         nonzero_eps=float(cfg["nonzero_eps"]),
     )
     _write_summary_csv(summary_csv, case_rows)
-    fraction_plot_path: Path | None = None
+    tradeoff_plot_path: Path | None = None
     try:
-        fraction_plot_path = plot_fraction_tradeoff(
+        tradeoff_plot_path = plot_selected_output_tradeoff(
             summary_csv=summary_csv,
             comparison_csv=comparison_csv,
             time_column=args.time_column,
             label_fontsize=args.label_fontsize,
         )
     except ValueError:
-        fraction_plot_path = None
+        tradeoff_plot_path = None
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -1174,7 +1200,7 @@ def main(argv: list[str] | None = None) -> int:
             "reference_outputs_csv": str(reference_csv),
             "comparison_csv": str(comparison_csv),
             "summary_csv": str(summary_csv),
-            "fraction_tradeoff_plot": str(fraction_plot_path) if fraction_plot_path else None,
+            "selected_output_tradeoff_plot": str(tradeoff_plot_path) if tradeoff_plot_path else None,
         },
         "generated_inputs": {
             "circuit": circuit_generated,
@@ -1188,6 +1214,8 @@ def main(argv: list[str] | None = None) -> int:
             "wall_time_s": reference_run["wall_time_s"],
             "internal_runtime_s": reference_run["internal_runtime_s"],
             "output_file": str(reference_run["output_file"]),
+            "timing_files": reference_run.get("timing_files", []),
+            "timing_histograms": reference_run.get("timing_histograms", []),
         },
         "cases": case_rows,
     }
@@ -1200,8 +1228,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Run directory: {run_dir}")
     print(f"Summary CSV: {summary_csv}")
     print(f"Comparison CSV: {comparison_csv}")
-    if fraction_plot_path is not None:
-        print(f"Fraction plot: {fraction_plot_path}")
+    if tradeoff_plot_path is not None:
+        print(f"Tradeoff plot: {tradeoff_plot_path}")
     return 0
 
 
