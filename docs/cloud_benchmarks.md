@@ -302,10 +302,17 @@ python scripts/plot_cloud_benchmark.py \
   --metric simulate_stage_elapsed_seconds
 ```
 
-The plot also overlays a strong-scaling efficiency line by default. It uses
-the smallest plotted batch count as the baseline, so efficiency is computed as:
+Wall-clock and `simulate_stage_elapsed_seconds` plots overlay a strong-scaling
+efficiency line by default. It uses the smallest plotted batch count as the
+baseline, so efficiency is computed as:
 
 `efficiency(b) = 100 * T_base * batches_base / (T_b * b)`
+
+For the default wall-clock metric (`elapsed_seconds`), the plot uses log-log
+scales on the primary axes. The efficiency overlay keeps its y-axis linear.
+Mean-per-task and worker-internal plots do not show the efficiency overlay by
+default, because the generic strong-scaling formula is hard to interpret for
+those metrics.
 
 Disable it with:
 

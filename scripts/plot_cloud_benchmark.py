@@ -24,6 +24,7 @@ METRIC_LABELS = {
     "elapsed_seconds": "Wall-clock time [s]",
     "simulate_stage_elapsed_seconds": "simulate_batch stage span [s]",
     "simulate_task_instance_seconds_sum": "Summed simulate_batch task-instance time [s]",
+    "simulate_task_instance_seconds_mean": "Mean simulate_batch task-instance time [s]",
     "simulate_autotuning_seconds_sum": "Summed worker autotuning time [s]",
     "simulate_autotuning_seconds_mean": "Mean worker autotuning time [s]",
     "simulate_worker_full_seconds_sum": "Summed worker full time [s]",
@@ -36,6 +37,7 @@ METRIC_TITLES = {
     "elapsed_seconds": "Cloud wall time",
     "simulate_stage_elapsed_seconds": "Cloud simulate span",
     "simulate_task_instance_seconds_sum": "Summed simulate task time",
+    "simulate_task_instance_seconds_mean": "Mean simulate task time",
     "simulate_autotuning_seconds_sum": "Summed autotuning time",
     "simulate_autotuning_seconds_mean": "Mean autotuning time",
     "simulate_worker_full_seconds_sum": "Summed worker time",
@@ -44,6 +46,27 @@ METRIC_TITLES = {
     "simulate_worker_simulate_calls_seconds_mean": "Mean simulate() time",
 }
 EFFICIENCY_LINE_COLOR = "#2F4858"
+EFFICIENCY_DEFAULT_METRICS = {
+    "elapsed_seconds",
+    "simulate_stage_elapsed_seconds",
+}
+
+
+def _metric_value(row: dict[str, str], *, metric: str) -> float | None:
+    if metric == "simulate_task_instance_seconds_mean":
+        raw_sum = row.get("simulate_task_instance_seconds_sum", "").strip()
+        raw_count = row.get("simulate_finished_task_instance_count", "").strip()
+        if not raw_sum or not raw_count:
+            return None
+        count = int(raw_count)
+        if count <= 0:
+            return None
+        return float(raw_sum) / count
+
+    raw_value = row.get(metric, "").strip()
+    if not raw_value:
+        return None
+    return float(raw_value)
 
 
 def _load_rows(summary_csv: Path) -> list[dict[str, str]]:
@@ -72,10 +95,10 @@ def _to_groups(rows: list[dict[str, str]], *, metric: str) -> dict[int, list[flo
         if not raw_x:
             continue
         x_value = int(raw_x)
-        raw_value = row.get(metric, "").strip()
-        if not raw_value:
+        value = _metric_value(row, metric=metric)
+        if value is None:
             continue
-        elapsed = float(raw_value)
+        elapsed = value
         if math.isnan(elapsed):
             continue
         groups.setdefault(x_value, []).append(elapsed)
@@ -107,7 +130,15 @@ def _default_output(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
 
 
 def _default_title(summary_csv: Path, *, metric: str, experiment_tags: list[str]) -> str:
-    return "Strong scaling"
+    if metric in {"elapsed_seconds", "simulate_stage_elapsed_seconds"}:
+        return "Strong scaling"
+    return METRIC_TITLES[metric]
+
+
+def _metric_axis_scales(*, metric: str, label_kind: str) -> tuple[str, str]:
+    xscale = "log" if label_kind == "pool_slots" else "linear"
+    yscale = "log" if metric == "elapsed_seconds" else "linear"
+    return (xscale, yscale)
 
 
 def _strong_scaling_efficiency_percent(
@@ -132,6 +163,12 @@ def _strong_scaling_efficiency_percent(
             continue
         efficiencies.append(100.0 * baseline_time * baseline_x / (elapsed * x_value))
     return efficiencies
+
+
+def _should_plot_efficiency(*, metric: str, no_efficiency: bool) -> bool:
+    if no_efficiency:
+        return False
+    return metric in EFFICIENCY_DEFAULT_METRICS
 
 
 def parse_args() -> argparse.Namespace:
@@ -198,6 +235,7 @@ def main() -> int:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
 
     apply_plot_fontsizes(plt=plt, label_fontsize=args.label_fontsize)
 
@@ -238,7 +276,7 @@ def main() -> int:
     )
 
     legend_handles, legend_labels = ax.get_legend_handles_labels()
-    if not args.no_efficiency:
+    if _should_plot_efficiency(metric=args.metric, no_efficiency=args.no_efficiency):
         efficiency_ys = _strong_scaling_efficiency_percent(
             x_sorted=x_sorted,
             mean_ys=mean_ys,
@@ -261,6 +299,12 @@ def main() -> int:
 
     ax.set_xlabel(_label_axis_text(label_kind))
     ax.set_ylabel(METRIC_LABELS[args.metric])
+    xscale, yscale = _metric_axis_scales(metric=args.metric, label_kind=label_kind)
+    ax.set_xscale(xscale)
+    ax.set_yscale(yscale)
+    ax.set_xticks(x_sorted)
+    ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("%d"))
+    ax.xaxis.set_minor_locator(mticker.NullLocator())
     title = (
         args.title
         if args.title is not None
