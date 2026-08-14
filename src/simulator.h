@@ -409,8 +409,8 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     thread_simulate_abs_stats.at(static_cast<size_t>(thread_ind))
         .contribution2.observe(contribution2);
 
-    // Check if amplitude so far is small enough to neglect.
-    if (std::norm(contribution2) < threshold2) {
+    // Exact zero is absorbing across later chunks too.
+    if (std::norm(contribution2) == 0.0 || std::norm(contribution2) < threshold2) {
       amplitudes[history2_ind] = TypeAmp{0.0, 0.0};
       reset_thread_chunks();
       return;
@@ -444,7 +444,8 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
           chunk_contribution(chunk1, thread_ind, contribution2, threshold2);
       thread_simulate_abs_stats.at(static_cast<size_t>(thread_ind))
           .contribution1.observe(contribution1);
-      if (std::norm(contribution1) < threshold2)
+      if (std::norm(contribution1) == 0.0 ||
+          std::norm(contribution1) < threshold2)
         continue;
 
       // std::printf("  Contribution from history -%ld%ld: %f + i%f\n",
