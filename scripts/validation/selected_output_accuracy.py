@@ -246,27 +246,33 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
     if defaults["batch_size"] is not None:
         defaults["batch_size"] = int(defaults["batch_size"])
 
-    reference_raw = cfg.get("reference", {}) or {}
-    if not isinstance(reference_raw, dict):
-        raise ValueError("'reference' must be an object when present.")
-    reference_defaults = dict(defaults)
-    reference_defaults["fraction"] = 1.0
-    reference_defaults["threshold"] = 0.0
-    reference_defaults["population_estimator"] = "amplitude_square"
-    if defaults["history_seed"] is not None:
-        reference_defaults["history_seed"] = defaults["history_seed"]
-    elif defaults["history_seeds"] is not None and defaults["history_seeds"]:
-        reference_defaults["history_seed"] = int(defaults["history_seeds"][0])
-    else:
-        reference_defaults["history_seed"] = 1
-    reference_defaults["history_seeds"] = None
-    reference = _normalize_run_case(
-        reference_raw,
-        defaults=reference_defaults,
-        fallback_name="exact_reference",
-    )
-    if reference["population_estimator"] != "amplitude_square":
-        raise ValueError("Reference run must use population_estimator='amplitude_square'.")
+    compute_reference = bool(cfg.get("compute_reference", True))
+    if args.skip_reference:
+        compute_reference = False
+
+    reference = None
+    if compute_reference:
+        reference_raw = cfg.get("reference", {}) or {}
+        if not isinstance(reference_raw, dict):
+            raise ValueError("'reference' must be an object when present.")
+        reference_defaults = dict(defaults)
+        reference_defaults["fraction"] = 1.0
+        reference_defaults["threshold"] = 0.0
+        reference_defaults["population_estimator"] = "amplitude_square"
+        if defaults["history_seed"] is not None:
+            reference_defaults["history_seed"] = defaults["history_seed"]
+        elif defaults["history_seeds"] is not None and defaults["history_seeds"]:
+            reference_defaults["history_seed"] = int(defaults["history_seeds"][0])
+        else:
+            reference_defaults["history_seed"] = 1
+        reference_defaults["history_seeds"] = None
+        reference = _normalize_run_case(
+            reference_raw,
+            defaults=reference_defaults,
+            fallback_name="exact_reference",
+        )
+        if reference["population_estimator"] != "amplitude_square":
+            raise ValueError("Reference run must use population_estimator='amplitude_square'.")
 
     cases = _parse_sweep_cases(cfg, defaults=defaults)
 
@@ -282,6 +288,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "input_statevector": _pick(cfg, "input_statevector", args.input_statevector, None),
         "output_bitstrings": _pick(cfg, "output_bitstrings", args.output_bitstrings, None),
         "nonzero_eps": float(_pick(cfg, "nonzero_eps", args.nonzero_eps, 1e-12)),
+        "compute_reference": compute_reference,
         "vary": cfg.get("vary"),
         "values": list(cfg.get("values", [])) if isinstance(cfg.get("values"), list) else None,
         "defaults": defaults,
@@ -683,6 +690,51 @@ def _compute_metrics(
     }
 
 
+def _compute_metrics_without_reference(
+    *,
+    subset_indices: list[int],
+    approx_vec: np.ndarray | None,
+    approx_pop: np.ndarray,
+    nonzero_eps: float,
+) -> dict[str, Any]:
+    pop_nonzero_eps = nonzero_eps * nonzero_eps
+    cur_pop_nonnegative = np.clip(approx_pop, 0.0, None)
+    approx_selected_mass = float(np.sum(approx_pop))
+    approx_nonnegative_selected_mass = float(np.sum(cur_pop_nonnegative))
+    negative_population_count = int(np.count_nonzero(approx_pop < 0.0))
+
+    if approx_vec is not None:
+        cur_nonzero_count = int(np.count_nonzero(np.abs(approx_vec) > nonzero_eps))
+    else:
+        cur_nonzero_count = int(np.count_nonzero(approx_pop > pop_nonzero_eps))
+
+    return {
+        "subset_size": len(subset_indices),
+        "reference_nonzero_count": None,
+        "approx_nonzero_count": cur_nonzero_count,
+        "support_intersection_count": None,
+        "support_retention": None,
+        "support_precision": None,
+        "reference_selected_mass": None,
+        "approx_selected_mass": approx_selected_mass,
+        "approx_nonnegative_selected_mass": approx_nonnegative_selected_mass,
+        "mass_retention": None,
+        "nonnegative_mass_retention": None,
+        "negative_population_count": negative_population_count,
+        "fidelity_metric": None,
+        "fidelity_to_reference": None,
+        "amplitude_fidelity_to_reference": None,
+        "selected_population_fidelity_to_reference": None,
+        "l2_abs_error": None,
+        "weighted_relative_l2_error": None,
+        "max_abs_amp_error": None,
+        "mean_abs_amp_error": None,
+        "max_abs_population_error": None,
+        "mean_abs_population_error": None,
+        "mean_relative_abs_amp_error_on_reference_support": None,
+    }
+
+
 def _build_summary_row(
     *,
     case_name: str,
@@ -1041,6 +1093,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plot-title", default=None)
     parser.add_argument("--label-fontsize", type=float, default=None)
     parser.add_argument("--time-column", default="internal_runtime_s")
+    parser.add_argument(
+        "--skip-reference",
+        action="store_true",
+        help="Skip the exact reference run and leave reference-dependent outputs blank.",
+    )
     return parser.parse_args(argv)
 
 
@@ -1085,41 +1142,45 @@ def main(argv: list[str] | None = None) -> int:
     subset_indices, size_bytes = parse_hs(output_bitstrings)
 
     run_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
-    reference_run = _run_case_estimator(
-        repo_root=repo_root,
-        binary=binary,
-        mpirun=str(cfg["mpirun"]),
-        ranks=int(cfg["ranks"]),
-        circuit=circuit,
-        input_statevector=input_statevector,
-        output_bitstrings=output_bitstrings,
-        feynman_env={str(k): str(v) for k, v in cfg["feynman_env"].items()},
-        case=cfg["reference"],
-        run_dir=run_dir,
-        subset_indices=subset_indices,
-        size_bytes=size_bytes,
-        run_cache=run_cache,
-    )
-    reference_vec = reference_run["approx_vec"]
-    if reference_vec is None:
-        raise RuntimeError("Reference run must produce amplitudes.")
-
+    reference_run: dict[str, Any] | None = None
+    reference_vec: np.ndarray | None = None
     case_records: dict[str, dict[str, Any]] = {}
     case_rows: list[dict[str, Any]] = []
-    reference_metrics = _compute_metrics(
-        subset_indices=subset_indices,
-        reference_vec=reference_vec,
-        approx_vec=reference_vec,
-        approx_pop=np.abs(reference_vec) ** 2,
-        nonzero_eps=float(cfg["nonzero_eps"]),
-    )
-    case_rows.append(
-        _build_summary_row(
-            case_name=reference_run["name"],
-            run_result=reference_run,
-            metrics=reference_metrics,
+
+    if bool(cfg["compute_reference"]):
+        reference_run = _run_case_estimator(
+            repo_root=repo_root,
+            binary=binary,
+            mpirun=str(cfg["mpirun"]),
+            ranks=int(cfg["ranks"]),
+            circuit=circuit,
+            input_statevector=input_statevector,
+            output_bitstrings=output_bitstrings,
+            feynman_env={str(k): str(v) for k, v in cfg["feynman_env"].items()},
+            case=cfg["reference"],
+            run_dir=run_dir,
+            subset_indices=subset_indices,
+            size_bytes=size_bytes,
+            run_cache=run_cache,
         )
-    )
+        reference_vec = reference_run["approx_vec"]
+        if reference_vec is None:
+            raise RuntimeError("Reference run must produce amplitudes.")
+
+        reference_metrics = _compute_metrics(
+            subset_indices=subset_indices,
+            reference_vec=reference_vec,
+            approx_vec=reference_vec,
+            approx_pop=np.abs(reference_vec) ** 2,
+            nonzero_eps=float(cfg["nonzero_eps"]),
+        )
+        case_rows.append(
+            _build_summary_row(
+                case_name=reference_run["name"],
+                run_result=reference_run,
+                metrics=reference_metrics,
+            )
+        )
     for case in cfg["cases"]:
         case_run = _run_case_estimator(
             repo_root=repo_root,
@@ -1136,18 +1197,26 @@ def main(argv: list[str] | None = None) -> int:
             size_bytes=size_bytes,
             run_cache=run_cache,
         )
-        case_records[case["name"]] = {
-            "approx_vec": case_run["approx_vec"],
-            "approx_pop": case_run["approx_pop"],
-            "population_estimator": case_run["population_estimator"],
-        }
-        metrics = _compute_metrics(
-            subset_indices=subset_indices,
-            reference_vec=reference_vec,
-            approx_vec=case_run["approx_vec"],
-            approx_pop=case_run["approx_pop"],
-            nonzero_eps=float(cfg["nonzero_eps"]),
-        )
+        if reference_vec is not None:
+            case_records[case["name"]] = {
+                "approx_vec": case_run["approx_vec"],
+                "approx_pop": case_run["approx_pop"],
+                "population_estimator": case_run["population_estimator"],
+            }
+            metrics = _compute_metrics(
+                subset_indices=subset_indices,
+                reference_vec=reference_vec,
+                approx_vec=case_run["approx_vec"],
+                approx_pop=case_run["approx_pop"],
+                nonzero_eps=float(cfg["nonzero_eps"]),
+            )
+        else:
+            metrics = _compute_metrics_without_reference(
+                subset_indices=subset_indices,
+                approx_vec=case_run["approx_vec"],
+                approx_pop=case_run["approx_pop"],
+                nonzero_eps=float(cfg["nonzero_eps"]),
+            )
         case_rows.append(
             _build_summary_row(
                 case_name=case["name"],
@@ -1156,34 +1225,38 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
 
-    reference_csv = run_dir / "reference_outputs.csv"
-    comparison_csv = run_dir / "comparison.csv"
+    reference_csv: Path | None = None
+    comparison_csv: Path | None = None
     summary_csv = run_dir / "summary.csv"
-    _write_reference_csv(
-        path=reference_csv,
-        subset_indices=subset_indices,
-        size_bytes=size_bytes,
-        reference_vec=reference_vec,
-    )
-    _write_comparison_csv(
-        path=comparison_csv,
-        subset_indices=subset_indices,
-        size_bytes=size_bytes,
-        reference_vec=reference_vec,
-        case_records=case_records,
-        nonzero_eps=float(cfg["nonzero_eps"]),
-    )
+    if reference_vec is not None:
+        reference_csv = run_dir / "reference_outputs.csv"
+        comparison_csv = run_dir / "comparison.csv"
+        _write_reference_csv(
+            path=reference_csv,
+            subset_indices=subset_indices,
+            size_bytes=size_bytes,
+            reference_vec=reference_vec,
+        )
+        _write_comparison_csv(
+            path=comparison_csv,
+            subset_indices=subset_indices,
+            size_bytes=size_bytes,
+            reference_vec=reference_vec,
+            case_records=case_records,
+            nonzero_eps=float(cfg["nonzero_eps"]),
+        )
     _write_summary_csv(summary_csv, case_rows)
     tradeoff_plot_path: Path | None = None
-    try:
-        tradeoff_plot_path = plot_selected_output_tradeoff(
-            summary_csv=summary_csv,
-            comparison_csv=comparison_csv,
-            time_column=args.time_column,
-            label_fontsize=args.label_fontsize,
-        )
-    except ValueError:
-        tradeoff_plot_path = None
+    if comparison_csv is not None:
+        try:
+            tradeoff_plot_path = plot_selected_output_tradeoff(
+                summary_csv=summary_csv,
+                comparison_csv=comparison_csv,
+                time_column=args.time_column,
+                label_fontsize=args.label_fontsize,
+            )
+        except ValueError:
+            tradeoff_plot_path = None
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -1196,9 +1269,11 @@ def main(argv: list[str] | None = None) -> int:
             "circuit": str(circuit),
             "input_statevector": str(input_statevector),
             "output_bitstrings": str(output_bitstrings),
-            "reference_output": str(reference_run["output_file"]),
-            "reference_outputs_csv": str(reference_csv),
-            "comparison_csv": str(comparison_csv),
+            "reference_output": (
+                str(reference_run["output_file"]) if reference_run is not None else None
+            ),
+            "reference_outputs_csv": str(reference_csv) if reference_csv is not None else None,
+            "comparison_csv": str(comparison_csv) if comparison_csv is not None else None,
             "summary_csv": str(summary_csv),
             "selected_output_tradeoff_plot": str(tradeoff_plot_path) if tradeoff_plot_path else None,
         },
@@ -1207,16 +1282,20 @@ def main(argv: list[str] | None = None) -> int:
             "input_statevector": input_generated,
             "output_bitstrings": output_generated,
         },
-        "reference": {
-            "name": reference_run["name"],
-            "fraction": reference_run["fraction"],
-            "threshold": reference_run["threshold"],
-            "wall_time_s": reference_run["wall_time_s"],
-            "internal_runtime_s": reference_run["internal_runtime_s"],
-            "output_file": str(reference_run["output_file"]),
-            "timing_files": reference_run.get("timing_files", []),
-            "timing_histograms": reference_run.get("timing_histograms", []),
-        },
+        "reference": (
+            {
+                "name": reference_run["name"],
+                "fraction": reference_run["fraction"],
+                "threshold": reference_run["threshold"],
+                "wall_time_s": reference_run["wall_time_s"],
+                "internal_runtime_s": reference_run["internal_runtime_s"],
+                "output_file": str(reference_run["output_file"]),
+                "timing_files": reference_run.get("timing_files", []),
+                "timing_histograms": reference_run.get("timing_histograms", []),
+            }
+            if reference_run is not None
+            else None
+        ),
         "cases": case_rows,
     }
     summary_json = run_dir / "summary.json"
@@ -1227,7 +1306,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Run directory: {run_dir}")
     print(f"Summary CSV: {summary_csv}")
-    print(f"Comparison CSV: {comparison_csv}")
+    if comparison_csv is not None:
+        print(f"Comparison CSV: {comparison_csv}")
     if tradeoff_plot_path is not None:
         print(f"Tradeoff plot: {tradeoff_plot_path}")
     return 0

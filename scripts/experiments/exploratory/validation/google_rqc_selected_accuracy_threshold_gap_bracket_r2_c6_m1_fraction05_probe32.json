@@ -1,0 +1,32 @@
+{
+  "description": "google_rqc_r2_c6_m1_fraction05_threshold_gap_bracket_probe32",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "feynman_env": {
+    "OMP_NUM_THREADS": "4"
+  },
+  "ranks": 1,
+  "batch_size": 32,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 6,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 32,
+    "seed": 11
+  },
+  "compute_reference": false,
+  "fraction": 0.5,
+  "population_estimator": "cross_seeded",
+  "history_seeds": [1, 2],
+  "vary": "threshold",
+  "values": [1.5716e-162],
+  "nonzero_eps": 1e-308
+}

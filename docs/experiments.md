@@ -167,6 +167,12 @@ approximate selected-output runs on the same output-bitstring set, then writes
 `summary.csv`, `comparison.csv`, `reference_outputs.csv`, and `summary.json`
 under `data/outputs/validation/`.
 
+For fast exploratory sweeps where the exact reference is too slow, set
+`"compute_reference": false` in the config or pass `--skip-reference` after
+the `--` separator. Those runs still write `summary.csv` and `summary.json`,
+but they skip `comparison.csv` and `reference_outputs.csv`, leave
+reference-dependent summary fields blank, and do not emit the tradeoff plot.
+
 Use this to tune `fraction` and `threshold` locally before moving to cloud
 benchmarks. When using the MPI binary, keep the launcher path above:
 `--binary build-release/sv_prefetcher_subset_mpi.x --ranks 1`. The validation
