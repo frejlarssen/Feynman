@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import glob
 import math
 import random
 import sys
@@ -291,26 +292,35 @@ def describe_output_ordering(output_cfg: Any) -> dict[str, str]:
     raise ValueError(f"Unsupported output_bitstrings ordering method: {method!r}")
 
 
-def _score_map_from_csv(
-    csv_path: Path,
+def _score_map_from_csv_files(
+    csv_paths: list[Path],
     *,
     index_column: str,
     value_column: str,
 ) -> dict[int, float]:
-    with csv_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if reader.fieldnames is None:
-            raise ValueError(f"Ordering CSV is missing a header row: {csv_path}")
-        scores: dict[int, float] = {}
-        for row in reader:
-            index_raw = (row.get(index_column) or "").strip()
-            value_raw = (row.get(value_column) or "").strip()
-            if not index_raw or not value_raw:
-                continue
-            index = int(index_raw, 16) if index_raw.lower().startswith("0x") else int(index_raw, 10)
-            scores[index] = float(value_raw)
+    if not csv_paths:
+        raise ValueError("No ordering CSV files were provided.")
+
+    scores: dict[int, float] = {}
+    for csv_path in csv_paths:
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames is None:
+                raise ValueError(f"Ordering CSV is missing a header row: {csv_path}")
+            for row in reader:
+                index_raw = (row.get(index_column) or "").strip()
+                value_raw = (row.get(value_column) or "").strip()
+                if not index_raw or not value_raw:
+                    continue
+                index = int(index_raw, 16) if index_raw.lower().startswith("0x") else int(index_raw, 10)
+                if index in scores:
+                    raise ValueError(
+                        f"Duplicate ordering entry for bitstring 0x{index:X} across CSV files."
+                    )
+                scores[index] = float(value_raw)
     if not scores:
-        raise ValueError(f"No usable ordering rows found in {csv_path}.")
+        joined = ", ".join(str(path) for path in csv_paths[:3])
+        raise ValueError(f"No usable ordering rows found in CSV files starting with: {joined}")
     return scores
 
 
@@ -343,11 +353,11 @@ def _apply_output_ordering(
         out_path = _ordered_output_path(path, ordering, "shuffle")
     elif method in {"heavy_first", "runtime_desc", "light_first", "runtime_asc", "sort_by_csv"}:
         csv_raw = ordering.get("csv") or ordering.get("csv_file") or ordering.get("ranking_csv")
-        if not csv_raw:
+        csv_glob_raw = ordering.get("csv_glob")
+        if not csv_raw and not csv_glob_raw:
             raise ValueError(
-                f"output_bitstrings.ordering method {method!r} requires csv=<path>."
+                f"output_bitstrings.ordering method {method!r} requires csv=<path> or csv_glob=<glob>."
             )
-        csv_path = resolve_path_like(str(csv_raw), repo_root)
         index_column = str(ordering.get("index_column", "bitstring_hex"))
         value_column = str(ordering.get("value_column", "elapsed_seconds"))
         descending = True
@@ -355,8 +365,19 @@ def _apply_output_ordering(
             descending = False
         elif method == "sort_by_csv":
             descending = _as_bool(ordering.get("descending", True), default=True)
-        scores = _score_map_from_csv(
-            csv_path,
+        csv_paths: list[Path] = []
+        if csv_raw:
+            csv_paths.append(resolve_path_like(str(csv_raw), repo_root))
+        if csv_glob_raw:
+            pattern = str(csv_glob_raw)
+            csv_paths.extend(sorted(Path(match) for match in glob.glob(str((repo_root / pattern) if not Path(pattern).is_absolute() else pattern))))
+        csv_paths = [path.resolve() for path in csv_paths]
+        if not csv_paths:
+            raise ValueError(
+                f"output_bitstrings.ordering {method!r} found no CSV files for csv/csv_glob."
+            )
+        scores = _score_map_from_csv_files(
+            csv_paths,
             index_column=index_column,
             value_column=value_column,
         )

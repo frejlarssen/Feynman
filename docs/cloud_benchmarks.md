@@ -129,6 +129,10 @@ Supported ordering methods are:
 - `light_first`: sort the same output set by a ranking CSV, ascending
 - `sort_by_csv`: generic CSV-based ordering with an explicit `descending` flag
 
+For large archived cloud runs, `heavy_first`, `light_first`, and
+`sort_by_csv` may also use `csv_glob` instead of `csv`, for example to rank
+from many per-batch `*.timeBitstrings.csv` files produced by one benchmark run.
+
 For the CSV-based methods, use a per-output CSV such as `timeBitstrings.csv`
 and point at the relevant score column:
 
