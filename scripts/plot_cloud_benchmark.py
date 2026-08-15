@@ -129,6 +129,11 @@ def _default_output(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
     return summary_csv.parent / f"cloud_benchmark_{metric}_vs_{suffix}.pdf"
 
 
+def _default_aggregate_csv(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
+    suffix = "pool_slots" if label_kind == "pool_slots" else "batches"
+    return summary_csv.parent / f"cloud_benchmark_{metric}_vs_{suffix}.csv"
+
+
 def _default_title(summary_csv: Path, *, metric: str, experiment_tags: list[str]) -> str:
     if metric in {"elapsed_seconds", "simulate_stage_elapsed_seconds"}:
         return "Strong scaling"
@@ -169,6 +174,46 @@ def _should_plot_efficiency(*, metric: str, no_efficiency: bool) -> bool:
     if no_efficiency:
         return False
     return metric in EFFICIENCY_DEFAULT_METRICS
+
+
+def _write_aggregate_csv(
+    *,
+    output_path: Path,
+    label_kind: str,
+    x_sorted: list[int],
+    groups: dict[int, list[float]],
+    mean_ys: list[float],
+    std_ys: list[float],
+    efficiency_ys: list[float] | None,
+) -> None:
+    x_label = _label_axis_text(label_kind)
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=(
+                x_label.lower().replace(" ", "_"),
+                "num_runs",
+                "mean",
+                "std",
+                "strong_scaling_efficiency_percent",
+            ),
+        )
+        writer.writeheader()
+        for idx, x_value in enumerate(x_sorted):
+            efficiency_value = ""
+            if efficiency_ys is not None:
+                current = efficiency_ys[idx]
+                if not math.isnan(current):
+                    efficiency_value = f"{current:.6f}"
+            writer.writerow(
+                {
+                    x_label.lower().replace(" ", "_"): x_value,
+                    "num_runs": len(groups[x_value]),
+                    "mean": f"{mean_ys[idx]:.6f}",
+                    "std": f"{std_ys[idx]:.6f}",
+                    "strong_scaling_efficiency_percent": efficiency_value,
+                }
+            )
 
 
 def parse_args() -> argparse.Namespace:
@@ -263,6 +308,7 @@ def main() -> int:
         statistics.stdev(groups[x_value]) if len(groups[x_value]) > 1 else 0.0
         for x_value in x_sorted
     ]
+    efficiency_ys: list[float] | None = None
     ax.errorbar(
         x_sorted,
         mean_ys,
@@ -334,9 +380,24 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
+    aggregate_csv_path = _default_aggregate_csv(
+        summary_csv,
+        metric=args.metric,
+        label_kind=label_kind,
+    )
+    _write_aggregate_csv(
+        output_path=aggregate_csv_path,
+        label_kind=label_kind,
+        x_sorted=x_sorted,
+        groups=groups,
+        mean_ys=mean_ys,
+        std_ys=std_ys,
+        efficiency_ys=efficiency_ys,
+    )
 
     print(f"Loaded {len(rows_success)} successful rows from {summary_csv}")
     print(f"Saved plot to {output_path}")
+    print(f"Saved aggregate CSV to {aggregate_csv_path}")
     return 0
 
 
