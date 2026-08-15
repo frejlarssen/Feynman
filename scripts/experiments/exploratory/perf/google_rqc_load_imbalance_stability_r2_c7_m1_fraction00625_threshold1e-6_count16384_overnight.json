@@ -1,0 +1,35 @@
+{
+  "description": "Overnight local stability probe for Google-RQC per-output runtime ranking.",
+  "repo_root": ".",
+  "vary": "batch_size",
+  "values": [
+    32
+  ],
+  "repeat": 10,
+  "continue_on_error": true,
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "batch_size": 32,
+  "fraction": 0.00625,
+  "threshold": 1e-6,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 7,
+    "cycles": 1,
+    "seed": 11,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 16384
+  },
+  "output_root": "data/outputs/experiments",
+  "notes": "Use repeated local MPI runs to test whether per-output runtimes are stable enough to support heavy-first scheduler stress experiments.",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+}

@@ -1,0 +1,33 @@
+{
+  "description": "Laptop-sized Google-RQC load-imbalance scheduler stress test with stable-proxy heavy-first batching.",
+  "target_pool_slots_list": [
+    2
+  ],
+  "max_hexstrings_per_batch": 1024,
+  "repeat": 1,
+  "simulate_omp_num_threads": 1,
+  "fraction": 0.00625,
+  "threshold": 1e-6,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 7,
+    "cycles": 1,
+    "seed": 11,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 16384,
+    "ordering": {
+      "method": "heavy_first",
+      "csv": "data/generated/output_orderings/google_rqc_r2_c7_m1_seed11_fraction00625_threshold1e-6_count16384_stable_proxy.csv",
+      "index_column": "bitstring_hex",
+      "value_column": "score",
+      "label": "stable_proxy_heavy_with_heavy"
+    }
+  }
+}
