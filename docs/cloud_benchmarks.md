@@ -155,6 +155,11 @@ and point at the relevant score column:
 That keeps the requested output set fixed while changing only how fixed-size
 batches are packed, which is useful for scheduler-stress experiments.
 
+For deterministic scheduler-stress orderings derived from local probe runs, use
+`scripts/build_output_ordering_csv.py`. It currently supports named proxy modes
+`stable_proxy_v1` and `stable_proxy_reverse`, and writes a ranking CSV that can
+be referenced from `output_bitstrings.ordering.csv`.
+
 ## Sweep scripts
 
 A simple benchmark sweep is available in:

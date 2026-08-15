@@ -6,6 +6,9 @@ import csv
 from pathlib import Path
 
 
+PROXY_MODES = ("stable_proxy_v1", "stable_proxy_reverse")
+
+
 def _load_counts(path: Path) -> dict[str, dict[str, int]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -39,17 +42,28 @@ def _load_status(path: Path) -> dict[str, str]:
 
 def _score_row(
     *,
+    proxy_mode: str,
     is_supported: int,
     contribution2_count_nonzero: int,
     contribution1_count: int,
+    contribution1_count_nonzero: int,
     contribution0_count: int,
+    contribution0_count_nonzero: int,
 ) -> int:
-    return (
-        is_supported * 1_000_000_000
-        + contribution2_count_nonzero * 1_000_000
-        + contribution1_count * 1_000
-        + contribution0_count
-    )
+    if proxy_mode == "stable_proxy_v1":
+        return (
+            is_supported * 1_000_000_000
+            + contribution2_count_nonzero * 1_000_000
+            + contribution1_count * 1_000
+            + contribution0_count
+        )
+    if proxy_mode == "stable_proxy_reverse":
+        return (
+            1_000_000 * (4 * contribution2_count_nonzero + 16 * contribution1_count_nonzero)
+            - 1_000 * contribution0_count_nonzero
+            - is_supported
+        )
+    raise ValueError(f"Unsupported proxy mode: {proxy_mode!r}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,6 +84,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         required=True,
         help="Output CSV path with bitstring_hex,score and proxy metadata columns.",
+    )
+    parser.add_argument(
+        "--proxy-mode",
+        choices=PROXY_MODES,
+        default="stable_proxy_v1",
+        help="Named deterministic proxy to use when constructing the score column.",
     )
     return parser.parse_args()
 
@@ -108,11 +128,14 @@ def main() -> int:
             [
                 "bitstring_hex",
                 "score",
+                "proxy_mode",
                 "is_supported",
                 "status",
                 "contribution2_count_nonzero",
                 "contribution1_count",
+                "contribution1_count_nonzero",
                 "contribution0_count",
+                "contribution0_count_nonzero",
             ]
         )
         for bitstring in keys:
@@ -120,22 +143,30 @@ def main() -> int:
             is_supported = 1 if status == "supported" else 0
             contribution2_count_nonzero = contribution2_by_hex[bitstring]["count_nonzero"]
             contribution1_count = contribution1_by_hex[bitstring]["count"]
+            contribution1_count_nonzero = contribution1_by_hex[bitstring]["count_nonzero"]
             contribution0_count = contribution0_by_hex[bitstring]["count"]
+            contribution0_count_nonzero = contribution0_by_hex[bitstring]["count_nonzero"]
             score = _score_row(
+                proxy_mode=args.proxy_mode,
                 is_supported=is_supported,
                 contribution2_count_nonzero=contribution2_count_nonzero,
                 contribution1_count=contribution1_count,
+                contribution1_count_nonzero=contribution1_count_nonzero,
                 contribution0_count=contribution0_count,
+                contribution0_count_nonzero=contribution0_count_nonzero,
             )
             writer.writerow(
                 [
                     bitstring,
                     score,
+                    args.proxy_mode,
                     is_supported,
                     status,
                     contribution2_count_nonzero,
                     contribution1_count,
+                    contribution1_count_nonzero,
                     contribution0_count,
+                    contribution0_count_nonzero,
                 ]
             )
 
