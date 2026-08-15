@@ -158,7 +158,9 @@ batches are packed, which is useful for scheduler-stress experiments.
 For deterministic scheduler-stress orderings derived from local probe runs, use
 `scripts/build_output_ordering_csv.py`. It currently supports named proxy modes
 `stable_proxy_v1` and `stable_proxy_reverse`, and writes a ranking CSV that can
-be referenced from `output_bitstrings.ordering.csv`.
+be referenced from `output_bitstrings.ordering.csv`. That proxy path is optional
+and exploratory; the recommended paper-style batching comparison is the simpler
+`random` versus `contiguous` pair.
 
 ## Sweep scripts
 
@@ -236,13 +238,14 @@ batch, use:
 
 For paper-style batching comparisons, keep `max_hexstrings_per_batch` fixed and
 run separate configs or copies of the same config with different
-`output_bitstrings.ordering.label` values such as `contiguous`, `random`, and
-`heavy_with_heavy`.
+`output_bitstrings.ordering.label` values such as `contiguous` and `random`.
 
 For the short-named laptop RQC batching comparison set, you can either run one
 case at a time:
 
 `sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/rqc_imbalance_laptop_random.json`
+
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/rqc_imbalance_laptop_contiguous.json`
 
 or run the built-in suite runner:
 
@@ -252,13 +255,12 @@ That suite currently runs these named cases into one suite directory:
 
 - `contiguous`
 - `random`
-- `stable_proxy`
-- `proxy_reverse`
 
-You can also run just one or a subset of those cases through the suite runner:
+You can also run just one or both of those cases through the suite runner:
 
 - `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh random`
-- `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh contiguous stable_proxy`
+- `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh contiguous`
+- `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh contiguous random`
 - `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh --list`
 
 This wrapper updates the Airflow pool size before each labeled run, then calls

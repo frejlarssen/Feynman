@@ -16,12 +16,6 @@ case_config_path() {
     random)
       printf "%s\n" "scripts/experiments/cloud/rqc_imbalance_laptop_random.json"
       ;;
-    stable_proxy)
-      printf "%s\n" "scripts/experiments/cloud/rqc_imbalance_laptop_stable_proxy.json"
-      ;;
-    proxy_reverse)
-      printf "%s\n" "scripts/experiments/cloud/rqc_imbalance_laptop_proxy_reverse.json"
-      ;;
     *)
       return 1
       ;;
@@ -31,12 +25,12 @@ case_config_path() {
 usage() {
   cat <<'EOF' >&2
 Usage:
-  sh scripts/benchmark_rqc_imbalance_laptop_suite.sh [all|contiguous|random|stable_proxy|proxy_reverse ...]
+  sh scripts/benchmark_rqc_imbalance_laptop_suite.sh [all|contiguous|random ...]
   sh scripts/benchmark_rqc_imbalance_laptop_suite.sh --list
   sh scripts/benchmark_rqc_imbalance_laptop_suite.sh --dag-id feynman --pool-name simulate_pool contiguous
 
 Behavior:
-  - With no case arguments, runs: contiguous random stable_proxy proxy_reverse
+  - With no case arguments, runs: contiguous random
   - With one or more case arguments, runs only those named cases
   - Any argument ending in .json is treated as an explicit config path and run by itself
 EOF
@@ -105,8 +99,6 @@ fi
 if [ "${LIST_ONLY}" -eq 1 ]; then
   printf "%s\n" "contiguous"
   printf "%s\n" "random"
-  printf "%s\n" "stable_proxy"
-  printf "%s\n" "proxy_reverse"
   exit 0
 fi
 
@@ -116,14 +108,10 @@ fi
 
 if [ -z "${SELECTED_ITEMS}" ]; then
   SELECTED_ITEMS="contiguous
-random
-stable_proxy
-proxy_reverse"
+random"
 elif [ "${SELECTED_ITEMS}" = "all" ]; then
   SELECTED_ITEMS="contiguous
-random
-stable_proxy
-proxy_reverse"
+random"
 fi
 
 mkdir -p "${SUITE_DIR}"
