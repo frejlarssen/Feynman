@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
+from matplotlib.transforms import Bbox
 import requests
 
 from scripts.sweeplib.plot_style import (
@@ -292,7 +293,7 @@ def _render_timeline(
     annotation_fontsize = max(1.0, base_fontsize - 1.5)
 
     fig_width = ieee_column_width_inches()
-    fig_height = max(SINGLE_COLUMN_FIGURE_HEIGHT_IN, 0.55 * len(y_categories) + 0.6)
+    fig_height = max(SINGLE_COLUMN_FIGURE_HEIGHT_IN + 0.40, 0.55 * len(y_categories))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     fig.subplots_adjust(left=0.04, right=0.995, bottom=0.16, top=0.74)
 
@@ -341,9 +342,11 @@ def _render_timeline(
         handles=legend_handles,
         title=color_key.replace("_", " ").title(),
         loc="lower center",
-        bbox_to_anchor=(0.50, 0.75),
+        bbox_to_anchor=(0.50, 0.66),
         bbox_transform=fig.transFigure,
         borderaxespad=0.0,
+        borderpad=0.8,
+        labelspacing=0.5,
         ncol=max(1, min(2, len(legend_handles))),
     )
     legend.get_title().set_fontsize(base_fontsize)
@@ -351,6 +354,8 @@ def _render_timeline(
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
     tight_bbox = ax.get_tightbbox(renderer).transformed(fig.transFigure.inverted())
+    legend_bbox = legend.get_window_extent(renderer).transformed(fig.transFigure.inverted())
+    tight_bbox = Bbox.union([tight_bbox, legend_bbox])
     padding_x = 0.008
     padding_y = 0.012
     current = ax.get_position()
@@ -361,7 +366,7 @@ def _render_timeline(
     left = min(max(left, 0.10), 0.28)
     right = max(min(right, 0.995), left + 0.35)
     bottom = min(max(bottom, 0.14), 0.24)
-    top = max(min(top, 0.82), bottom + 0.38)
+    top = max(min(top, 0.54), bottom + 0.28)
     fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format=output_path.suffix.lstrip(".") or "svg")
