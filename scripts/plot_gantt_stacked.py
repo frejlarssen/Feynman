@@ -116,7 +116,7 @@ def main() -> int:
         squeeze=False,
     )
     axes_flat = [ax for row in axes for ax in row]
-    fig.subplots_adjust(left=0.14, right=0.995, bottom=0.12, top=0.70, hspace=0.28)
+    fig.subplots_adjust(left=0.14, right=0.955, bottom=0.12, top=0.70, hspace=0.28)
 
     max_end_seconds = 0.0
     for records in record_groups:
