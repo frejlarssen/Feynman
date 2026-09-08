@@ -1,0 +1,36 @@
+{
+  "description": "Adaptive Airflow-pool run. Small size for local run.",
+  "max_hexstrings_per_batch": 32,
+  "repeat": 1,
+  "simulate_omp_num_threads": 1,
+  "fraction": 0.5,
+  "threshold": 0.0,
+  "autoscaler": {
+    "enabled": true,
+    "pool_name": "simulate_pool",
+    "initial_pool_slots": 1,
+    "max_pool_slots": 3,
+    "target_completion_seconds": 30,
+    "check_interval_seconds": 20,
+    "warmup_seconds": 20,
+    "cooldown_seconds": 30,
+    "scale_factor": 2,
+    "restore_pool_on_exit": true
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 5,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 600,
+    "seed": 11
+  }
+}
