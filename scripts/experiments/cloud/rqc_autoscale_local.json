@@ -10,10 +10,10 @@
     "pool_name": "simulate_pool",
     "initial_pool_slots": 1,
     "max_pool_slots": 3,
-    "target_completion_seconds": 30,
-    "check_interval_seconds": 20,
+    "target_completion_seconds": 50,
+    "check_interval_seconds": 10,
     "warmup_seconds": 20,
-    "cooldown_seconds": 30,
+    "cooldown_seconds": 5,
     "scale_factor": 2,
     "restore_pool_on_exit": true
   },
