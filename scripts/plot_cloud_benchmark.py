@@ -19,6 +19,7 @@ from scripts.sweeplib.plot_style import (
     configure_headless_matplotlib,
     single_column_figure_size,
 )
+from scripts.cloud_memory import AGGREGATIONS, PLOT_METRICS
 
 METRIC_LABELS = {
     "elapsed_seconds": "Wall-clock time [s]",
@@ -45,6 +46,20 @@ METRIC_TITLES = {
     "simulate_worker_simulate_calls_seconds_sum": "Summed simulate() time",
     "simulate_worker_simulate_calls_seconds_mean": "Mean simulate() time",
 }
+for memory_metric, stats in AGGREGATIONS.items():
+    label, axis_label = {
+        "peak_rss_mib": ("worker peak RSS", "Peak RSS [MiB]"),
+        "major_faults": ("worker major page faults", "Major page faults [count]"),
+        "memory_psi_some_seconds": ("cgroup memory PSI (some)", "Memory stall time [s]"),
+        "memory_psi_full_seconds": ("cgroup memory PSI (full)", "Memory stall time [s]"),
+        "memory_psi_some_percent": ("cgroup memory PSI (some)", "Memory stall time [%]"),
+        "memory_psi_full_percent": ("cgroup memory PSI (full)", "Memory stall time [%]"),
+    }[memory_metric]
+    for stat in stats:
+        key = f"simulate_worker_{memory_metric}_{stat}"
+        title = f"{stat.capitalize()} {label}"
+        METRIC_LABELS[key] = axis_label
+        METRIC_TITLES[key] = title
 EFFICIENCY_LINE_COLOR = "#2F4858"
 EFFICIENCY_DEFAULT_METRICS = {
     "elapsed_seconds",
@@ -254,11 +269,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable the strong-scaling efficiency line.",
     )
+    parser.add_argument("--memory-all", action="store_true",
+                        help="Generate every memory metric plot with available complete runs.")
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
+def plot_metric(args: argparse.Namespace) -> int:
     summary_csv = args.summary_csv.resolve()
     if not summary_csv.exists():
         raise FileNotFoundError(f"Benchmark summary CSV not found: {summary_csv}")
@@ -348,6 +364,8 @@ def main() -> int:
     xscale, yscale = _metric_axis_scales(metric=args.metric, label_kind=label_kind)
     ax.set_xscale(xscale)
     ax.set_yscale(yscale)
+    if args.metric in PLOT_METRICS:
+        ax.set_ylim(bottom=0)
     ax.set_xticks(x_sorted)
     ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("%d"))
     ax.xaxis.set_minor_locator(mticker.NullLocator())
@@ -398,6 +416,22 @@ def main() -> int:
     print(f"Loaded {len(rows_success)} successful rows from {summary_csv}")
     print(f"Saved plot to {output_path}")
     print(f"Saved aggregate CSV to {aggregate_csv_path}")
+    return 0
+
+
+def main() -> int:
+    args = parse_args()
+    if not args.memory_all:
+        return plot_metric(args)
+    if args.output is not None:
+        raise ValueError("--memory-all uses one default output path per metric; omit --output")
+    rows = _successful_rows(_load_rows(args.summary_csv))
+    for metric in PLOT_METRICS:
+        if not any(_metric_value(row, metric=metric) is not None for row in rows):
+            print(f"WARNING: {metric} unavailable; skipping plot.", file=sys.stderr)
+            continue
+        args.metric = metric
+        plot_metric(args)
     return 0
 
 

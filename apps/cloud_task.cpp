@@ -1,6 +1,7 @@
 // Target to be containerized to use in cloud workflow
 
 #include "../src/iofiles.h"
+#include "../src/memory_profile.h"
 #include "../src/simulator.h"
 #include "../src/typedef.h"
 #include "../src/utils.h"
@@ -107,6 +108,7 @@ void configure_logging() {
 }
 
 void run(Options &opts) {
+  const memory_profile::Profile memory;
   auto start_svcc_all = get_time();
 #ifdef USE_OPENMP
   const int t_omp = omp_get_max_threads();
@@ -465,6 +467,8 @@ void run(Options &opts) {
     printf("Total clocktime (including I/O) for sv.cpp: %f seconds\n",
            total_clocktime_svcc_full.count());
   }
+  memory.write(output_path.parent_path() /
+               (output_path.stem().string() + ".memory.json"));
 }
 
 int main(int argc, char *argv[]) {

@@ -336,6 +336,78 @@ Each summary row includes:
 That makes it easier to separate orchestration overhead from actual parallel
 simulation work.
 
+### Memory profiling
+
+New cloud workers always write `<experiment_tag>_batch_<id>.memory.json`
+beside their `.hsv` output. Rebuild/import the task images before using this
+instrumentation. No benchmark-config flag or additional package is needed.
+Each profile records:
+
+- Process peak resident memory in MiB and lifetime major page-fault count,
+  using `getrusage(RUSAGE_SELF)`, including all OpenMP threads.
+- Worker cgroup memory PSI `some` and `full` counter snapshots, their increases
+  in seconds, and the corresponding percentages of the worker measurement
+  interval. `some` means at least one task stalled on memory; `full` means all
+  non-idle tasks in that cgroup stalled simultaneously.
+- Measurement duration, cgroup pressure-file path, and availability status.
+
+PSI is read at worker start and after output I/O, covering parsing, autotuning,
+simulation, and output writes. Counter deltas measure stalls over this interval;
+they are not the kernel's rolling `avg10`/`avg60`/`avg300` averages. This adds
+two pressure-file reads, with no sampling thread. The worker resolves its own
+cgroup v2 through `/proc/self/cgroup` and `/proc/self/mountinfo`, including
+container namespaces. It requires readable cgroup `memory.pressure` and kernel
+PSI support. Missing or invalid PSI is recorded as unavailable, never zero,
+and does not prevent the simulation from completing. There is no host-wide
+fallback. Local executions measure the containing cgroup, which may also
+contain other processes; in the cloud this is normally the worker container.
+
+The runner collects these files into `runs/<run_id>/`, writes
+`memory_summary.json` with individual worker records, and appends these columns
+to `summary.csv`:
+
+- `simulate_memory_expected_workers`, `simulate_memory_profile_count`,
+  `simulate_memory_process_count`, and `simulate_memory_psi_count` for coverage.
+- `simulate_worker_peak_rss_mib_{mean,max}`.
+- `simulate_worker_major_faults_{sum,mean,max}`.
+- `simulate_worker_memory_psi_{some,full}_{seconds,percent}_{mean,max}`.
+
+Each mean is an unweighted mean across workers in that DAG run. Aggregates
+remain blank unless every expected worker has that measurement. A missing
+profile (for example after a killed worker) therefore cannot bias the reported
+mean downward. A retried batch overwrites its sidecar; these metrics describe
+the final completed batch executions, not cumulative resource use of retries.
+Peak RSS and overlapping PSI intervals are never summed as cluster totals.
+The archive manifest and `simulate_batch_instances.json` link the profiles.
+
+The runner automatically generates all 13 memory metric PDFs and aggregate
+CSVs against the swept batch count or pool size. Plots show individual runs
+and repeat mean/std, use linear memory axes (including zero faults/stalls),
+and do not show a strong-scaling efficiency overlay. Unavailable metrics are
+skipped with a warning. Regenerate them with:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv data/outputs/cloud_benchmarks/<benchmark>/summary.csv \
+  --memory-all
+```
+
+Use `--metric simulate_worker_peak_rss_mib_max` (or another memory column)
+for a single plot. Compare PSI with worker compute time as concurrency grows:
+rising RSS alone does not demonstrate memory-induced delays. Major faults
+require I/O but do not specifically identify swap activity. PSI measures
+memory-pressure stalls; cache misses and memory-bandwidth saturation require
+separate hardware-counter measurements.
+
+For a quick independent check, run a small local worker under
+`/usr/bin/time -v`: its maximum resident set size in KiB should approximately
+match `peak_rss_mib * 1024`. The JSON's raw PSI counter differences divided
+by `1e6` must equal its stall seconds, and `100 * stall_seconds /
+profile_seconds` must equal its stall percentage.
+
+Counter semantics: [getrusage documentation](https://man7.org/linux/man-pages/man2/getrusage.2.html)
+and [Linux PSI documentation](https://docs.kernel.org/accounting/psi.html).
+
 When `--config` is used, the sweep script renders the Airflow `dag_run.conf`
 with the repo's `feynman` development Python by default
 (`~/micromamba/envs/feynman/bin/python`). That keeps the Airflow venv lean

@@ -28,6 +28,7 @@ from scripts.plot_timebitstrings_hist import (  # noqa: E402
 )
 from scripts.summarize_airflow_task_timing import summarize_task_states  # noqa: E402
 from scripts.summarize_cloud_task_logs import _default_airflow_log_root, summarize_logs  # noqa: E402
+from scripts.cloud_memory import collect_profiles  # noqa: E402
 
 
 _BATCH_OUTPUT_RE = re.compile(r"_batch_(\d+)\.hsv$")
@@ -169,6 +170,7 @@ def _build_simulate_batch_instances(
 ) -> list[dict[str, object]]:
     batch_outputs = _index_batch_files(output_dir, pattern=_BATCH_OUTPUT_RE)
     batch_timings = _index_batch_files(output_dir, pattern=_BATCH_TIMING_RE)
+    batch_memory = _index_batch_files(output_dir, pattern=re.compile(r"_batch_(\d+)\.memory\.json$"))
     batch_contribution0_abs_stats = _index_batch_files(
         output_dir, pattern=_BATCH_CONTRIBUTION0_ABS_STATS_RE
     )
@@ -206,6 +208,8 @@ def _build_simulate_batch_instances(
                 instance["output_hsv"] = batch_outputs[map_index]
             if map_index in batch_timings:
                 instance["timing_file"] = batch_timings[map_index]
+            if map_index in batch_memory:
+                instance["memory_profile_file"] = batch_memory[map_index]
             if map_index in batch_contribution0_abs_stats:
                 instance["contribution0_abs_stats_file"] = batch_contribution0_abs_stats[
                     map_index
@@ -261,6 +265,7 @@ def main() -> int:
     task_instances_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     task_summary = summarize_task_states(summary_rows, task_id=args.task_id)
+    collect_profiles(output_dir, int(task_summary["task_instance_count"]))
     (output_dir / "simulate_batch_task_summary.json").write_text(
         json.dumps(task_summary, indent=2) + "\n",
         encoding="utf-8",
@@ -309,6 +314,8 @@ def main() -> int:
         "task_summary_json": str(output_dir / "simulate_batch_task_summary.json"),
         "simulate_batch_instances_json": str(output_dir / "simulate_batch_instances.json"),
         "log_summary_json": str(output_dir / "simulate_batch_log_summary.json"),
+        "memory_summary_json": str(output_dir / "memory_summary.json"),
+        "memory_profile_files": [str(path) for path in sorted(output_dir.glob("*_batch_*.memory.json"))],
         "gantt_byresources_pdf": str(byresources),
         "gantt_bytask_pdf": str(bytask),
         "timing_files": [str(path) for path in _find_timing_files(output_dir)],
