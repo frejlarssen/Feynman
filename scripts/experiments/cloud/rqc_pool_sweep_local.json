@@ -1,0 +1,29 @@
+{
+  "description": "Local smoke pool sweep for a tiny version of rqc_pool_sweep_opencube.json.",
+  "target_pool_slots_list": [
+    1,
+    2,
+    3
+  ],
+  "max_hexstrings_per_batch": 16,
+  "repeat": 1,
+  "simulate_omp_num_threads": 1,
+  "fraction": 0.5,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 4,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 48,
+    "seed": 11
+  }
+}
