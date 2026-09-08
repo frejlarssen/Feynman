@@ -236,16 +236,15 @@ def _timing_file_output_name(timing_file: Path, status_filter: str) -> str:
 
 def _default_title(summary_csv: Path | None, series: list[TimingSeries]) -> str:
     if summary_csv is None:
-        return "Bitstrings compute time distribution"
+        return "Bitstring Compute Times"
     labels = {item.label for item in series}
     if labels and all(label.endswith(" batches") for label in labels):
-        return "Per-bitstring compute time distribution by batch count"
-    return "Bitstrings compute time distribution"
+        return "Bitstring Compute Times by Batch Count"
+    return "Bitstring Compute Times"
 
 
 def _default_title_for_timing_file(timing_file: Path) -> str:
-    parent = timing_file.parent.name
-    return f"Bitstrings compute time distribution ({parent})"
+    return "Bitstring Compute Times"
 
 
 def plot_histogram(
@@ -268,7 +267,8 @@ def plot_histogram(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
+    resolved_label_fontsize = 10.0 if label_fontsize is None else label_fontsize
+    apply_plot_fontsizes(plt=plt, label_fontsize=resolved_label_fontsize)
 
     colors = [LINE_COLOR_PRIMARY, LINE_COLOR_SECONDARY, "#2F4858", "#E07A5F", "#6A994E", "#7A5195"]
     fig, ax = plt.subplots(figsize=double_column_figure_size(height_inches=2.9))
