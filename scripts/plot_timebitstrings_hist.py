@@ -148,6 +148,8 @@ def _parse_cloud_summary_series(summary_csv: Path) -> list[TimingSeries]:
             value = (row.get("target_label_value") or row.get("target_num_batches") or "").strip()
             if label_kind == "pool_slots" and value:
                 label = f"{value} pool slots"
+            elif label_kind == "autoscaler" and value:
+                label = f"autoscaled from {value} slots"
             elif value:
                 label = f"{value} batches"
             else:

@@ -164,6 +164,61 @@ and exploratory; the recommended paper-style batching comparison is the simpler
 
 ## Sweep scripts
 
+### Adaptive Airflow pool autoscaling
+
+An autoscaled fixed-batch run adjusts the shared Airflow pool while one DAG run
+is active. Add an `autoscaler` object to the cloud config:
+
+```json
+{
+  "max_hexstrings_per_batch": 16,
+  "autoscaler": {
+    "enabled": true,
+    "pool_name": "simulate_pool",
+    "initial_pool_slots": 1,
+    "max_pool_slots": 64,
+    "target_completion_seconds": 3600,
+    "check_interval_seconds": 300,
+    "warmup_seconds": 1200,
+    "cooldown_seconds": 300,
+    "scale_factor": 2,
+    "restore_pool_on_exit": true
+  }
+}
+```
+
+Run it with:
+
+```bash
+sh scripts/benchmark_cloud_autoscale.sh \
+  --config scripts/experiments/cloud/rqc_autoscale_opencube.json
+```
+
+After the warmup, the controller estimates throughput from completed mapped
+`simulate_batch` tasks. If the projected remaining duration exceeds the time
+left before `target_completion_seconds`, it multiplies the pool size by
+`scale_factor`, subject to the cooldown and `max_pool_slots`. A window restarts
+after each scale event so later decisions use throughput observed at the new
+pool size. `max_pool_slots` is the configured capacity guard; set it no higher
+than the useful concurrency of the machine.
+
+`autoscaler.pool_name` must match the pool configured for the DAG through
+`FEYNMAN_SHARED_POOL` (the default for both is `simulate_pool`).
+
+Each run archives `autoscaler_events.jsonl`, `autoscaler_summary.json`, an
+`autoscaler_timeline.pdf`, and the controller's stdout/stderr logs. Every
+observation records progress, throughput, projected time, current/next pool
+size, and the decision reason. The initial pool size is restored when the
+controller exits by default.
+
+Validate a config and print its normalized values without starting Airflow:
+
+```bash
+python scripts/airflow_pool_autoscaler.py \
+  --config scripts/experiments/cloud/rqc_autoscale_opencube.json \
+  --validate-config
+```
+
 A simple benchmark sweep is available in:
 
 `sh scripts/benchmark_cloud_runner.sh`

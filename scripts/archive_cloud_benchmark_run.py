@@ -29,6 +29,9 @@ from scripts.plot_timebitstrings_hist import (  # noqa: E402
 from scripts.summarize_airflow_task_timing import summarize_task_states  # noqa: E402
 from scripts.summarize_cloud_task_logs import _default_airflow_log_root, summarize_logs  # noqa: E402
 from scripts.cloud_memory import collect_profiles  # noqa: E402
+from scripts.plot_airflow_pool_autoscaler import (  # noqa: E402
+    plot_events as plot_autoscaler_events,
+)
 
 
 _BATCH_OUTPUT_RE = re.compile(r"_batch_(\d+)\.hsv$")
@@ -335,6 +338,16 @@ def main() -> int:
     }
     if task_states_path is not None:
         manifest["task_states_json"] = str(task_states_path)
+    autoscaler_summary = output_dir / "autoscaler_summary.json"
+    autoscaler_events = output_dir / "autoscaler_events.jsonl"
+    if autoscaler_summary.exists():
+        manifest["autoscaler_summary_json"] = str(autoscaler_summary)
+    if autoscaler_events.exists():
+        manifest["autoscaler_events_jsonl"] = str(autoscaler_events)
+        autoscaler_timeline = plot_autoscaler_events(
+            autoscaler_events, output_dir / "autoscaler_timeline.pdf"
+        )
+        manifest["autoscaler_timeline_pdf"] = str(autoscaler_timeline)
     (output_dir / "artifacts_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
         encoding="utf-8",
