@@ -381,7 +381,9 @@ Peak RSS and overlapping PSI intervals are never summed as cluster totals.
 The archive manifest and `simulate_batch_instances.json` link the profiles.
 
 The runner automatically generates all 13 memory metric PDFs and aggregate
-CSVs against the swept batch count or pool size. Plots show individual runs
+CSVs in `<benchmark>/memory/`, beside `runs/`, against the swept batch count
+or pool size. This also applies to individual memory `--metric` plots.
+Plots show individual runs
 and repeat mean/std, use linear memory axes (including zero faults/stalls),
 and do not show a strong-scaling efficiency overlay. Unavailable metrics are
 skipped with a warning. Regenerate them with:

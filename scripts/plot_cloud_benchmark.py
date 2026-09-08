@@ -141,12 +141,12 @@ def _label_axis_text(label_kind: str) -> str:
 
 def _default_output(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
     suffix = "pool_slots" if label_kind == "pool_slots" else "batches"
-    return summary_csv.parent / f"cloud_benchmark_{metric}_vs_{suffix}.pdf"
+    output_dir = summary_csv.parent / "memory" if metric in PLOT_METRICS else summary_csv.parent
+    return output_dir / f"cloud_benchmark_{metric}_vs_{suffix}.pdf"
 
 
 def _default_aggregate_csv(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
-    suffix = "pool_slots" if label_kind == "pool_slots" else "batches"
-    return summary_csv.parent / f"cloud_benchmark_{metric}_vs_{suffix}.csv"
+    return _default_output(summary_csv, metric=metric, label_kind=label_kind).with_suffix(".csv")
 
 
 def _default_title(summary_csv: Path, *, metric: str, experiment_tags: list[str]) -> str:
@@ -245,7 +245,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=None,
-        help="Optional output PDF path. Defaults next to summary.csv.",
+        help="Optional output PDF path. Defaults to memory/ for memory metrics, otherwise next to summary.csv.",
     )
     parser.add_argument(
         "--title",
@@ -403,6 +403,7 @@ def plot_metric(args: argparse.Namespace) -> int:
         metric=args.metric,
         label_kind=label_kind,
     )
+    aggregate_csv_path.parent.mkdir(parents=True, exist_ok=True)
     _write_aggregate_csv(
         output_path=aggregate_csv_path,
         label_kind=label_kind,

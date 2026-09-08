@@ -97,8 +97,8 @@ class CloudMemoryTests(unittest.TestCase):
             self.assertNotIn("WARNING", result.stderr)
             for metric in PLOT_METRICS:
                 stem = f"cloud_benchmark_{metric}_vs_pool_slots"
-                self.assertTrue((directory / f"{stem}.pdf").read_bytes().startswith(b"%PDF"))
-                with (directory / f"{stem}.csv").open() as f:
+                self.assertTrue((directory / "memory" / f"{stem}.pdf").read_bytes().startswith(b"%PDF"))
+                with (directory / "memory" / f"{stem}.csv").open() as f:
                     aggregates = list(csv.DictReader(f))
                 self.assertEqual(float(aggregates[0]["mean"]), summary[metric])
                 self.assertEqual(aggregates[0]["strong_scaling_efficiency_percent"], "")
