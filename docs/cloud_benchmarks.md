@@ -338,9 +338,8 @@ simulation work.
 
 ### Memory profiling
 
-New cloud workers always write `<experiment_tag>_batch_<id>.memory.json`
-beside their `.hsv` output. Rebuild/import the task images before using this
-instrumentation. No benchmark-config flag or additional package is needed.
+Cloud workers write `<experiment_tag>_batch_<id>.memory.json`
+beside their `.hsv` output. No benchmark-config flag or additional package is needed.
 Each profile records:
 
 - Process peak resident memory in MiB and lifetime major page-fault count,
