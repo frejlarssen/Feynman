@@ -136,11 +136,15 @@ def _summary_label_kind(rows: list[dict[str, str]]) -> str:
 def _label_axis_text(label_kind: str) -> str:
     if label_kind == "pool_slots":
         return "Pool slots"
+    if label_kind == "autoscaler":
+        return "Initial pool slots"
     return "Target batches"
 
 
 def _default_output(summary_csv: Path, *, metric: str, label_kind: str) -> Path:
-    suffix = "pool_slots" if label_kind == "pool_slots" else "batches"
+    suffix = "autoscaler" if label_kind == "autoscaler" else (
+        "pool_slots" if label_kind == "pool_slots" else "batches"
+    )
     output_dir = summary_csv.parent / "memory" if metric in PLOT_METRICS else summary_csv.parent
     return output_dir / f"cloud_benchmark_{metric}_vs_{suffix}.pdf"
 
@@ -156,7 +160,7 @@ def _default_title(summary_csv: Path, *, metric: str, experiment_tags: list[str]
 
 
 def _metric_axis_scales(*, metric: str, label_kind: str) -> tuple[str, str]:
-    xscale = "log" if label_kind == "pool_slots" else "linear"
+    xscale = "log" if label_kind in {"pool_slots", "autoscaler"} else "linear"
     yscale = "log" if metric == "elapsed_seconds" else "linear"
     return (xscale, yscale)
 

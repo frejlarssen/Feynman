@@ -41,9 +41,9 @@ if [ "${DAG_ID_EXPLICIT}" -eq 0 ] && [ "$#" -gt 0 ]; then
   shift || true
 fi
 
-if [ "${LABEL_KIND}" != "target_num_batches" ] && [ "${LABEL_KIND}" != "pool_slots" ]; then
+if [ "${LABEL_KIND}" != "target_num_batches" ] && [ "${LABEL_KIND}" != "pool_slots" ] && [ "${LABEL_KIND}" != "autoscaler" ]; then
   echo "Unsupported --label-kind: ${LABEL_KIND}" >&2
-  echo "Expected one of: target_num_batches, pool_slots" >&2
+  echo "Expected one of: target_num_batches, pool_slots, autoscaler" >&2
   exit 1
 fi
 
@@ -62,6 +62,27 @@ REPEAT_COUNT=1
 LABEL_VALUES="$*"
 OUTPUT_ORDERING_METHOD=""
 OUTPUT_ORDERING_LABEL=""
+AUTOSCALER_POOL_NAME=""
+AUTOSCALER_INITIAL_POOL_SLOTS=""
+AUTOSCALER_PID=""
+AUTOSCALER_STOP_FILE=""
+AUTOSCALER_EXIT_CODE=0
+
+stop_autoscaler() {
+  if [ -n "${AUTOSCALER_PID}" ]; then
+    if [ -n "${AUTOSCALER_STOP_FILE}" ]; then
+      touch "${AUTOSCALER_STOP_FILE}"
+    fi
+    if wait "${AUTOSCALER_PID}"; then
+      AUTOSCALER_EXIT_CODE=0
+    else
+      AUTOSCALER_EXIT_CODE=$?
+    fi
+    AUTOSCALER_PID=""
+  fi
+}
+
+trap stop_autoscaler EXIT INT TERM
 
 require_cluster_image() {
   image_name="$1"
@@ -140,16 +161,24 @@ if [ -n "${CONFIG_PATH}" ]; then
   CONFIG_MAX_HEXSTRINGS_PER_BATCH="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-max-hexstrings-per-batch)"
   OUTPUT_ORDERING_METHOD="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-output-ordering-method)"
   OUTPUT_ORDERING_LABEL="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py --config "${CONFIG_PATH}" --print-output-ordering-label)"
-  if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
-    if [ "${LABEL_KIND}" != "pool_slots" ]; then
-      echo "benchmark_cloud_runner.sh only accepts fixed-batch configs in explicit pool-slot mode." >&2
-      echo "Config ${CONFIG_PATH} sets max_hexstrings_per_batch=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}." >&2
-      echo "Use sh scripts/benchmark_cloud_pool_sweep.sh --config ${CONFIG_PATH} instead." >&2
-      echo "Even single-point fixed-batch runs should go through benchmark_cloud_pool_sweep.sh." >&2
+  if [ "${LABEL_KIND}" = "autoscaler" ]; then
+    if ! "${HELPER_PYTHON}" scripts/airflow_pool_autoscaler.py --config "${CONFIG_PATH}" --validate-config >/dev/null; then
+      echo "Invalid or missing autoscaler config in ${CONFIG_PATH}." >&2
       exit 1
     fi
-  elif [ "${LABEL_KIND}" = "pool_slots" ]; then
-    echo "benchmark_cloud_runner.sh --label-kind pool_slots requires a fixed-batch config." >&2
+    AUTOSCALER_POOL_NAME="$("${HELPER_PYTHON}" scripts/airflow_pool_autoscaler.py --config "${CONFIG_PATH}" --print-field pool_name)"
+    AUTOSCALER_INITIAL_POOL_SLOTS="$("${HELPER_PYTHON}" scripts/airflow_pool_autoscaler.py --config "${CONFIG_PATH}" --print-field initial_pool_slots)"
+  fi
+  if [ -n "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" ]; then
+    if [ "${LABEL_KIND}" != "pool_slots" ] && [ "${LABEL_KIND}" != "autoscaler" ]; then
+      echo "benchmark_cloud_runner.sh requires an explicit pool-slot or autoscaler mode for fixed-batch configs." >&2
+      echo "Config ${CONFIG_PATH} sets max_hexstrings_per_batch=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}." >&2
+      echo "Use benchmark_cloud_pool_sweep.sh or benchmark_cloud_autoscale.sh." >&2
+      echo "Use the matching wrapper even for a single fixed-batch run." >&2
+      exit 1
+    fi
+  elif [ "${LABEL_KIND}" = "pool_slots" ] || [ "${LABEL_KIND}" = "autoscaler" ]; then
+    echo "benchmark_cloud_runner.sh --label-kind ${LABEL_KIND} requires a fixed-batch config." >&2
     echo "Config ${CONFIG_PATH} does not set max_hexstrings_per_batch." >&2
     exit 1
   fi
@@ -163,14 +192,16 @@ if [ -n "${CONFIG_PATH}" ]; then
         echo "Pass explicit batch counts on the CLI or add target_num_batches_list to the config." >&2
         exit 1
       fi
+    elif [ "${LABEL_KIND}" = "autoscaler" ]; then
+      LABEL_VALUES="${AUTOSCALER_INITIAL_POOL_SLOTS}"
     else
       echo "Explicit pool-slot mode requires explicit label values on the CLI." >&2
       echo "Use sh scripts/benchmark_cloud_pool_sweep.sh --config ${CONFIG_PATH} for config-driven pool-slot sweeps." >&2
       exit 1
     fi
   fi
-elif [ "${LABEL_KIND}" = "pool_slots" ]; then
-  echo "benchmark_cloud_runner.sh --label-kind pool_slots requires --config with max_hexstrings_per_batch set." >&2
+elif [ "${LABEL_KIND}" = "pool_slots" ] || [ "${LABEL_KIND}" = "autoscaler" ]; then
+  echo "benchmark_cloud_runner.sh --label-kind ${LABEL_KIND} requires --config with max_hexstrings_per_batch set." >&2
   exit 1
 fi
 
@@ -225,6 +256,8 @@ echo "Benchmark directory: ${BENCHMARK_DIR}"
 echo "Benchmark results will be written to ${RESULTS_FILE}"
 if [ "${LABEL_KIND}" = "pool_slots" ]; then
   echo "Pool-slot labels: ${LABEL_VALUES}"
+elif [ "${LABEL_KIND}" = "autoscaler" ]; then
+  echo "Autoscaler initial pool slots: ${AUTOSCALER_INITIAL_POOL_SLOTS}"
 else
   echo "Batch counts: ${LABEL_VALUES}"
 fi
@@ -245,6 +278,8 @@ do
     run_label_prefix="batches"
     if [ "${LABEL_KIND}" = "pool_slots" ]; then
       run_label_prefix="slots"
+    elif [ "${LABEL_KIND}" = "autoscaler" ]; then
+      run_label_prefix="autoscale"
     fi
     run_id="benchmark_${run_label_prefix}_${label_value}_r${repeat_index}_${timestamp}"
     start_epoch="$(date +%s)"
@@ -252,7 +287,7 @@ do
     conf_json="{\"target_num_batches\": ${label_value}}"
     experiment_tag="qft_batch_sweep"
     if [ -n "${CONFIG_PATH}" ]; then
-      if [ "${LABEL_KIND}" = "pool_slots" ]; then
+      if [ "${LABEL_KIND}" = "pool_slots" ] || [ "${LABEL_KIND}" = "autoscaler" ]; then
         conf_json="$("${CONFIG_RENDER_PYTHON}" scripts/render_cloud_benchmark_conf.py \
           --config "${CONFIG_PATH}" \
           --max-hexstrings-per-batch "${CONFIG_MAX_HEXSTRINGS_PER_BATCH}" \
@@ -273,6 +308,10 @@ do
 
     if [ "${LABEL_KIND}" = "pool_slots" ]; then
       echo "Triggering ${DAG_ID} with pool_slots=${label_value}, batch_size=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}, repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+    elif [ "${LABEL_KIND}" = "autoscaler" ]; then
+      echo "Triggering ${DAG_ID} with adaptive pool starting at ${AUTOSCALER_INITIAL_POOL_SLOTS} slots, batch_size=${CONFIG_MAX_HEXSTRINGS_PER_BATCH}, repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
+      sh scripts/setup_airflow_pool.sh "${AUTOSCALER_POOL_NAME}" "${AUTOSCALER_INITIAL_POOL_SLOTS}" \
+        "Feynman adaptive simulation concurrency"
     else
       echo "Triggering ${DAG_ID} with target_num_batches=${label_value} repeat=${repeat_index}/${REPEAT_COUNT} (run_id=${run_id})..."
     fi
@@ -280,12 +319,27 @@ do
       --run-id "${run_id}" \
       --conf "${conf_json}"
 
+    if [ "${LABEL_KIND}" = "autoscaler" ]; then
+      AUTOSCALER_STOP_FILE="${run_dir}/autoscaler.stop"
+      "${HELPER_PYTHON}" scripts/airflow_pool_autoscaler.py \
+        --config "${CONFIG_PATH}" \
+        --dag-id "${DAG_ID}" \
+        --run-id "${run_id}" \
+        --events-jsonl "${run_dir}/autoscaler_events.jsonl" \
+        --summary-json "${run_dir}/autoscaler_summary.json" \
+        --stop-file "${AUTOSCALER_STOP_FILE}" \
+        >"${run_dir}/autoscaler_stdout.log" \
+        2>"${run_dir}/autoscaler_stderr.log" &
+      AUTOSCALER_PID=$!
+    fi
+
     while true
     do
       state_raw="$(airflow dags state "${DAG_ID}" "${run_id}" 2>/dev/null | tail -n 1 | tr -d '[:space:]')"
       state="${state_raw%%,*}"
       case "${state}" in
         success|failed|canceled)
+          stop_autoscaler
           end_epoch="$(date +%s)"
           end_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           elapsed_seconds=$((end_epoch - start_epoch))
@@ -396,6 +450,11 @@ EOF
           if [ "${state}" != "success" ]; then
             echo "Task states for failed run ${run_id}:"
             airflow tasks states-for-dag-run "${DAG_ID}" "${run_id}" || true
+            exit 1
+          fi
+          if [ "${AUTOSCALER_EXIT_CODE}" -ne 0 ]; then
+            echo "Autoscaler failed with exit code ${AUTOSCALER_EXIT_CODE}." >&2
+            echo "See ${run_dir}/autoscaler_stderr.log" >&2
             exit 1
           fi
           break

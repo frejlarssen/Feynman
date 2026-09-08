@@ -142,3 +142,4 @@ The short version is:
 - use `max_hexstrings_per_batch` for fixed-size batch splitting
 - use `benchmark_cloud_runner.sh` for batch sweeps
 - use `benchmark_cloud_pool_sweep.sh` for fixed-batch shared-pool sweeps
+- use `benchmark_cloud_autoscale.sh` for a target-time adaptive pool run
