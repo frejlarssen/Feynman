@@ -1,7 +1,35 @@
 #!/usr/bin/env python
+"""Generate scalable analogues of the 2019 Google Sycamore RQCs.
+
+The circuit structure follows Arute et al., Nature 574, 505-510 (2019),
+Supplementary Information Sections VII.C-E:
+
+* start in the all-zero computational-basis state (state preparation is left to
+  the simulator input);
+* apply ``m`` full cycles, each comprising a random single-qubit layer followed
+  by a two-qubit layer in the repeating pattern ABCDCDAB;
+* apply one final random single-qubit half-cycle before measurement; and
+* choose each single-qubit gate from sqrt(X), sqrt(Y), and sqrt(W), excluding
+  the gate used on that qubit in the preceding layer.
+
+Documented approximations:
+
+* The rectangular grid and four brickwork matchings are a scalable square-grid
+  representation of the staggered A-D matchings in Fig. S25. They do not encode
+  the exact 53-qubit device outline, broken qubit, or paper-specific qubit order.
+* Every pair uses the idealized fSim(pi/2, pi/6). The experiment instead used
+  pair-specific, inferred five-parameter two-qubit unitaries near these angles,
+  including implicit single-qubit Z rotations.
+* Sections VII.C-E specify the PRNG nesting property but not a reproducible PRNG
+  algorithm. This generator therefore uses a documented counter-based SHA-256
+  choice keyed by (seed, qubit, layer), rather than claiming Google's instances.
+* Measurement operations are omitted because this repository computes selected
+  output amplitudes in the computational basis.
+"""
+
 import argparse
+import hashlib
 import math
-import random
 from pathlib import Path
 
 DEFAULT_OUTPUT_DIR = (
@@ -29,15 +57,6 @@ def _num_qubits(rows: int, cols: int) -> int:
     return rows * cols
 
 
-def _padded_num_qubits(rows: int, cols: int) -> int:
-    num_qubits = _num_qubits(rows, cols)
-    return ((num_qubits + 7) // 8) * 8
-
-
-def _append_gate(lines: list[str], name: str, qubit: int) -> None:
-    lines.append(f"{name} q[{qubit}];")
-
-
 def _append_param_gate(lines: list[str], name: str, theta: float, qubit: int) -> None:
     lines.append(f"{name}({_format_angle(theta)}) q[{qubit}];")
 
@@ -51,10 +70,11 @@ def _apply_sqrt_y(lines: list[str], qubit: int) -> None:
 
 
 def _apply_sqrt_w(lines: list[str], qubit: int) -> None:
-    # Up to global phase, this is a pi/2 rotation around the (X + Y) / sqrt(2) axis.
-    _append_param_gate(lines, "p", QUARTER_PI, qubit)
-    _apply_sqrt_x(lines, qubit)
+    # P(pi/4) RX(pi/2) P(-pi/4), in operator order, equals RX+Y(pi/2).
+    # QASM instructions act left-to-right, so emit the rightmost factor first.
     _append_param_gate(lines, "p", -QUARTER_PI, qubit)
+    _apply_sqrt_x(lines, qubit)
+    _append_param_gate(lines, "p", QUARTER_PI, qubit)
 
 
 def _apply_single_qubit_gate(lines: list[str], qubit: int, gate_name: str) -> None:
@@ -66,9 +86,6 @@ def _apply_single_qubit_gate(lines: list[str], qubit: int, gate_name: str) -> No
         return
     if gate_name == "sqrt_w":
         _apply_sqrt_w(lines, qubit)
-        return
-    if gate_name == "t":
-        _append_gate(lines, "t", qubit)
         return
     raise ValueError(f"Unsupported single-qubit gate '{gate_name}'.")
 
@@ -109,13 +126,71 @@ def _pattern_edges(rows: int, cols: int, pattern: str) -> list[tuple[int, int]]:
     raise ValueError(f"Unsupported coupler pattern '{pattern}'.")
 
 
+def _counter_random_index(
+    seed: int,
+    qubit: int,
+    layer: int,
+    upper_bound: int,
+) -> int:
+    """Return an unbiased deterministic choice independent of circuit shape."""
+    if upper_bound <= 0:
+        raise ValueError("upper_bound must be > 0.")
+
+    modulus = 1 << 256
+    acceptance_limit = modulus - (modulus % upper_bound)
+    nonce = 0
+    while True:
+        counter = f"feynman-google-rqc-v1:{seed}:{qubit}:{layer}:{nonce}".encode()
+        value = int.from_bytes(hashlib.sha256(counter).digest(), "big")
+        if value < acceptance_limit:
+            return value % upper_bound
+        nonce += 1
+
+
 def _select_single_qubit_gate(
-    rng: random.Random,
+    seed: int,
+    qubit: int,
+    layer: int,
     gate_pool: tuple[str, ...],
     previous_gate: str | None,
 ) -> str:
     choices = [gate for gate in gate_pool if gate != previous_gate]
-    return rng.choice(choices)
+    return choices[
+        _counter_random_index(
+            seed=seed,
+            qubit=qubit,
+            layer=layer,
+            upper_bound=len(choices),
+        )
+    ]
+
+
+def _select_single_qubit_layers(
+    num_qubits: int,
+    cycles: int,
+    seed: int,
+    variant: str,
+) -> list[list[str]]:
+    """Select the m full-cycle layers plus the final half-cycle layer."""
+    gate_pool = _select_gate_pool(variant)
+    previous_gates: list[str | None] = [None] * num_qubits
+    layers: list[list[str]] = []
+
+    for layer in range(cycles + 1):
+        current_layer: list[str] = []
+        for qubit in range(num_qubits):
+            gate_name = _select_single_qubit_gate(
+                seed=seed,
+                qubit=qubit,
+                layer=layer,
+                gate_pool=gate_pool,
+                previous_gate=previous_gates[qubit],
+            )
+            current_layer.append(gate_name)
+            previous_gates[qubit] = gate_name
+        layers.append(current_layer)
+
+    return layers
 
 
 def _build_random_layers(
@@ -126,30 +201,27 @@ def _build_random_layers(
     variant: str,
 ) -> list[str]:
     num_qubits = _num_qubits(rows, cols)
-    rng = random.Random(seed)
-    gate_pool = _select_gate_pool(variant)
-    previous_single_qubit_gates: list[str | None] = [None] * num_qubits
+    single_qubit_layers = _select_single_qubit_layers(
+        num_qubits=num_qubits,
+        cycles=cycles,
+        seed=seed,
+        variant=variant,
+    )
     lines: list[str] = [
         "OPENQASM 3.0;",
         'include "stdgates.inc";',
         f"qreg q[{num_qubits}];",
     ]
 
-    # Start in a uniformly spread product state before the random layers.
-    for qubit in range(num_qubits):
-        _append_gate(lines, "h", qubit)
-
-    for cycle in range(cycles):
-        for qubit in range(num_qubits):
-            gate_name = _select_single_qubit_gate(
-                rng=rng,
-                gate_pool=gate_pool,
-                previous_gate=previous_single_qubit_gates[qubit],
-            )
+    for layer, gate_names in enumerate(single_qubit_layers):
+        for qubit, gate_name in enumerate(gate_names):
             _apply_single_qubit_gate(lines, qubit, gate_name)
-            previous_single_qubit_gates[qubit] = gate_name
 
-        pattern = SYCAMORE_PATTERN[cycle % len(SYCAMORE_PATTERN)]
+        # The final single-qubit layer is the half-cycle before measurement.
+        if layer == cycles:
+            continue
+
+        pattern = SYCAMORE_PATTERN[layer % len(SYCAMORE_PATTERN)]
         for q0, q1 in _pattern_edges(rows=rows, cols=cols, pattern=pattern):
             lines.append(
                 f"fsim({_format_angle(HALF_PI)},{_format_angle(SYCAMORE_PHI)}) "

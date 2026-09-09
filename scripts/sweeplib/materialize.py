@@ -433,8 +433,8 @@ def derive_circuit_identifier(circuit_cfg: str | dict[str, Any], repo_root: Path
         seed = int(circuit_cfg.get("seed", 0))
         if seed != 0:
             token += f"_seed{seed}"
-        variant = str(circuit_cfg.get("variant", "sycamore_cz")).strip().lower()
-        if variant and variant not in {"sycamore_cz", "sycamore"}:
+        variant = str(circuit_cfg.get("variant", "sycamore")).strip().lower()
+        if variant and variant != "sycamore":
             token += f"_{_sanitize_identifier(variant)}"
         return token
     if generator in {"qaoa_maxcut", "qaoa"}:
@@ -650,7 +650,7 @@ def resolve_circuit_input(circuit_cfg: str | dict[str, Any], repo_root: Path) ->
         cols = _require_int(circuit_cfg, "cols", "circuit")
         cycles = _require_int(circuit_cfg, "cycles", "circuit")
         seed = int(circuit_cfg.get("seed", 0))
-        variant = str(circuit_cfg.get("variant", "sycamore_cz"))
+        variant = str(circuit_cfg.get("variant", "sycamore"))
         name_raw = circuit_cfg.get("name")
         name = str(name_raw) if name_raw is not None else None
         out_dir = _resolve_output_dir(circuit_cfg, repo_root, GOOGLE_RQC_DEFAULT_OUTPUT_DIR)
