@@ -107,24 +107,29 @@ class GoogleRqcGeneratorTests(unittest.TestCase):
         }
         self.assertEqual(set().union(*map(set, patterns.values())), horizontal | vertical)
 
-    def test_native_u2_sqrt_w_matches_supplement_equation_52(self):
+    def test_sqrt_w_decomposition_matches_supplement_equation_52(self):
         lines: list[str] = []
         rqc._apply_sqrt_w(lines, qubit=0)
         self.assertEqual(
             lines,
             [
-                f"u2({rqc._format_angle(-rqc.QUARTER_PI)},"
-                f"{rqc._format_angle(rqc.QUARTER_PI)}) q[0];",
+                f"p({rqc._format_angle(-rqc.QUARTER_PI)}) q[0];",
+                f"rx({rqc._format_angle(rqc.HALF_PI)}) q[0];",
+                f"p({rqc._format_angle(rqc.QUARTER_PI)}) q[0];",
             ],
         )
 
+        def multiply(a, b):
+            return [
+                [sum(a[i][k] * b[k][j] for k in range(2)) for j in range(2)]
+                for i in range(2)
+            ]
+
         inv_sqrt2 = 1 / math.sqrt(2)
-        phi = -math.pi / 4
-        lambda_ = math.pi / 4
-        actual = [
-            [inv_sqrt2, -cmath.exp(1j * lambda_) * inv_sqrt2],
-            [cmath.exp(1j * phi) * inv_sqrt2, cmath.exp(1j * (phi + lambda_)) * inv_sqrt2],
-        ]
+        p_minus = [[1, 0], [0, cmath.exp(-1j * math.pi / 4)]]
+        rx = [[inv_sqrt2, -1j * inv_sqrt2], [-1j * inv_sqrt2, inv_sqrt2]]
+        p_plus = [[1, 0], [0, cmath.exp(1j * math.pi / 4)]]
+        actual = multiply(p_plus, multiply(rx, p_minus))
         expected = [
             [1 * inv_sqrt2, -cmath.sqrt(1j) * inv_sqrt2],
             [cmath.sqrt(-1j) * inv_sqrt2, 1 * inv_sqrt2],
@@ -133,18 +138,6 @@ class GoogleRqcGeneratorTests(unittest.TestCase):
             for actual_value, expected_value in zip(actual_row, expected_row):
                 self.assertAlmostEqual(actual_value.real, expected_value.real)
                 self.assertAlmostEqual(actual_value.imag, expected_value.imag)
-
-    def test_native_sqrt_w_keeps_one_instruction_per_logical_single_qubit_gate(self):
-        lines = rqc._build_random_layers(
-            rows=2,
-            cols=6,
-            cycles=1,
-            seed=1,
-            variant="sycamore",
-        )
-        # Two 12-qubit single-qubit layers plus the six pattern-A fSim gates.
-        self.assertEqual(len(lines[3:]), 30)
-        self.assertFalse(any(line.startswith("p(") for line in lines))
 
     def test_materializer_defaults_to_the_supported_sycamore_variant(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -70,12 +70,11 @@ def _apply_sqrt_y(lines: list[str], qubit: int) -> None:
 
 
 def _apply_sqrt_w(lines: list[str], qubit: int) -> None:
-    # The simulator's native U2(phi, lambda) convention gives Eq. (52) for
-    # phi=-pi/4 and lambda=pi/4, without a decomposition into phase gates.
-    lines.append(
-        f"u2({_format_angle(-QUARTER_PI)},{_format_angle(QUARTER_PI)}) "
-        f"q[{qubit}];"
-    )
+    # P(pi/4) RX(pi/2) P(-pi/4), in operator order, equals RX+Y(pi/2).
+    # QASM instructions act left-to-right, so emit the rightmost factor first.
+    _append_param_gate(lines, "p", -QUARTER_PI, qubit)
+    _apply_sqrt_x(lines, qubit)
+    _append_param_gate(lines, "p", QUARTER_PI, qubit)
 
 
 def _apply_single_qubit_gate(lines: list[str], qubit: int, gate_name: str) -> None:
