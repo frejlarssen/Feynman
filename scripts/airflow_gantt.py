@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-from matplotlib.transforms import Bbox
 import requests
 
 from scripts.sweeplib.plot_style import (
@@ -279,6 +278,7 @@ def _render_timeline(
     color_key: str,
     output_path: Path,
     x_label: str,
+    annotate_map_indices: bool = True,
 ) -> Path:
     if not records:
         raise RuntimeError("No records available to render.")
@@ -287,15 +287,22 @@ def _render_timeline(
     color_categories = list(dict.fromkeys(str(record[color_key]) for record in records))
     y_positions = {category: index for index, category in enumerate(y_categories)}
     colors = _categorical_colors(color_categories)
+    task_counts = Counter(str(record.get("task", "")) for record in records)
 
     base_fontsize = apply_plot_fontsizes(plt=plt)
-    tick_fontsize = max(1.0, base_fontsize - 0.9)
-    annotation_fontsize = max(1.0, base_fontsize - 1.5)
+    dense_timeline = len(y_categories) >= 16
+    tick_fontsize = max(1.0, base_fontsize - (1.7 if dense_timeline else 0.9))
+    annotation_fontsize = max(1.0, base_fontsize - (2.1 if dense_timeline else 1.5))
 
     fig_width = ieee_column_width_inches()
-    fig_height = max(SINGLE_COLUMN_FIGURE_HEIGHT_IN + 0.40, 0.55 * len(y_categories))
+    # Keep enough height for every row without producing poster-length figures
+    # for pools with dozens of slots.  The legend needs fixed space; dense
+    # timelines then grow by only 0.115 inches per row.
+    fig_height = max(
+        SINGLE_COLUMN_FIGURE_HEIGHT_IN + 0.40,
+        1.65 + 0.115 * len(y_categories),
+    )
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
-    fig.subplots_adjust(left=0.04, right=0.995, bottom=0.16, top=0.74)
 
     for record in records:
         start = _seconds_from_relative_datetime(record["start"])
@@ -309,14 +316,21 @@ def _render_timeline(
             y_position,
             width,
             left=start,
-            height=0.7,
+            height=0.68 if dense_timeline else 0.7,
             color=colors[color_value],
             edgecolor="black",
-            linewidth=0.5,
+            linewidth=0.35 if dense_timeline else 0.5,
         )
 
         label = str(record.get("map_index") or "").strip()
-        if label and width >= 0.25:
+        task = str(record.get("task", ""))
+        suppress_dense_simulate_labels = task == "simulate_batch" and task_counts[task] > 12
+        if (
+            annotate_map_indices
+            and not suppress_dense_simulate_labels
+            and label
+            and width >= 0.25
+        ):
             ax.text(
                 start + width / 2.0,
                 y_position,
@@ -328,7 +342,11 @@ def _render_timeline(
             )
 
     ax.set_yticks(range(len(y_categories)))
-    ax.set_yticklabels(y_categories)
+    if y_key == "resource" and all(category.startswith("Slot ") for category in y_categories):
+        ax.set_yticklabels([category.removeprefix("Slot ") for category in y_categories])
+        ax.set_ylabel("Slot")
+    else:
+        ax.set_yticklabels(y_categories)
     ax.set_xlabel(x_label)
     ax.tick_params(axis="both", labelsize=tick_fontsize)
     ax.grid(axis="x", linestyle="--", alpha=0.35)
@@ -341,8 +359,8 @@ def _render_timeline(
     legend = ax.legend(
         handles=legend_handles,
         title=color_key.replace("_", " ").title(),
-        loc="lower center",
-        bbox_to_anchor=(0.50, 0.66),
+        loc="upper center",
+        bbox_to_anchor=(0.50, 0.985),
         bbox_transform=fig.transFigure,
         borderaxespad=0.0,
         borderpad=0.8,
@@ -350,24 +368,13 @@ def _render_timeline(
         ncol=max(1, min(2, len(legend_handles))),
     )
     legend.get_title().set_fontsize(base_fontsize)
+    legend.set_in_layout(False)
 
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
-    tight_bbox = ax.get_tightbbox(renderer).transformed(fig.transFigure.inverted())
     legend_bbox = legend.get_window_extent(renderer).transformed(fig.transFigure.inverted())
-    tight_bbox = Bbox.union([tight_bbox, legend_bbox])
-    padding_x = 0.008
-    padding_y = 0.012
-    current = ax.get_position()
-    left = current.x0 + max(0.0, -tight_bbox.x0) + padding_x
-    right = current.x1 - max(0.0, tight_bbox.x1 - 1.0) - padding_x
-    bottom = current.y0 + max(0.0, -tight_bbox.y0) + padding_y
-    top = current.y1 - max(0.0, tight_bbox.y1 - 1.0) - padding_y
-    left = min(max(left, 0.10), 0.28)
-    right = max(min(right, 0.995), left + 0.35)
-    bottom = min(max(bottom, 0.14), 0.24)
-    top = max(min(top, 0.54), bottom + 0.28)
-    fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
+    timeline_top = max(0.48, legend_bbox.y0 - 0.025)
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, timeline_top), pad=0.25)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format=output_path.suffix.lstrip(".") or "svg")
     plt.close(fig)
@@ -391,6 +398,7 @@ def render_gantt_bytask(records: list[dict[str, Any]], *, output_path: Path) -> 
         color_key="task",
         output_path=output_path,
         x_label="Time (s)",
+        annotate_map_indices=False,
     )
 
 
