@@ -11,6 +11,8 @@ cmake --preset cloud
 cmake --build --preset cloud --target cloud_task -j
 ```
 
+Use the preset `cloud_make` instead on systems without Ninja.
+
 Run for one batch:
 
 ```bash

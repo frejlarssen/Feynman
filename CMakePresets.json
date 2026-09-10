@@ -36,6 +36,13 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "BUILD_MPI_TARGETS": "OFF"
       }
+    },
+    {
+      "name": "cloud-make",
+      "displayName": "Cloud (Unix Makefiles)",
+      "inherits": "cloud",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-cloud-make"
     }
   ],
   "buildPresets": [
@@ -50,6 +57,10 @@
     {
       "name": "cloud",
       "configurePreset": "cloud"
+    },
+    {
+      "name": "cloud-make",
+      "configurePreset": "cloud-make"
     }
   ]
 }
