@@ -307,13 +307,50 @@ def plot_selected_output_tradeoff(
     ax_fidelity.set_ylim(0.0, 1.05)
     ax_fidelity.grid(True, alpha=0.3, linewidth=0.5)
 
+    if tradeoff_param == "threshold" and grouped_rows:
+        ax_fidelity_drop = ax_fidelity.twinx()
+        for estimator in estimator_keys:
+            series = grouped_rows[estimator]
+            baseline_row = next(
+                (
+                    row
+                    for row in series
+                    if math.isclose(float(row["threshold"]), 0.0, abs_tol=1e-300)
+                ),
+                None,
+            )
+            if baseline_row is None:
+                continue
+            baseline_fidelity = float(baseline_row["population_fidelity"])
+            ax_fidelity_drop.plot(
+                [float(row["threshold"]) for row in series],
+                [
+                    max(
+                        abs(baseline_fidelity - float(row["population_fidelity"])),
+                        1e-16,
+                    )
+                    for row in series
+                ],
+                color=LINE_COLOR_SECONDARY,
+                marker=DEFAULT_MARKER_SECONDARY,
+                linestyle="--",
+                linewidth=DEFAULT_LINEWIDTH_SECONDARY,
+                markersize=DEFAULT_MARKERSIZE,
+            )
+        ax_fidelity_drop.set_yscale("log")
+        ax_fidelity_drop.set_ylabel(
+            "$|F(t)-F(0)|$", color=LINE_COLOR_SECONDARY
+        )
+        ax_fidelity_drop.tick_params(axis="y", colors=LINE_COLOR_SECONDARY)
+        ax_fidelity_drop.spines["right"].set_color(LINE_COLOR_SECONDARY)
+
     if reference_row is not None:
         x_ref = [float(reference_row[tradeoff_param])]
         y_ref_runtime = [float(reference_row["runtime_s"])]
         y_ref_fidelity = [float(reference_row["population_fidelity"])]
         ax_time.scatter(x_ref, y_ref_runtime, color="black", marker="*", s=42, zorder=3, label="Exact reference")
         ax_fidelity.scatter(x_ref, y_ref_fidelity, color="black", marker="*", s=42, zorder=3)
-    ax_time.legend(loc="upper left", frameon=False, handlelength=1.8)
+    ax_time.legend(loc="upper right", frameon=False, handlelength=1.8)
 
     all_x = sorted({float(row[tradeoff_param]) for row in rows})
     if tradeoff_param == "fraction":
