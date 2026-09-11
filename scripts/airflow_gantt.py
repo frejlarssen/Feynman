@@ -300,7 +300,7 @@ def _render_timeline(
     # timelines then grow by only 0.115 inches per row.
     fig_height = max(
         SINGLE_COLUMN_FIGURE_HEIGHT_IN + 0.40,
-        1.65 + 0.115 * len(y_categories),
+        1.65 + 0.05 * len(y_categories),
     )
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
@@ -341,11 +341,21 @@ def _render_timeline(
                 color="black",
             )
 
-    ax.set_yticks(range(len(y_categories)))
     if y_key == "resource" and all(category.startswith("Slot ") for category in y_categories):
-        ax.set_yticklabels([category.removeprefix("Slot ") for category in y_categories])
+        slot_numbers = [int(category.removeprefix("Slot ")) for category in y_categories]
+        max_slot_number = max(slot_numbers)
+        ax.set_yticks(range(len(y_categories)))
+        ax.set_yticklabels(
+            [
+                str(slot_number)
+                if slot_number % 4 == 0 or slot_number == max_slot_number
+                else ""
+                for slot_number in slot_numbers
+            ]
+        )
         ax.set_ylabel("Slot")
     else:
+        ax.set_yticks(range(len(y_categories)))
         ax.set_yticklabels(y_categories)
     ax.set_xlabel(x_label)
     ax.tick_params(axis="both", labelsize=tick_fontsize)
