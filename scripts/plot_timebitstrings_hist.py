@@ -175,6 +175,30 @@ def _parse_summary_series(summary_csv: Path) -> list[TimingSeries]:
     raise ValueError(f"Unsupported summary CSV format for timing histogram: {summary_csv}")
 
 
+def _parse_timing_dir_series(timing_dir: Path, label: str) -> TimingSeries:
+    timing_dir = timing_dir.resolve()
+    if not timing_dir.is_dir():
+        raise NotADirectoryError(f"Timing directory not found: {timing_dir}")
+
+    search_dirs = (timing_dir, timing_dir / "hexstrings")
+    timing_paths: tuple[Path, ...] = ()
+    for search_dir in search_dirs:
+        if not search_dir.is_dir():
+            continue
+        timing_paths = tuple(sorted(search_dir.glob("*.timeBitstrings.csv")))
+        if not timing_paths:
+            timing_paths = tuple(sorted(search_dir.glob("*.timeBitstrings.tm")))
+        if timing_paths:
+            break
+
+    if not timing_paths:
+        raise ValueError(
+            f"No per-batch *.timeBitstrings.csv or *.timeBitstrings.tm files found in "
+            f"{timing_dir} or its hexstrings/ directory."
+        )
+    return _group_series((label, path.resolve()) for path in timing_paths)[0]
+
+
 def _parse_series_arg(value: str) -> TimingSeries:
     if "=" not in value:
         raise ValueError("--series must have the form LABEL=PATH")
@@ -215,10 +239,16 @@ def _filter_series(series: list[TimingSeries], status_filter: str) -> list[Timin
     return filtered
 
 
-def _default_output(summary_csv: Path | None, status_filter: str) -> Path:
+def _default_output(
+    summary_csv: Path | None,
+    status_filter: str,
+    timing_dir: Path | None = None,
+) -> Path:
     suffix = "" if status_filter == "all" else f"_{status_filter}"
     if summary_csv is not None:
         return summary_csv.parent / f"timebitstrings_hist{suffix}.pdf"
+    if timing_dir is not None:
+        return timing_dir / f"bitstring_compute_time_hist{suffix}.pdf"
     return REPO_ROOT / "untracked" / f"timebitstrings_hist{suffix}.pdf"
 
 
@@ -392,6 +422,20 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Explicit series in the form LABEL=/path/to/timeBitstrings.csv. Can be repeated.",
     )
+    parser.add_argument(
+        "--timing-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Aggregate per-batch timing files from a directory. If none are directly present, "
+            "also search its hexstrings/ subdirectory."
+        ),
+    )
+    parser.add_argument(
+        "--series-label",
+        default=None,
+        help="Legend label for --timing-dir. Defaults to the directory name.",
+    )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--title", default="")
     parser.add_argument("--xlabel", default="Compute time [s]")
@@ -415,8 +459,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.summary_csv is None and not args.series:
-        raise ValueError("Pass either --summary-csv or at least one --series LABEL=PATH.")
+    if args.summary_csv is None and args.timing_dir is None and not args.series:
+        raise ValueError(
+            "Pass --summary-csv, --timing-dir, or at least one --series LABEL=PATH."
+        )
+    if args.series_label is not None and args.timing_dir is None:
+        raise ValueError("--series-label requires --timing-dir.")
     if args.auto_all_statuses and args.summary_csv is None:
         raise ValueError("--auto-all-statuses requires --summary-csv.")
     if args.auto_all_statuses and args.output is not None:
@@ -425,6 +473,7 @@ def main() -> int:
         raise ValueError("--auto-all-statuses cannot be combined with --series.")
 
     summary_csv = args.summary_csv.resolve() if args.summary_csv is not None else None
+    timing_dir = args.timing_dir.resolve() if args.timing_dir is not None else None
     if args.auto_all_statuses:
         saved = auto_plot_timebitstrings_histograms(
             summary_csv=summary_csv,
@@ -439,6 +488,13 @@ def main() -> int:
     all_series: list[TimingSeries] = []
     if summary_csv is not None:
         all_series.extend(_parse_summary_series(summary_csv))
+    if timing_dir is not None:
+        all_series.append(
+            _parse_timing_dir_series(
+                timing_dir,
+                args.series_label or timing_dir.name,
+            )
+        )
     for raw in args.series:
         all_series.append(_parse_series_arg(raw))
 
@@ -446,12 +502,17 @@ def main() -> int:
     output_path = (
         args.output.resolve()
         if args.output is not None
-        else _default_output(summary_csv, args.status_filter)
+        else _default_output(summary_csv, args.status_filter, timing_dir)
     )
     saved = plot_histogram(
         series=series,
         output_path=output_path,
-        title=args.title or _default_title(summary_csv, series),
+        title=args.title
+        or (
+            "Per-bitstring compute-time distribution"
+            if timing_dir is not None and summary_csv is None
+            else _default_title(summary_csv, series)
+        ),
         xlabel=args.xlabel,
         ylabel=args.ylabel,
         bins=args.bins,
