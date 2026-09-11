@@ -1167,6 +1167,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--label-fontsize", type=float, default=None)
     parser.add_argument("--time-column", default="internal_runtime_s")
     parser.add_argument(
+        "--plot-fidelity-loss",
+        action="store_true",
+        help="Plot fidelity loss 1-F on a logarithmic y-axis instead of fidelity.",
+    )
+    parser.add_argument(
         "--plot-exclude-threshold",
         action="append",
         type=float,
@@ -1194,6 +1199,7 @@ def main(argv: list[str] | None = None) -> int:
             title=args.plot_title,
             label_fontsize=args.label_fontsize,
             exclude_thresholds=tuple(args.plot_exclude_threshold),
+            plot_fidelity_loss=args.plot_fidelity_loss,
         )
         print(f"Saved plot: {saved_path}")
         return 0
@@ -1335,6 +1341,7 @@ def main(argv: list[str] | None = None) -> int:
                 comparison_csv=comparison_csv,
                 time_column=args.time_column,
                 label_fontsize=args.label_fontsize,
+                plot_fidelity_loss=args.plot_fidelity_loss,
             )
         except ValueError:
             tradeoff_plot_path = None

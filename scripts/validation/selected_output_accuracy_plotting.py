@@ -16,6 +16,7 @@ from sweeplib.plot_style import (
     LINE_COLOR_SECONDARY,
     apply_plot_fontsizes,
     configure_headless_matplotlib,
+    single_column_figure_size,
     stacked_single_column_figure_size,
 )
 
@@ -192,6 +193,7 @@ def plot_selected_output_tradeoff(
     title: str | None = None,
     label_fontsize: float | None = None,
     exclude_thresholds: tuple[float, ...] = (),
+    plot_fidelity_loss: bool = False,
 ) -> Path:
     summary_path = summary_csv.resolve()
     if not summary_path.exists():
@@ -224,7 +226,12 @@ def plot_selected_output_tradeoff(
                 for excluded in exclude_thresholds
             )
         ]
-    plot_title = title if title else _load_run_title(summary_path)
+    if title:
+        plot_title = title
+    elif plot_fidelity_loss:
+        plot_title = "Approximative pruning"
+    else:
+        plot_title = _load_run_title(summary_path)
 
     configure_headless_matplotlib()
     import matplotlib
@@ -261,13 +268,20 @@ def plot_selected_output_tradeoff(
         ("#9467bd", "D"),
     ]
 
-    fig, (ax_time, ax_fidelity) = plt.subplots(
-        2,
-        1,
-        sharex=True,
-        figsize=stacked_single_column_figure_size(),
-        constrained_layout=True,
-    )
+    if plot_fidelity_loss:
+        fig, ax_time = plt.subplots(
+            figsize=single_column_figure_size(),
+            constrained_layout=True,
+        )
+        ax_fidelity = ax_time.twinx()
+    else:
+        fig, (ax_time, ax_fidelity) = plt.subplots(
+            2,
+            1,
+            sharex=True,
+            figsize=stacked_single_column_figure_size(),
+            constrained_layout=True,
+        )
 
     for index, estimator in enumerate(estimator_keys):
         series = grouped_rows[estimator]
@@ -277,6 +291,11 @@ def plot_selected_output_tradeoff(
         x_values = [float(row[tradeoff_param]) for row in series]
         runtime_values = [float(row["runtime_s"]) for row in series]
         fidelity_values = [float(row["population_fidelity"]) for row in series]
+        fidelity_axis_values = (
+            [max(1.0 - fidelity, 1e-16) for fidelity in fidelity_values]
+            if plot_fidelity_loss
+            else fidelity_values
+        )
         label = (
             _format_estimator_label(estimator) if multiple_estimators else "Approximate case"
         )
@@ -291,94 +310,71 @@ def plot_selected_output_tradeoff(
         )
         ax_fidelity.plot(
             x_values,
-            fidelity_values,
-            marker=marker,
+            fidelity_axis_values,
+            marker=DEFAULT_MARKER_SECONDARY if plot_fidelity_loss else marker,
             linewidth=DEFAULT_LINEWIDTH_SECONDARY,
             markersize=DEFAULT_MARKERSIZE,
-            color=color,
+            color=LINE_COLOR_SECONDARY if plot_fidelity_loss else color,
             label=label,
         )
 
     ax_time.set_ylabel("Runtime [s]")
+    ax_time.set_ylim(bottom=0.0)
     ax_time.grid(True, alpha=0.3, linewidth=0.5)
 
-    ax_fidelity.set_xlabel(_tradeoff_axis_label(tradeoff_param))
-    ax_fidelity.set_ylabel("Population fidelity")
-    ax_fidelity.set_ylim(0.0, 1.05)
-    ax_fidelity.grid(True, alpha=0.3, linewidth=0.5)
+    x_axis = ax_time if plot_fidelity_loss else ax_fidelity
+    x_axis.set_xlabel(_tradeoff_axis_label(tradeoff_param))
+    if plot_fidelity_loss:
+        ax_time.set_ylabel("Runtime [s]", color=LINE_COLOR_PRIMARY)
+        ax_time.tick_params(axis="y", colors=LINE_COLOR_PRIMARY)
+        ax_time.spines["left"].set_color(LINE_COLOR_PRIMARY)
+        ax_fidelity.set_ylabel("Fidelity loss $1-F$", color=LINE_COLOR_SECONDARY)
+        ax_fidelity.set_yscale("log")
+        ax_fidelity.tick_params(axis="y", colors=LINE_COLOR_SECONDARY)
+        ax_fidelity.spines["right"].set_color(LINE_COLOR_SECONDARY)
+    else:
+        ax_fidelity.set_ylabel("Population fidelity")
+        ax_fidelity.set_ylim(0.0, 1.05)
+        ax_fidelity.grid(True, alpha=0.3, linewidth=0.5)
 
-    if tradeoff_param == "threshold" and grouped_rows:
-        ax_fidelity_drop = ax_fidelity.twinx()
-        for estimator in estimator_keys:
-            series = grouped_rows[estimator]
-            baseline_row = next(
-                (
-                    row
-                    for row in series
-                    if math.isclose(float(row["threshold"]), 0.0, abs_tol=1e-300)
-                ),
-                None,
-            )
-            if baseline_row is None:
-                continue
-            baseline_fidelity = float(baseline_row["population_fidelity"])
-            ax_fidelity_drop.plot(
-                [float(row["threshold"]) for row in series],
-                [
-                    max(
-                        abs(baseline_fidelity - float(row["population_fidelity"])),
-                        1e-16,
-                    )
-                    for row in series
-                ],
-                color=LINE_COLOR_SECONDARY,
-                marker=DEFAULT_MARKER_SECONDARY,
-                linestyle="--",
-                linewidth=DEFAULT_LINEWIDTH_SECONDARY,
-                markersize=DEFAULT_MARKERSIZE,
-            )
-        ax_fidelity_drop.set_yscale("log")
-        ax_fidelity_drop.set_ylabel(
-            "$|F(t)-F(0)|$", color=LINE_COLOR_SECONDARY
-        )
-        ax_fidelity_drop.tick_params(axis="y", colors=LINE_COLOR_SECONDARY)
-        ax_fidelity_drop.spines["right"].set_color(LINE_COLOR_SECONDARY)
-
-    if reference_row is not None:
+    if reference_row is not None and not plot_fidelity_loss:
         x_ref = [float(reference_row[tradeoff_param])]
         y_ref_runtime = [float(reference_row["runtime_s"])]
-        y_ref_fidelity = [float(reference_row["population_fidelity"])]
+        reference_fidelity = float(reference_row["population_fidelity"])
+        y_ref_fidelity = [reference_fidelity]
         ax_time.scatter(x_ref, y_ref_runtime, color="black", marker="*", s=42, zorder=3, label="Exact reference")
         ax_fidelity.scatter(x_ref, y_ref_fidelity, color="black", marker="*", s=42, zorder=3)
-    ax_time.legend(loc="upper right", frameon=False, handlelength=1.8)
+    if not plot_fidelity_loss:
+        ax_time.legend(loc="upper right", frameon=False, handlelength=1.8)
 
     all_x = sorted({float(row[tradeoff_param]) for row in rows})
     if tradeoff_param == "fraction":
-        ax_fidelity.set_xticks(all_x)
+        x_axis.set_xticks(all_x)
         has_reference_one = any(abs(value - 1.0) < 1e-12 for value in all_x)
-        ax_fidelity.set_xticklabels(
+        x_axis.set_xticklabels(
             [_format_fraction_tick(value, has_reference_one=has_reference_one) for value in all_x]
         )
-        ax_fidelity.set_xlim(min(all_x) - 0.02, max(all_x) + 0.02)
+        x_axis.set_xlim(min(all_x) - 0.02, max(all_x) + 0.02)
     elif tradeoff_param == "threshold":
         positives = [value for value in all_x if value > 0.0]
         linthresh = min(positives) if positives else 1e-12
         ax_time.set_xscale("symlog", linthresh=linthresh)
         ax_fidelity.set_xscale("symlog", linthresh=linthresh)
-        ax_fidelity.set_xticks(all_x)
+        x_axis.set_xlim(-0.2 * linthresh, max(all_x) * 1.3)
+        x_axis.set_xticks(all_x)
         labels = []
         for value in all_x:
             if abs(value) < 1e-300:
                 labels.append("0")
             else:
                 labels.append(f"{value:.0e}".replace("+0", "").replace("+", ""))
-        ax_fidelity.set_xticklabels(
+        x_axis.set_xticklabels(
             labels,
             rotation=45,
             ha="right",
             rotation_mode="anchor",
         )
-        tick_labels = ax_fidelity.get_xticklabels()
+        tick_labels = x_axis.get_xticklabels()
         if len(tick_labels) >= 2:
             from matplotlib.transforms import ScaledTranslation
 
