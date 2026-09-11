@@ -191,6 +191,7 @@ def plot_selected_output_tradeoff(
     time_column: str = "internal_runtime_s",
     title: str | None = None,
     label_fontsize: float | None = None,
+    exclude_thresholds: tuple[float, ...] = (),
 ) -> Path:
     summary_path = summary_csv.resolve()
     if not summary_path.exists():
@@ -208,6 +209,21 @@ def plot_selected_output_tradeoff(
         comparison_csv=comparison_path,
         time_column=time_column,
     )
+    if tradeoff_param == "threshold" and exclude_thresholds:
+        rows = [
+            row
+            for row in rows
+            if row["is_reference"]
+            or not any(
+                math.isclose(
+                    float(row["threshold"]),
+                    excluded,
+                    rel_tol=1e-12,
+                    abs_tol=0.0,
+                )
+                for excluded in exclude_thresholds
+            )
+        ]
     plot_title = title if title else _load_run_title(summary_path)
 
     configure_headless_matplotlib()
@@ -319,7 +335,24 @@ def plot_selected_output_tradeoff(
                 labels.append("0")
             else:
                 labels.append(f"{value:.0e}".replace("+0", "").replace("+", ""))
-        ax_fidelity.set_xticklabels(labels)
+        ax_fidelity.set_xticklabels(
+            labels,
+            rotation=45,
+            ha="right",
+            rotation_mode="anchor",
+        )
+        tick_labels = ax_fidelity.get_xticklabels()
+        if len(tick_labels) >= 2:
+            from matplotlib.transforms import ScaledTranslation
+
+            tick_labels[-2].set_transform(
+                tick_labels[-2].get_transform()
+                + ScaledTranslation(-3.0 / 72.0, 0.0, fig.dpi_scale_trans)
+            )
+            tick_labels[-1].set_transform(
+                tick_labels[-1].get_transform()
+                + ScaledTranslation(3.0 / 72.0, 0.0, fig.dpi_scale_trans)
+            )
 
     ax_time.set_title(plot_title)
 

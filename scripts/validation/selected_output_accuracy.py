@@ -1167,6 +1167,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--label-fontsize", type=float, default=None)
     parser.add_argument("--time-column", default="internal_runtime_s")
     parser.add_argument(
+        "--plot-exclude-threshold",
+        action="append",
+        type=float,
+        default=[],
+        help="Threshold value to omit from a plot-only figure; may be repeated.",
+    )
+    parser.add_argument(
         "--skip-reference",
         action="store_true",
         help="Skip the exact reference run and leave reference-dependent outputs blank.",
@@ -1186,6 +1193,7 @@ def main(argv: list[str] | None = None) -> int:
             time_column=args.time_column,
             title=args.plot_title,
             label_fontsize=args.label_fontsize,
+            exclude_thresholds=tuple(args.plot_exclude_threshold),
         )
         print(f"Saved plot: {saved_path}")
         return 0
