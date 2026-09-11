@@ -1,11 +1,12 @@
 {
   "description": "Google RQC accuracy vs threshold",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "binary": "build-cloud-make/cloud_task.x",
   "feynman_env": {
-    "OMP_NUM_THREADS": "4"
+    "OMP_NUM_THREADS": "8",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores"
   },
-  "ranks": 1,
-  "batch_size": 32,
   "circuit": {
     "generator": "google_rqc",
     "rows": 2,
@@ -19,7 +20,7 @@
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "count": 128,
+    "count": 32,
     "seed": 11
   },
   "compute_reference": true,
@@ -27,6 +28,6 @@
   "population_estimator": "cross_seeded",
   "history_seeds": [1, 2],
   "vary": "threshold",
-  "values": [0.0, 1e-5, 1e-4],
-  "nonzero_eps": 1e-307
+  "values": [0.0, 1e-5, 1e-3, 1.0],
+  "nonzero_eps": 1e-26
 }
