@@ -2,7 +2,7 @@
   "description": "Google RQC accuracy vs threshold",
   "binary": "build-cloud-make/cloud_task.x",
   "feynman_env": {
-    "OMP_NUM_THREADS": "8",
+    "OMP_NUM_THREADS": "1",
     "OMP_DYNAMIC": "FALSE",
     "OMP_PROC_BIND": "close",
     "OMP_PLACES": "cores"
@@ -10,7 +10,7 @@
   "circuit": {
     "generator": "google_rqc",
     "rows": 2,
-    "cols": 7,
+    "cols": 6,
     "cycles": 1,
     "seed": 1,
     "variant": "sycamore"
@@ -20,14 +20,14 @@
   },
   "output_bitstrings": {
     "generator": "random_uniform",
-    "count": 64,
+    "count": 1024,
     "seed": 11
   },
   "compute_reference": true,
-  "fraction": 0.5,
-  "population_estimator": "cross_seeded",
-  "history_seeds": [1, 2],
+  "fraction": 1.0,
+  "population_estimator": "amplitude_square",
+  "history_seeds": [1],
   "vary": "threshold",
-  "values": [0.0, 1e-16, 1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 5e-5, 1e-4],
+  "values": [0.0, 1e-13, 1e-11, 1e-9, 1e-7, 1e-5, 1e-3],
   "nonzero_eps": 1e-26
 }
