@@ -256,6 +256,14 @@ def _resolve_dynamic_checkpoints(params: dict[str, Any], circuit_path: Path) -> 
     return p_raw, r_raw
 
 
+def _binary_requires_mpirun(binary: Path) -> bool:
+    return "mpi" in binary.name.lower()
+
+
+def _binary_supports_batch_size(binary: Path) -> bool:
+    return binary.name != "cloud_task.x"
+
+
 def build_command(
     config: SweepConfig,
     paths: ProjectPaths,
@@ -263,10 +271,7 @@ def build_command(
     params: dict[str, Any],
     output_file: Path,
 ) -> list[str]:
-    cmd = [
-        config.mpirun,
-        "-n",
-        str(int(params["ranks"])),
+    run_args = [
         str(paths.binary),
         "-c",
         str(circuit_path),
@@ -276,8 +281,6 @@ def build_command(
         str(paths.output_bitstrings),
         "-o",
         str(output_file),
-        "-s",
-        str(int(params["batch_size"])),
         "-f",
         str(float(params["fraction"])),
         "-t",
@@ -285,11 +288,31 @@ def build_command(
         "-v",
         str(int(params["verbosity"])),
     ]
+    if _binary_supports_batch_size(paths.binary):
+        run_args.extend(["-s", str(int(params["batch_size"]))])
     if params["p"] is not None and params["r"] is not None:
-        cmd.extend(["-p", str(int(params["p"])), "-r", str(int(params["r"]))])
+        run_args.extend(["-p", str(int(params["p"])), "-r", str(int(params["r"]))])
     if bool(params["dense"]):
-        cmd.append("-D")
-    return cmd
+        run_args.append("-D")
+
+    if not _binary_requires_mpirun(paths.binary):
+        if int(params["ranks"]) != 1:
+            raise ValueError(
+                f"Direct executable {paths.binary.name!r} requires ranks=1; "
+                f"got {params['ranks']}."
+            )
+        return run_args
+    return [config.mpirun, "-n", str(int(params["ranks"])), *run_args]
+
+
+def _find_timing_file(run_dir: Path, output_file: Path) -> Path | None:
+    candidates = (
+        run_dir / "timeBitstrings.csv",
+        output_file.with_name(f"{output_file.stem}.timeBitstrings.csv"),
+        run_dir / "timeBitstrings.tm",
+        output_file.with_name(f"{output_file.stem}.timeBitstrings.tm"),
+    )
+    return next((path for path in candidates if path.exists()), None)
 
 
 def _run_tag(case_name: str, vary: str, value: Any, run_index: int, rep: int) -> str:
@@ -324,7 +347,6 @@ def make_run_one(
         run_dir.mkdir(parents=True, exist_ok=False)
 
         output_file = run_dir / "output.hsv"
-        timing_file = run_dir / "timeBitstrings.csv"
         stdout_file = run_dir / "stdout.log"
         stderr_file = run_dir / "stderr.log"
 
@@ -343,6 +365,7 @@ def make_run_one(
             env_overrides=dict(params.get("feynman_env") or {}),
         )
         end = dt.datetime.now(dt.timezone.utc)
+        timing_file = _find_timing_file(run_dir, output_file)
 
         stdout_file.write_text(stdout_text, encoding="utf-8")
         stderr_file.write_text(stderr_text, encoding="utf-8")
@@ -389,7 +412,7 @@ def make_run_one(
             "gate_ops_estimate": structure_metrics["gate_ops_estimate"],
             "run_dir": _rel(run_dir, paths.repo_root),
             "output_file": _rel(output_file, paths.repo_root),
-            "timing_file": _rel(timing_file, paths.repo_root) if timing_file.exists() else "",
+            "timing_file": _rel(timing_file, paths.repo_root) if timing_file is not None else "",
             "stdout_file": _rel(stdout_file, paths.repo_root),
             "stderr_file": _rel(stderr_file, paths.repo_root),
             "start_utc": iso_utc(start),
@@ -416,6 +439,14 @@ def build_metadata(
     runner_script_path: Path,
     invocation: str,
 ) -> dict[str, Any]:
+    direct_execution = not _binary_requires_mpirun(paths.binary)
+    input_files = {
+        "circuit": paths.circuit,
+        "input_statevector": paths.input_statevector,
+        "output_bitstrings": paths.output_bitstrings,
+    }
+    if config.config:
+        input_files["config"] = Path(config.config).resolve()
     return build_sweep_metadata(
         created_at=created_at,
         repo_root=paths.repo_root,
@@ -428,13 +459,9 @@ def build_metadata(
         dry_run=config.dry_run,
         git_info=git_info,
         binary_path=paths.binary,
-        input_files={
-            "circuit": paths.circuit,
-            "input_statevector": paths.input_statevector,
-            "output_bitstrings": paths.output_bitstrings,
-        },
+        input_files=input_files,
         runner_script_path=runner_script_path,
-        launcher_command=config.mpirun,
+        launcher_command=None if direct_execution else config.mpirun,
         launcher_key="mpi_launcher",
         config_snapshot={
             "config_file": config.config,
@@ -444,7 +471,8 @@ def build_metadata(
             "values": config.values,
             "repeat": config.repeat,
             "binary": str(paths.binary),
-            "mpirun": config.mpirun,
+            **({} if direct_execution else {"mpirun": config.mpirun}),
+            "execution_mode": "direct" if direct_execution else "mpi",
             "circuit": str(paths.circuit),
             "input_statevector": str(paths.input_statevector),
             "output_bitstrings": str(paths.output_bitstrings),

@@ -254,7 +254,7 @@ def build_sweep_metadata(
     binary_path: Path,
     input_files: dict[str, Path],
     runner_script_path: Path,
-    launcher_command: str,
+    launcher_command: str | None,
     launcher_key: str,
     config_snapshot: dict[str, Any],
 ) -> dict[str, Any]:
@@ -265,6 +265,19 @@ def build_sweep_metadata(
         filename=git_scope_filename,
     )
     inputs_meta = {name: describe_file(path, repo_root) for name, path in input_files.items()}
+
+    provenance = {
+        "build": _build_metadata(binary_path, repo_root),
+        "inputs": inputs_meta,
+        "runner_script": describe_file(runner_script_path.resolve(), repo_root),
+    }
+    if launcher_command is None:
+        provenance["execution"] = {
+            "mode": "direct",
+            "executable": _path_for_metadata(binary_path, repo_root),
+        }
+    else:
+        provenance[launcher_key] = _launcher_metadata(launcher_command, repo_root)
 
     return {
         "created_at_utc": iso_utc(created_at),
@@ -277,10 +290,7 @@ def build_sweep_metadata(
             git_scope_key: git_scope_snapshot,
         },
         "provenance": {
-            "build": _build_metadata(binary_path, repo_root),
-            "inputs": inputs_meta,
-            "runner_script": describe_file(runner_script_path.resolve(), repo_root),
-            launcher_key: _launcher_metadata(launcher_command, repo_root),
+            **provenance,
             "hardware": _hardware_metadata(repo_root),
         },
         "notes": notes,
