@@ -561,3 +561,16 @@ speedup divided by the pool-slot increase relative to the smallest pool size.
 The optional fixed-batch value is recorded separately from `num_batches` in
 the source CSV so that stale archive metadata remains visible rather than
 being silently overwritten.
+
+For prose-ready descriptive statistics over the per-bitstring timings from one
+archived run, aggregate its per-batch files with:
+
+```bash
+python scripts/summarize_timebitstrings.py \
+  --timing-dir data/outputs/cloud_benchmarks/<benchmark>/runs/<run_id>
+```
+
+This writes `bitstring_compute_time_summary.csv` inside the run directory with
+the number of files and timing rows, status counts, minimum, median, 95th
+percentile, and maximum. The percentile uses linear interpolation at position
+`(n - 1) p`, also known as Hyndman--Fan type 7.
