@@ -288,6 +288,7 @@ def plot_histogram(
     ylabel: str = "Bitstrings Count",
     bins: int = 40,
     linear_y: bool = False,
+    color_by_status: bool = False,
     label_fontsize: float | None = None,
 ) -> Path:
     if not series:
@@ -310,16 +311,49 @@ def plot_histogram(
     if global_max <= global_min:
         global_max = global_min * 1.01
 
-    for idx, item in enumerate(series):
-        color = colors[idx % len(colors)]
-        ax.hist(
-            item.times,
-            bins=bins,
-            range=(global_min, global_max),
-            alpha=0.35,
-            color=color,
-            label=f"{item.label} (n={len(item.times)})",
-        )
+    if color_by_status:
+        status_colors = {
+            "supported": LINE_COLOR_PRIMARY,
+            "rejected": LINE_COLOR_SECONDARY,
+            "unknown": "#7F7F7F",
+        }
+        status_labels = {
+            "supported": "Supported",
+            "rejected": "Not supported",
+            "unknown": "Unknown",
+        }
+        statuses = ("supported", "rejected", "unknown")
+        include_series_label = len(series) > 1
+        for item in series:
+            for status in statuses:
+                status_times = [
+                    time_s
+                    for time_s, row_status in zip(item.times, item.statuses, strict=True)
+                    if row_status == status
+                ]
+                if not status_times:
+                    continue
+                category = status_labels[status]
+                label = f"{item.label}: {category}" if include_series_label else category
+                ax.hist(
+                    status_times,
+                    bins=bins,
+                    range=(global_min, global_max),
+                    alpha=0.45,
+                    color=status_colors[status],
+                    label=f"{label} (n={len(status_times)})",
+                )
+    else:
+        for idx, item in enumerate(series):
+            color = colors[idx % len(colors)]
+            ax.hist(
+                item.times,
+                bins=bins,
+                range=(global_min, global_max),
+                alpha=0.35,
+                color=color,
+                label=f"{item.label} (n={len(item.times)})",
+            )
 
     if not linear_y:
         ax.set_yscale("log")
@@ -343,6 +377,7 @@ def auto_plot_timebitstrings_histograms(
     output_dir: Path | None = None,
     title: str | None = None,
     bins: int = 40,
+    color_by_status: bool = False,
     label_fontsize: float | None = None,
 ) -> list[Path]:
     summary_path = summary_csv.resolve()
@@ -364,6 +399,7 @@ def auto_plot_timebitstrings_histograms(
                 output_path=output_path,
                 title=title or _default_title(summary_path, filtered),
                 bins=bins,
+                color_by_status=color_by_status,
                 label_fontsize=label_fontsize,
             )
         )
@@ -376,6 +412,7 @@ def auto_plot_timing_file_histograms(
     output_dir: Path | None = None,
     title: str | None = None,
     bins: int = 40,
+    color_by_status: bool = False,
     label_fontsize: float | None = None,
 ) -> list[Path]:
     timing_path = timing_file.resolve()
@@ -400,6 +437,7 @@ def auto_plot_timing_file_histograms(
                 output_path=output_path,
                 title=title or _default_title_for_timing_file(timing_path),
                 bins=bins,
+                color_by_status=color_by_status,
                 label_fontsize=label_fontsize,
             )
         )
@@ -448,6 +486,11 @@ def parse_args() -> argparse.Namespace:
         help="Keep all rows or only one timing status from the .tm file.",
     )
     parser.add_argument(
+        "--color-by-status",
+        action="store_true",
+        help="Color the combined histogram by supported/not-supported timing status.",
+    )
+    parser.add_argument(
         "--auto-all-statuses",
         action="store_true",
         help="When using --summary-csv, emit the default histogram and any supported/rejected variants automatically.",
@@ -479,6 +522,7 @@ def main() -> int:
             summary_csv=summary_csv,
             title=args.title or None,
             bins=args.bins,
+            color_by_status=args.color_by_status,
             label_fontsize=args.label_fontsize,
         )
         for path in saved:
@@ -517,6 +561,7 @@ def main() -> int:
         ylabel=args.ylabel,
         bins=args.bins,
         linear_y=args.linear_y,
+        color_by_status=args.color_by_status,
         label_fontsize=args.label_fontsize,
     )
     print(f"Saved plot: {saved}")
