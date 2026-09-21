@@ -543,3 +543,21 @@ python scripts/plot_cloud_benchmark.py \
   --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv \
   --no-efficiency
 ```
+
+To generate a table suitable for reporting strong-scaling results, including
+the individual repeats, means, sample standard deviations, speedups,
+efficiencies, and any runs removed from a filtered CSV, use:
+
+```bash
+python scripts/summarize_cloud_strong_scaling.py \
+  --summary-csv data/outputs/cloud_benchmarks/<benchmark>/summary_no_outliers.csv \
+  --all-runs-csv data/outputs/cloud_benchmarks/<benchmark>/summary.csv \
+  --fixed-batches 64
+```
+
+The default output is `strong_scaling_summary.csv` beside the filtered input.
+Speedup is the baseline mean divided by the current mean. Efficiency is the
+speedup divided by the pool-slot increase relative to the smallest pool size.
+The optional fixed-batch value is recorded separately from `num_batches` in
+the source CSV so that stale archive metadata remains visible rather than
+being silently overwritten.
