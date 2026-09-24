@@ -1,0 +1,41 @@
+{
+  "description": "Quantum-walk OpenMP strong scaling",
+  "repo_root": ".",
+  "binary": "build-openmp/cloud_task.x",
+  "vary": "omp_threads",
+  "values": [
+    1,
+    2,
+    4
+  ],
+  "repeat": 1,
+  "feynman_env": {
+    "OMP_DYNAMIC": "FALSE"
+  },
+  "batch_size": 0,
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "cases": [
+    {
+      "name": "fixed_thirds",
+      "p": "thirds",
+      "r": "thirds"
+    }
+  ],
+  "circuit": {
+    "generator": "qwalk",
+    "n": 6,
+    "it": 26
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 1
+  },
+  "timeout_seconds": 60,
+  "output_root": "data/outputs/experiments",
+  "notes": "Single-process OpenMP sweep using the MPI-free executable and the shared simulator core. No cloud services required. Fixed workload and checkpoints; startup and I/O may dominate. For laptop execution but larger than smoke test.",
+  "ranks": 1
+}
