@@ -15,6 +15,16 @@ def row(p, t, case='default', **extra):
 
 
 class StrongScalingTests(unittest.TestCase):
+    def test_openmp_varies_threads_but_requires_fixed_ranks(self):
+        rows = [row(1, 10, ranks='1', omp_threads_per_worker='1',
+                    feynman_env='{"OMP_NUM_THREADS":"1","OMP_DYNAMIC":"FALSE"}'),
+                row(2, 5, ranks='1', omp_threads_per_worker='2',
+                    feynman_env='{"OMP_NUM_THREADS":"2","OMP_DYNAMIC":"FALSE"}')]
+        self.assertEqual(strong_scaling_series(rows, 'total_full_s', 'omp_threads')['default'][3], [100, 100])
+        rows[1]['ranks'] = '2'
+        with self.assertRaises(ValueError):
+            strong_scaling_series(rows, 'total_full_s', 'omp_threads')
+
     def test_relative_baseline_repeats_cases_and_failures(self):
         rows = [row(4, 12), row(4, 8), row(8, 5), row(4, 20, 'arm'), row(8, 20, 'arm')]
         rows.append(dict(row(2, 100), returncode='1'))
