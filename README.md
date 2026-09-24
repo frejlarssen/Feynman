@@ -4,9 +4,12 @@ A sparse-output Feynman path simulator.
 
 ## Setup
 
+Activate the environment:
+
 ```bash
-micromamba create -n feynman -f environment.yml
-micromamba activate feynman
+python3 -m venv ~/venvs/feynman-mysystem
+source ~/venvs/feynman-mysystem/bin/activate
+python -m pip install -r requirements.txt
 ```
 
 Generate input artifacts:
@@ -82,6 +85,12 @@ python scripts/run_pipeline.py validation selected-output-accuracy \
 ## Development
 
 Build for dev/debug:
+
+```bash
+micromamba create -n feynman -f environment.yml
+micromamba activate feynman
+```
+
 
 ```bash
 cmake --preset dev
