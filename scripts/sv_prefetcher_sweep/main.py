@@ -15,7 +15,7 @@ from sweeplib.plot_style import (
     format_metric_label,
     single_column_figure_size,
 )
-from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
+from sweeplib.plotting import render_perf_sweep_plot
 from plot_timebitstrings_hist import auto_plot_timebitstrings_histograms
 
 from .cli import build_config
@@ -197,26 +197,15 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
         config_stem = _config_stem_from_metadata(metadata_path, Path(config.config).stem if config.config else "sweep")
         try:
             x_label = _infer_vary_label(summary_csv)
-            xs, ys = load_xy_from_summary(
-                summary_path=summary_csv,
-                x_column="varied_value",
-                y_column="total_full_s",
-                include_failures=(failures > 0),
-            )
-            default_named = default_plot_output_path(
-                summary_csv,
-                x_column=x_label,
-                y_column="total_full_s",
-            )
             output_path = summary_csv.parent / (
                 f"{config_stem}_{_short_metric_name('total_full_s')}_vs_{_short_metric_name(x_label)}.pdf"
             )
-            render_sweep_plot(
-                xs=xs,
-                ys=ys,
+            render_perf_sweep_plot(
+                summary_path=summary_csv,
+                include_failures=(failures > 0),
                 mode="meanstd",
                 x_label=x_label,
-                y_label="total_full_s",
+                y_column="total_full_s",
                 title=config.description or config.experiment_tag,
                 output_path=output_path,
                 label_fontsize=None,

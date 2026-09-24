@@ -39,6 +39,36 @@ python scripts/run_pipeline.py run-all-experiments --scope exploratory --fail-fa
 
 ## Perf Sweeps
 
+Rank sweeps (`"vary": "ranks"`) automatically use a strong-scaling plot for
+`total_full_s` (the default), `total_sim_s`, or `walltime_s`. This applies to
+initial runs, `plot perf-sweep`, and `regenerate_all_plots.py`.
+
+The plot shows mean runtime with sample-standard-deviation error bars and
+relative parallel efficiency, `100 * T(P0) * P0 / (T(P) * P)`. Each case uses
+its smallest successful rank count as `P0`. Failed runs and nonpositive or
+nonfinite timings are excluded from efficiency calculations, even with
+`--include-failures`. The rank plot aggregates repeats regardless of `--mode`.
+MPI process counts include the coordinator in dynamic scheduling.
+
+Keep the workload and OpenMP thread count fixed within each case. The plotter
+checks the settings recorded in the summary (including circuit, checkpoints,
+batch size, fraction, threshold, and thread environment) for consistency.
+Input state and requested outputs must also stay fixed; their contents are not
+verified by the plotter.
+
+### Local Quantum-Walk Strong Scaling
+
+```bash
+python scripts/run_pipeline.py perf-sweep \
+  --config scripts/experiments/exploratory/perf/qwalk_strong_scaling_local.json
+```
+
+This small workflow check runs a six-qubit, six-iteration walk at 1, 2, and 4
+MPI ranks, with three repetitions and one OpenMP thread per rank. All 64 outputs
+are held fixed. Static partitioning uses every rank for computation. The
+runtime-and-efficiency plot is generated automatically; startup and I/O can
+dominate this small workload.
+
 ### QFT Batch Sweep
 
 ```bash

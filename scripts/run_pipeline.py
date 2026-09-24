@@ -446,31 +446,24 @@ def _resolve_summary_csv_arg(
 
 def _plot_perf_sweep(args: argparse.Namespace) -> int:
     from plot_timebitstrings_hist import auto_plot_timebitstrings_histograms
-    from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
+    from sweeplib.plotting import default_plot_output_path, render_perf_sweep_plot
 
     summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
     if not summary_path.exists():
         raise FileNotFoundError(f"Summary CSV not found: {summary_path}")
-    x_column = "varied_value"
     x_label = _infer_vary_label(summary_path)
-    xs, ys = load_xy_from_summary(
-        summary_path=summary_path,
-        x_column=x_column,
-        y_column=args.y_column,
-        include_failures=args.include_failures,
-    )
     output_path = Path(args.output).resolve() if args.output else _default_plot_path(
         artifact_path=summary_path,
         run_type="experiments",
         current_stem=default_plot_output_path(summary_path, x_column=x_label, y_column=args.y_column).stem,
         multiple_plots_for_config=True,
     )
-    render_sweep_plot(
-        xs=xs,
-        ys=ys,
+    render_perf_sweep_plot(
+        summary_path=summary_path,
+        include_failures=args.include_failures,
         mode=args.mode,
         x_label=x_label,
-        y_label=args.y_column,
+        y_column=args.y_column,
         title=args.title,
         output_path=output_path,
         label_fontsize=args.label_fontsize,
