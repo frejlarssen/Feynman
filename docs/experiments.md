@@ -23,6 +23,8 @@ Perf run telemetry records:
 - `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
 - `sweep_metadata.json`: git commit, dirty flag, config/build inputs, and a
   scoped git patch snapshot for perf sweeps
+- `sweep_metadata.json`: launcher-host system command output (`df`, `lscpu` on
+  Linux, `sysctl` on macOS, etc.), with failures recorded without stopping runs.
 
 Batch-run all configs (perf + validation):
 

@@ -5,6 +5,7 @@ import hashlib
 import os
 import platform
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -217,25 +218,69 @@ def _launcher_metadata(launcher_cmd: str, repo_root: Path) -> dict[str, Any]:
     }
 
 
+def _system_command_metadata(command: list[str], repo_root: Path) -> dict[str, Any]:
+    """Best-effort, bounded probes; retain diagnostics rather than abort a sweep."""
+    result = {"command": command, "returncode": None, "stdout": "", "stderr": ""}
+    try:
+        proc = subprocess.run(
+            command, cwd=repo_root, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=10, check=False,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+        result.update(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr,
+                      status="ok" if proc.returncode == 0 else "failed")
+    except subprocess.TimeoutExpired as err:
+        def decode(value):
+            return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+        result.update(status="timeout", stdout=decode(err.stdout), stderr=decode(err.stderr))
+    except OSError as err:
+        result.update(status="unavailable" if isinstance(err, FileNotFoundError) else "failed",
+                      error=str(err))
+    return result
+
+
 def _hardware_metadata(repo_root: Path) -> dict[str, Any]:
     logical_cores = os.cpu_count()
+    system = platform.system()
+    commands = {
+        "uname": ["uname", "-a"],
+        "df": ["df", "-h"],
+        "uptime": ["uptime"],
+    }
+    if system == "Linux":
+        commands.update({
+            "lscpu": ["lscpu"],
+            "nproc": ["nproc"],
+            "free": ["free", "-h"],
+            "lsblk": ["lsblk"],
+            "os_release": ["cat", "/etc/os-release"],
+        })
+    elif system == "Darwin":
+        commands.update({
+            "sw_vers": ["sw_vers"],
+            "sysctl_hardware": ["sysctl", "hw.model", "hw.machine", "hw.ncpu",
+                                "hw.physicalcpu", "hw.logicalcpu", "hw.memsize"],
+            "sysctl_cpu": ["sysctl", "machdep.cpu"],
+            "vm_stat": ["vm_stat"],
+        })
+    probes = {name: _system_command_metadata(command, repo_root)
+              for name, command in commands.items()}
     nproc_online = None
     nproc_error = ""
-    try:
-        nproc_proc = run_capture(["nproc"], repo_root)
-    except OSError as err:
-        nproc_error = str(err)
-    else:
-        if nproc_proc.returncode == 0:
-            token = nproc_proc.stdout.strip().splitlines()[0] if nproc_proc.stdout.strip() else ""
-            if token.isdigit():
-                nproc_online = int(token)
-        elif nproc_proc.stderr.strip():
-            nproc_error = nproc_proc.stderr.strip()
+    nproc = probes.get("nproc")
+    if nproc:
+        token = nproc["stdout"].strip()
+        if nproc["returncode"] == 0 and token.isdigit():
+            nproc_online = int(token)
+        else:
+            nproc_error = nproc.get("error") or nproc["stderr"] or nproc["status"]
     return {
         "logical_cores_os_cpu_count": logical_cores,
         "logical_cores_nproc": nproc_online,
         "nproc_error": nproc_error,
+        "scope": "local launcher host (not all MPI worker hosts)",
+        "captured_at_utc": iso_utc(dt.datetime.now(dt.timezone.utc)),
+        "system_commands": probes,
     }
 
 
