@@ -2,7 +2,7 @@
   "description": "google_rqc_selected_accuracy_smoke",
   "repo_root": ".",
   "output_root": "data/outputs/validation",
-  "binary": "build-cloud/cloud_task.x",
+  "binary": "build-standalone/feynman.x",
   "mpirun": "mpirun",
   "ranks": 1,
   "feynman_env": {

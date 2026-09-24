@@ -7,17 +7,16 @@
 To build a simpler executable without MPI, for example to be used as a cloud task:
 
 ```bash
-cmake --preset cloud
-cmake --build --preset cloud --target cloud_task -j
+cmake --preset standalone
+cmake --build --preset standalone --target feynman -j
 ```
 
-Use the preset `cloud-make` instead on systems without Ninja.
 
 Run for one batch:
 
 ```bash
 mkdir -p data/outputs/tmp
-./build-cloud/cloud_task.x \
+./build-standalone/feynman.x \
   -c data/generated/circuits/qft/qft_n8_k2.qasm \
   -i data/generated/statevectors/ket0_size1.hsv \
   -b data/generated/hexstring_sets/nrhex10_size1_from0x0_to0xA.hs \

@@ -42,5 +42,5 @@
   ],
   "output_root": "data/outputs/experiments",
   "notes": "Approximate single-rank single-thread Google-RQC threshold probe for per-output timing imbalance; use after the matching validation sweep to pick a cloud-worthy threshold.",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+  "binary": "build-release/feynman_mpi.x"
 }

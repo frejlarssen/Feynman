@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """QFT frequency demo with optional Qiskit reference overlay.
 
-Runs sv_prefetcher and plots:
+Runs feynman and plots:
 1) Input signal real part over the sparse support.
 2) Output populations for requested output bitstrings.
 
@@ -102,7 +102,7 @@ def _merge_config(
 
     merged = {
         "description": pick("description", args.description, ""),
-        "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
+        "binary": pick("binary", args.binary, "build-release/feynman_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
         "feynman_env": dict(pick("feynman_env", None, {}) or {}),
@@ -138,8 +138,8 @@ def _merge_config(
                 raise ValueError(f"Missing required parameter: {key}")
     if merged["ranks"] < 1:
         raise ValueError("ranks must be >= 1")
-    if merged["batch_size"] < 0:
-        raise ValueError("batch_size must be >= 0")
+    if merged["batch_size"] < 1:
+        raise ValueError("batch_size must be >= 1")
     if merged["plot_max_xticks"] < 2:
         raise ValueError("plot_max_xticks must be >= 2")
     merged["experiment_tag"] = experiment_tag_from_config(config_path_str, fallback="qft_demo")
@@ -438,7 +438,7 @@ def _signal_meta_from_input(
     return {}
 
 
-def _run_sv_prefetcher(
+def _run_feynman(
     *,
     repo_root: Path,
     mpirun: str,
@@ -736,7 +736,7 @@ def main(argv: list[str] | None = None) -> int:
 
     output_hsv = sweep_dir / "feynman_output.hsv"
     feynman_t0 = time.perf_counter()
-    cmd, rc, stdout_text, stderr_text = _run_sv_prefetcher(
+    cmd, rc, stdout_text, stderr_text = _run_feynman(
         repo_root=repo_root,
         mpirun=cfg["mpirun"],
         ranks=cfg["ranks"],
@@ -760,7 +760,7 @@ def main(argv: list[str] | None = None) -> int:
     (sweep_dir / "command.txt").write_text(shlex.join(cmd) + "\n", encoding="utf-8")
     if rc != 0:
         raise RuntimeError(
-            f"sv_prefetcher failed with return code {rc}. See {sweep_dir / 'stderr.log'}"
+            f"feynman failed with return code {rc}. See {sweep_dir / 'stderr.log'}"
         )
     if not output_hsv.exists():
         err_hint = ""
@@ -768,7 +768,7 @@ def main(argv: list[str] | None = None) -> int:
             tail = "\n".join(stderr_text.strip().splitlines()[-6:])
             err_hint = f"\nStderr tail:\n{tail}"
         raise RuntimeError(
-            "sv_prefetcher did not produce the expected output file "
+            "feynman did not produce the expected output file "
             f"({output_hsv}), even though return code was 0. "
             f"See logs in {sweep_dir}.{err_hint}"
         )

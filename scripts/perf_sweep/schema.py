@@ -9,6 +9,7 @@ from typing import Any
 VARY_CHOICES = ("omp_threads", "ranks", "batch_size", "fraction", "threshold", "p", "r", "circuit_it")
 FLOAT_SWEEP_PARAMS = {"fraction", "threshold"}
 CASE_OVERRIDE_FIELDS = (
+    "schedule",
     "ranks",
     "batch_size",
     "fraction",
@@ -21,6 +22,7 @@ CASE_OVERRIDE_FIELDS = (
 )
 
 PARAM_FIELDS = (
+    "schedule",
     "ranks",
     "batch_size",
     "fraction",
@@ -40,13 +42,13 @@ METRIC_PATTERNS = {
         r"Average clocktime per simulate call:\s+([0-9eE+.\-]+) seconds"
     ),
     "total_sim_s": re.compile(
-        r"Total clocktime sim for sv.cpp:\s+([0-9eE+.\-]+) seconds"
+        r"Total clocktime sim for feynman:\s+([0-9eE+.\-]+) seconds"
     ),
     "total_io_s": re.compile(
-        r"Total clocktime writing to disk for sv.cpp:\s+([0-9eE+.\-]+) seconds"
+        r"Total clocktime writing to disk for feynman:\s+([0-9eE+.\-]+) seconds"
     ),
     "total_full_s": re.compile(
-        r"Total clocktime \(including I/O\) for sv.cpp:\s+([0-9eE+.\-]+) seconds"
+        r"Total clocktime \(including I/O\) for feynman:\s+([0-9eE+.\-]+) seconds"
     ),
     "autotune_time_s": re.compile(r"Autotuning time:\s+([0-9eE+.\-]+)\s+seconds"),
     "autotune_candidates": re.compile(r"Autotuning time:.*candidates=(\d+)"),
@@ -99,7 +101,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "vary": None,
     "values": None,
     "repeat": 1,
-    "binary": "build-release/sv_prefetcher_subset_mpi.x",
+    "binary": "build-release/feynman_mpi.x",
     "mpirun": "mpirun",
     "circuit": None,
     "input_statevector": None,
@@ -107,6 +109,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "output_root": "data/outputs/experiments",
     "ranks": 1,
     "batch_size": 32,
+    "schedule": "prefetch",
     "fraction": 1.0,
     "threshold": 1e-8,
     "p": None,
@@ -164,6 +167,7 @@ class SweepConfig:
     output_root: str
     ranks: int
     batch_size: int
+    schedule: str
     fraction: float
     threshold: float
     p: int | None

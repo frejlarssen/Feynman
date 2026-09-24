@@ -24,6 +24,6 @@
     "count": 1024
   },
   "output_root": "data/outputs/experiments",
-  "binary": "build-cloud-make/cloud_task.x",
-  "notes": "One direct cloud_task process on OpenCube with the QWalk pool-sweep workload. The effective batch contains all 1024 outputs; no Airflow, Kubernetes, MPI, or pod startup is included."
+  "binary": "build-standalone/feynman.x",
+  "notes": "One direct feynman process on OpenCube with the QWalk pool-sweep workload. The effective batch contains all 1024 outputs; no Airflow, Kubernetes, MPI, or pod startup is included."
 }

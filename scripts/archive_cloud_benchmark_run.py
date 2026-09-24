@@ -27,7 +27,7 @@ from scripts.plot_timebitstrings_hist import (  # noqa: E402
     plot_histogram,
 )
 from scripts.summarize_airflow_task_timing import summarize_task_states  # noqa: E402
-from scripts.summarize_cloud_task_logs import _default_airflow_log_root, summarize_logs  # noqa: E402
+from scripts.summarize_feynman_logs import _default_airflow_log_root, summarize_logs  # noqa: E402
 from scripts.cloud_memory import collect_profiles  # noqa: E402
 from scripts.plot_airflow_pool_autoscaler import (  # noqa: E402
     plot_events as plot_autoscaler_events,

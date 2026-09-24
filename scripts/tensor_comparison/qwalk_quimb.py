@@ -208,7 +208,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "timeout_seconds": raw.get("timeout_seconds"),
         "run_feynman": bool(raw.get("run_feynman", True)),
         "run_feynman_transpiled": bool(raw.get("run_feynman_transpiled", False)),
-        "binary": raw.get("binary", "build-release/sv_prefetcher_subset_mpi.x"),
+        "binary": raw.get("binary", "build-release/feynman_mpi.x"),
         "mpirun": raw.get("mpirun", "mpirun"),
         "feynman_env": dict(raw.get("feynman_env", {})),
         "ranks": int(raw.get("ranks", 1)),
@@ -250,7 +250,7 @@ def _write_hsv(path: Path, values: list[int], amps: list[complex]) -> None:
 
 
 def _parse_feynman_internal_runtime(stdout: str) -> float | None:
-    m = re.search(r"Total clocktime \(including I/O\) for sv\.cpp:\s+([0-9eE+.\-]+) seconds", stdout)
+    m = re.search(r"Total clocktime \(including I/O\) for feynman:\s+([0-9eE+.\-]+) seconds", stdout)
     return float(m.group(1)) if m else None
 
 

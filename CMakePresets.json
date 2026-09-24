@@ -2,47 +2,49 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 16,
+    "minor": 21,
     "patch": 0
   },
   "configurePresets": [
     {
       "name": "dev",
-      "displayName": "Dev (Ninja)",
-      "generator": "Ninja",
+      "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_MPI_TARGETS": "ON"
       }
     },
     {
       "name": "release",
-      "displayName": "Release (Ninja)",
-      "generator": "Ninja",
+      "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_MPI_TARGETS": "ON"
       }
     },
     {
-      "name": "cloud",
-      "displayName": "Cloud (Ninja)",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-cloud",
+      "name": "standalone-dev",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-standalone-dev",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "BUILD_MPI_TARGETS": "OFF"
       }
     },
     {
-      "name": "cloud-make",
-      "displayName": "Cloud (Unix Makefiles)",
-      "inherits": "cloud",
+      "name": "standalone",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build-cloud-make"
+      "binaryDir": "${sourceDir}/build-standalone",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_MPI_TARGETS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -55,12 +57,12 @@
       "configurePreset": "release"
     },
     {
-      "name": "cloud",
-      "configurePreset": "cloud"
+      "name": "standalone-dev",
+      "configurePreset": "standalone-dev"
     },
     {
-      "name": "cloud-make",
-      "configurePreset": "cloud-make"
+      "name": "standalone",
+      "configurePreset": "standalone"
     }
   ]
 }

@@ -46,11 +46,7 @@ __pycache__/
 
 # Generated compile commands
 compile_commands.json
-build/
-build-release/
-build-cloud/
-build-cloud-make/
-build-openmp/
+build*/
 
 data/outputs/
 

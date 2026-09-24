@@ -21,7 +21,7 @@
   "quimb_simplify_atol": 1e-12,
   "quimb_simplify_equalize_norms": false,
   "run_feynman": true,
-  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "binary": "build-release/feynman_mpi.x",
   "mpirun": "mpirun",
   "ranks": 8,
   "feynman_env": {

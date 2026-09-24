@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    perf = sub.add_parser("perf-sweep", help="Run sv_prefetcher parameter sweep.")
+    perf = sub.add_parser("perf-sweep", help="Run feynman parameter sweep.")
     _add_common_sweep_flags(perf)
 
     qaoa = sub.add_parser("qaoa-pruning", help="Run QAOA pruning threshold sweep.")
@@ -854,7 +854,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "perf-sweep":
-        from sv_prefetcher_sweep.main import main as perf_sweep_main
+        from perf_sweep.main import main as perf_sweep_main
 
         return perf_sweep_main(entry_script=Path(__file__).resolve(), argv=_sweep_argv(args))
     if args.command == "qaoa-pruning":

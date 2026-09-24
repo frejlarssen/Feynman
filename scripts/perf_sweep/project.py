@@ -125,6 +125,7 @@ def resolve_paths(config: SweepConfig, repo_root: Path) -> ProjectPaths:
 def base_params(config: SweepConfig) -> dict[str, Any]:
     return {
         "ranks": config.ranks,
+        "schedule": config.schedule,
         "batch_size": config.batch_size,
         "fraction": config.fraction,
         "threshold": config.threshold,
@@ -257,11 +258,11 @@ def _resolve_dynamic_checkpoints(params: dict[str, Any], circuit_path: Path) -> 
 
 
 def _binary_requires_mpirun(binary: Path) -> bool:
-    return "mpi" in binary.name.lower()
+    return binary.name == "feynman_mpi.x"
 
 
 def _binary_supports_batch_size(binary: Path) -> bool:
-    return binary.name != "cloud_task.x"
+    return _binary_requires_mpirun(binary)
 
 
 def build_command(
@@ -289,7 +290,7 @@ def build_command(
         str(int(params["verbosity"])),
     ]
     if _binary_supports_batch_size(paths.binary):
-        run_args.extend(["-s", str(int(params["batch_size"]))])
+        run_args.extend(["--schedule", params["schedule"], "--batch-size", str(int(params["batch_size"]))])
     if params["p"] is not None and params["r"] is not None:
         run_args.extend(["-p", str(int(params["p"])), "-r", str(int(params["r"]))])
     if bool(params["dense"]):
@@ -306,13 +307,8 @@ def build_command(
 
 
 def _find_timing_file(run_dir: Path, output_file: Path) -> Path | None:
-    candidates = (
-        run_dir / "timeBitstrings.csv",
-        output_file.with_name(f"{output_file.stem}.timeBitstrings.csv"),
-        run_dir / "timeBitstrings.tm",
-        output_file.with_name(f"{output_file.stem}.timeBitstrings.tm"),
-    )
-    return next((path for path in candidates if path.exists()), None)
+    path = output_file.with_name(f"{output_file.stem}.timeBitstrings.csv")
+    return path if path.exists() else None
 
 
 def _run_tag(case_name: str, vary: str, value: Any, run_index: int, rep: int) -> str:
@@ -320,7 +316,10 @@ def _run_tag(case_name: str, vary: str, value: Any, run_index: int, rep: int) ->
 
 
 def _rel(path: Path, root: Path) -> str:
-    return str(path.relative_to(root))
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
 
 
 def make_run_one(
@@ -384,6 +383,7 @@ def make_run_one(
             "varied_param": config.vary,
             "varied_value": varied_value,
             "ranks": params["ranks"],
+            "schedule": params["schedule"] if _binary_requires_mpirun(paths.binary) else "serial",
             "batch_size": params["batch_size"],
             "fraction": params["fraction"],
             "threshold": params["threshold"],

@@ -8,7 +8,7 @@ dependencies:
   - clang-tools
   - lldb
   - cmake
-  - ninja
+  - make
   - pkg-config
   # Parallelization
   - openmpi

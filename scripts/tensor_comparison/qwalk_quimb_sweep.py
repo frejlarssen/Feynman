@@ -134,7 +134,7 @@ def _build_provenance_metadata(
     created_at: dt.datetime,
 ) -> dict[str, Any]:
     validation = cfg["validation"]
-    binary = _resolve_path(validation.get("binary", "build-release/sv_prefetcher_subset_mpi.x"), repo_root)
+    binary = _resolve_path(validation.get("binary", "build-release/feynman_mpi.x"), repo_root)
     launcher = str(validation.get("mpirun", "mpirun"))
     scope_paths = [
         "CMakeLists.txt",

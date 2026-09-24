@@ -52,6 +52,7 @@ string wire_to_string(const vector<ParsedGate> &wire) {
 }
 
 struct ParsedCircuit {
+  static int declared_n; // QASM width before byte padding for file indices.
   static int n; // Number of qubits
   static int nr_gates;
   static vector<vector<ParsedGate>>
@@ -108,6 +109,7 @@ struct ParsedCircuit {
 
       n = stoi(stripped_line.substr(bracket_pos + 1,
                                     end_bracket_pos - bracket_pos - 1));
+      declared_n = n;
       n = ((n + 7) / 8) *
           8; // Round up to next byte for compatibility with I/O format.
       wires.resize(n);
@@ -220,3 +222,4 @@ struct ParsedCircuit {
 int ParsedCircuit::n;
 int ParsedCircuit::nr_gates;
 vector<vector<ParsedGate>> ParsedCircuit::wires;
+int ParsedCircuit::declared_n;

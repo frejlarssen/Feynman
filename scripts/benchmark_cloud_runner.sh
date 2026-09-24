@@ -384,7 +384,7 @@ EOF
               unset IFS
             fi
           fi
-          if simulate_log_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_cloud_task_logs.py \
+          if simulate_log_metrics_tsv="$("${HELPER_PYTHON}" scripts/summarize_feynman_logs.py \
             --dag-id "${DAG_ID}" \
             --run-id "${run_id}" \
             --task-id simulate_batch \

@@ -1,4 +1,4 @@
-"""sv_prefetcher sweep package."""
+"""feynman sweep package."""
 
 from .main import main
 

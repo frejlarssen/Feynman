@@ -4,6 +4,7 @@ import csv
 import math
 import json
 import statistics
+import textwrap
 from pathlib import Path
 
 from .plot_style import (
@@ -116,7 +117,7 @@ def strong_scaling_series(rows: list[dict[str, str]], y_column: str,
     grouped = {}
     settings = {}
     fixed_fields = (
-        "batch_size", "p", "r", "fraction", "threshold", "dense",
+        "schedule", "batch_size", "p", "r", "fraction", "threshold", "dense",
         "circuit_file_used", "omp_threads_per_worker", "feynman_env",
     )
     if varied_param == "omp_threads":
@@ -181,7 +182,12 @@ def render_perf_sweep_plot(
     configure_headless_matplotlib()
     import matplotlib.pyplot as plt
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
-    fig, ax = plt.subplots(figsize=single_column_figure_size())
+    figure_width, figure_height = single_column_figure_size()
+    multi_case = len(series) > 2
+    if multi_case:
+        figure_width *= 1.8
+        figure_height *= 1.8
+    fig, ax = plt.subplots(figsize=(figure_width, figure_height))
     efficiency_ax = ax.twinx()
     ranks_all = sorted({p for ranks, *_ in series.values() for p in ranks})
     positions = {p: i for i, p in enumerate(ranks_all)}
@@ -212,9 +218,17 @@ def render_perf_sweep_plot(
     ax.grid(axis="y", alpha=0.3)
     handles, labels = ax.get_legend_handles_labels()
     handles2, labels2 = efficiency_ax.get_legend_handles_labels()
-    ax.legend(handles + handles2, labels + labels2, fontsize="small", loc="lower left")
-    fig.text(0.5, 0.01, "Baseline: " + "; ".join(baselines), ha="center", fontsize="small")
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    if multi_case:
+        fig.legend(handles + handles2, labels + labels2, fontsize="small",
+                   loc="lower center", bbox_to_anchor=(0.5, 0.07), ncol=2)
+    else:
+        ax.legend(handles + handles2, labels + labels2, fontsize="small", loc="lower left")
+    baseline_counts = {values[0][0] for values in series.values()}
+    caption = (f"Baseline: P₀={next(iter(baseline_counts))} for every case"
+               if len(baseline_counts) == 1 else "Baseline: " + "; ".join(baselines))
+    caption = textwrap.fill(caption, width=85 if multi_case else 45)
+    fig.text(0.5, 0.01, caption, ha="center", fontsize="small")
+    fig.tight_layout(rect=(0, 0.32 if multi_case else 0.1, 1, 1))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)
     plt.close(fig)

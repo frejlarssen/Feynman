@@ -94,7 +94,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "description": pick("description", args.description, ""),
         "repo_root": pick("repo_root", args.repo_root, str(SCRIPT_REPO_ROOT)),
         "output_root": pick("output_root", args.output_root, "data/outputs/validation"),
-        "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
+        "binary": pick("binary", args.binary, "build-release/feynman_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
         "feynman_env": dict(pick("feynman_env", None, {}) or {}),
@@ -115,8 +115,8 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError(f"Missing required parameter: {key}")
     if merged["ranks"] < 1:
         raise ValueError("ranks must be >= 1")
-    if merged["batch_size"] < 0:
-        raise ValueError("batch_size must be >= 0")
+    if merged["batch_size"] < 1:
+        raise ValueError("batch_size must be >= 1")
     merged["experiment_tag"] = experiment_tag_from_config(
         str(args.config.resolve()) if args.config else None,
         fallback="qaoa_qiskit_validation",
@@ -313,7 +313,7 @@ def build_dense_input(input_hsv: Path, sim_qubits: int) -> np.ndarray:
 
 
 def _parse_feynman_internal_runtime(stdout: str) -> float | None:
-    m = re.search(r"Total clocktime \(including I/O\) for sv\.cpp:\s+([0-9eE+.\-]+) seconds", stdout)
+    m = re.search(r"Total clocktime \(including I/O\) for feynman:\s+([0-9eE+.\-]+) seconds", stdout)
     if not m:
         return None
     return float(m.group(1))

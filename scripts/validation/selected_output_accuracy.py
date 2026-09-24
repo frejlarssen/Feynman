@@ -38,7 +38,7 @@ _AMP_RE = re.compile(
     r"^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)i$"
 )
 _INTERNAL_RUNTIME_RE = re.compile(
-    r"Total clocktime \(including I/O\) for sv\.cpp:\s+([0-9eE+.\-]+) seconds"
+    r"Total clocktime \(including I/O\) for feynman:\s+([0-9eE+.\-]+) seconds"
 )
 _ABS_STATS_ARTIFACT_BASENAMES = (
     "contribution2AbsMinMax.csv",
@@ -162,8 +162,8 @@ def _normalize_run_case(
         raise ValueError(f"case {name!r}: threshold must be >= 0")
     if verbosity < 0:
         raise ValueError(f"case {name!r}: verbosity must be >= 0")
-    if batch_size is not None and batch_size < 0:
-        raise ValueError(f"case {name!r}: batch_size must be >= 0")
+    if batch_size is not None and batch_size < 1:
+        raise ValueError(f"case {name!r}: batch_size must be >= 1")
     if population_estimator not in ("amplitude_square", "cross_seeded"):
         raise ValueError(
             f"case {name!r}: population_estimator must be one of "
@@ -318,7 +318,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "description": _pick(cfg, "description", args.description, ""),
         "repo_root": str(_pick(cfg, "repo_root", args.repo_root, SCRIPT_REPO_ROOT)),
         "output_root": str(_pick(cfg, "output_root", args.output_root, "data/outputs/validation")),
-        "binary": str(_pick(cfg, "binary", args.binary, "build-cloud/cloud_task.x")),
+        "binary": str(_pick(cfg, "binary", args.binary, "build-standalone/feynman.x")),
         "mpirun": str(_pick(cfg, "mpirun", args.mpirun, "mpirun")),
         "ranks": int(_pick(cfg, "ranks", args.ranks, 1)),
         "feynman_env": dict(_pick(cfg, "feynman_env", None, {}) or {}),
@@ -389,11 +389,11 @@ def _ordered_vector(sparse: dict[int, complex], subset_indices: list[int]) -> np
 
 
 def _binary_supports_batch_size(binary: Path) -> bool:
-    return binary.name != "cloud_task.x"
+    return binary.name != "feynman.x"
 
 
 def _binary_requires_mpirun(binary: Path) -> bool:
-    return "mpi" in binary.name
+    return binary.name == "feynman_mpi.x"
 
 
 def _parse_internal_runtime(stdout: str) -> float | None:

@@ -14,12 +14,12 @@ METRIC_PATTERNS = {
     "avg_simulate_call_s": re.compile(
         r"Average clocktime per simulate call:\s+([0-9eE+.\-]+) seconds"
     ),
-    "total_sim_s": re.compile(r"Total clocktime sim for sv.cpp:\s+([0-9eE+.\-]+) seconds"),
+    "total_sim_s": re.compile(r"Total clocktime sim for feynman:\s+([0-9eE+.\-]+) seconds"),
     "total_io_s": re.compile(
-        r"Total clocktime writing to disk for sv.cpp:\s+([0-9eE+.\-]+) seconds"
+        r"Total clocktime writing to disk for feynman:\s+([0-9eE+.\-]+) seconds"
     ),
     "total_full_s": re.compile(
-        r"Total clocktime \(including I/O\) for sv.cpp:\s+([0-9eE+.\-]+) seconds"
+        r"Total clocktime \(including I/O\) for feynman:\s+([0-9eE+.\-]+) seconds"
     ),
 }
 

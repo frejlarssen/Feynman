@@ -46,5 +46,5 @@
     }
   ],
   "notes": "QWalk sweep over iterations; compare no_cp vs fixed thirds vs autotuned using artificial sources on x-axis.",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+  "binary": "build-release/feynman_mpi.x"
 }

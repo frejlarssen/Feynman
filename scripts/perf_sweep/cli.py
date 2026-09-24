@@ -80,7 +80,7 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Sweep one parameter for sv_prefetcher and store results with metadata."
+        description="Sweep one parameter for Feynman and store results with metadata."
     )
     parser.add_argument("--config", default=argparse.SUPPRESS)
     parser.add_argument("--description", default=argparse.SUPPRESS)
@@ -96,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-bitstrings", default=argparse.SUPPRESS)
     parser.add_argument("--output-root", default=argparse.SUPPRESS)
 
+    parser.add_argument("--schedule", choices=["static-block", "static-cyclic", "dynamic", "prefetch"], default=argparse.SUPPRESS)
     parser.add_argument("--ranks", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--batch-size", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--fraction", type=float, default=argparse.SUPPRESS)
@@ -217,14 +218,22 @@ def _validate_semantics(options: dict[str, Any]) -> None:
         raise ValueError("--repeat must be >= 1")
     if int(options["ranks"]) < 1:
         raise ValueError("--ranks must be >= 1")
-    if int(options["batch_size"]) < 0:
-        raise ValueError("--batch-size must be >= 0")
+    if int(options["batch_size"]) < 1:
+        raise ValueError("--batch-size must be >= 1")
 
     if options["vary"] == "circuit_it":
         circuit_cfg = options.get("circuit")
         if not isinstance(circuit_cfg, dict) or str(circuit_cfg.get("generator", "")).strip().lower() != "qwalk":
             raise ValueError("--vary circuit_it requires circuit generator to be qwalk.")
 
+    schedules = {"static-block", "static-cyclic", "dynamic", "prefetch"}
+    if options["schedule"] not in schedules:
+        raise ValueError("Invalid scheduling strategy")
+    for case in options.get("cases") or []:
+        if case.get("schedule", options["schedule"]) not in schedules:
+            raise ValueError("Invalid case scheduling strategy")
+        if int(case.get("batch_size", options["batch_size"])) < 1:
+            raise ValueError("Case batch size must be >= 1")
     cases = options.get("cases")
     if not cases:
         if (options["p"] is None) ^ (options["r"] is None):
@@ -258,8 +267,8 @@ def _validate_semantics(options: dict[str, Any]) -> None:
 def _parse_values(options: dict[str, Any]) -> None:
     conv = float if options["vary"] in FLOAT_SWEEP_PARAMS else int
     options["values"] = [_to_number("values", value, conv) for value in options["values"]]
-    if options["vary"] == "omp_threads" and any(v < 1 for v in options["values"]):
-        raise ValueError("OpenMP thread counts must be >= 1")
+    if options["vary"] in {"omp_threads", "ranks", "batch_size"} and any(v < 1 for v in options["values"]):
+        raise ValueError("Rank, thread and batch counts must be >= 1")
 
 
 def _derive_experiment_tag(options: dict[str, Any]) -> None:

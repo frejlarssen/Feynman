@@ -23,7 +23,7 @@ Options get_options(int argc, char *argv[]) {
   Options opts;
 
   const char *helpstr =
-      "Usage: ./cloud_concat_batches.x -i input_dir -o output_file "
+      "Usage: ./feynman_concat_batches.x -i input_dir -o output_file "
       "[-p input_prefix] [-s input_suffix] [-n expected_num_batches] "
       "[-v verbosity]\n";
 

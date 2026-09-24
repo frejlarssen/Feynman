@@ -12,14 +12,14 @@ For perf experiments, build the release binary first:
 
 ```bash
 cmake --preset release
-cmake --build --preset release --target sv_prefetcher_mpi_subsetbitstrings -j
+cmake --build --preset release --target feynman_mpi -j
 ```
 
-Perf configs in this catalog use `build-release/sv_prefetcher_subset_mpi.x`.
+Perf configs in this catalog use `build-release/feynman_mpi.x`.
 
 Perf run telemetry records:
 
-- `summary.csv`: `ranks`, `feynman_env`, `active_workers`, `omp_threads_per_worker`
+- `summary.csv`: `schedule`, `ranks`, `feynman_env`, `active_workers`, `omp_threads_per_worker`
 - `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
 - `sweep_metadata.json`: git commit, dirty flag, config/build inputs, and a
   scoped git patch snapshot for perf sweeps
@@ -41,16 +41,30 @@ python scripts/run_pipeline.py run-all-experiments --scope exploratory --fail-fa
 
 ## Perf Sweeps
 
+MPI configs select `schedule` explicitly: `static-block`, `static-cyclic`,
+`dynamic`, or `prefetch` (default). `batch_size` is positive and affects only
+dynamic/prefetch scheduling. Standalone runs record `schedule=serial` and use
+one process with OpenMP. Case overrides can compare MPI schedules on the same
+workload.
+
+Timing fields are shared by both executables: `total_sim_s` covers computation
+and scheduling through the final worker barrier; `total_io_s` covers output
+and memory-profile writes; `total_full_s` also includes parsing, building, and
+input loading. `walltime_s` additionally includes launcher/process startup.
+`total_simulate_calls_s` sums computation time across ranks (not wall time).
+Timing and contribution files use the output stem, e.g.
+`output.timeBitstrings.csv`. MPI memory profiles are per rank.
+
 For a single-process OpenMP sweep without MPI installed:
 
 ```bash
-cmake -S . -B build-openmp -DBUILD_MPI_TARGETS=OFF -DCMAKE_BUILD_TYPE=Release
-cmake --build build-openmp --target cloud_task -j 8
+cmake -S . -B build-standalone -DBUILD_MPI_TARGETS=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build-standalone --target feynman -j 8
 python scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/exploratory/perf/qwalk_openmp_scaling_local.json
 ```
 
-`cloud_task.x` runs locally using the shared simulator core; no cloud services
+`feynman.x` runs locally using the shared simulator core; no cloud services
 are needed. `"vary": "omp_threads"` sets `OMP_NUM_THREADS` per run and generates
 the same runtime/efficiency plot, using thread counts instead of MPI ranks.
 The config uses 1, 2, and 4 threads, fixed checkpoints, and `OMP_DYNAMIC=FALSE`.
@@ -79,7 +93,7 @@ python scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/exploratory/perf/qwalk_strong_scaling_local.json
 ```
 
-This small workflow check runs a six-qubit, six-iteration walk at 1, 2, and 4
+This small workflow check runs a six-qubit, sixteen-iteration walk at 1, 2, and 4
 MPI ranks, with three repetitions and one OpenMP thread per rank. All 64 outputs
 are held fixed. Static partitioning uses every rank for computation. The
 runtime-and-efficiency plot is generated automatically; startup and I/O can
@@ -205,7 +219,7 @@ operation counts, then writes time, memory, and operation-count plots.
 ```bash
 python scripts/run_pipeline.py validation selected-output-accuracy \
   --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_smoke.json \
-  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+  -- --binary build-release/feynman_mpi.x --ranks 1
 ```
 
 This workflow runs one exact selected-output reference and one or more
@@ -221,7 +235,7 @@ reference-dependent summary fields blank, and do not emit the tradeoff plot.
 
 Use this to tune `fraction` and `threshold` locally before moving to cloud
 benchmarks. When using the MPI binary, keep the launcher path above:
-`--binary build-release/sv_prefetcher_subset_mpi.x --ranks 1`. The validation
+`--binary build-release/feynman_mpi.x --ranks 1`. The validation
 driver will invoke `mpirun -n 1` for that binary.
 
 Each case defaults to the usual `|A_hat|^2` population estimate. For fraction
@@ -256,19 +270,19 @@ Google-RQC scaling ladder configs are available for fixed `m=1` at:
 ```bash
 python scripts/run_pipeline.py validation selected-output-accuracy \
   --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c5_m1.json \
-  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+  -- --binary build-release/feynman_mpi.x --ranks 1
 
 python scripts/run_pipeline.py validation selected-output-accuracy \
   --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c6_m1.json \
-  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+  -- --binary build-release/feynman_mpi.x --ranks 1
 
 python scripts/run_pipeline.py validation selected-output-accuracy \
   --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c7_m1.json \
-  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+  -- --binary build-release/feynman_mpi.x --ranks 1
 
 python scripts/run_pipeline.py validation selected-output-accuracy \
   --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c8_m1.json \
-  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+  -- --binary build-release/feynman_mpi.x --ranks 1
 ```
 
 These keep a fixed `1024`-bitstring probe set and compare cross-seeded

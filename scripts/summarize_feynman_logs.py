@@ -10,12 +10,12 @@ import sys
 from pathlib import Path
 
 AUTOTUNE_RE = re.compile(r"Autotuning time:\s+([0-9eE+.\-]+)\s+seconds")
-SIM_RE = re.compile(r"Total clocktime sim for sv\.cpp:\s+([0-9eE+.\-]+)\s+seconds")
+SIM_RE = re.compile(r"Total clocktime sim for feynman:\s+([0-9eE+.\-]+)\s+seconds")
 WRITE_RE = re.compile(
-    r"Total clocktime writing to disk for sv\.cpp:\s+([0-9eE+.\-]+)\s+seconds"
+    r"Total clocktime writing to disk for feynman:\s+([0-9eE+.\-]+)\s+seconds"
 )
 FULL_RE = re.compile(
-    r"Total clocktime \(including I/O\) for sv\.cpp:\s+([0-9eE+.\-]+)\s+seconds"
+    r"Total clocktime \(including I/O\) for feynman:\s+([0-9eE+.\-]+)\s+seconds"
 )
 SIM_CALLS_RE = re.compile(
     r"Total clocktime for all simulate calls:\s+([0-9eE+.\-]+)\s+seconds"

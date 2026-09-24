@@ -162,7 +162,7 @@ def _build_metadata(binary_path: Path, repo_root: Path) -> dict[str, Any]:
     cache = _parse_cmake_cache(cache_path)
     return {
         "cmake_cache_found": True,
-        "cmake_cache_path": str(cache_path.relative_to(repo_root)),
+        "cmake_cache_path": _path_for_metadata(cache_path, repo_root),
         "cmake_cache_sha256": _sha256_file(cache_path),
         "cmake_cache_size_bytes": cache_path.stat().st_size,
         "cmake": {k: cache.get(k, "") for k in CMAKE_KEYS_OF_INTEREST},

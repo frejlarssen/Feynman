@@ -35,5 +35,5 @@
   ],
   "output_root": "data/outputs/experiments",
   "notes": "Single-rank single-thread Google-RQC probe tuned to expose per-output runtime spread without changing circuit depth.",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+  "binary": "build-release/feynman_mpi.x"
 }

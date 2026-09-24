@@ -4,7 +4,7 @@
     "--background-index",
     "--clang-tidy"
   ],
-  "cmake.generator": "Ninja",
+  "cmake.generator": "Unix Makefiles",
   "cmake.configureOnOpen": true,
   "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json"
 }

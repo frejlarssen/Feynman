@@ -42,7 +42,7 @@
     "quimb_simplify_equalize_norms": false,
     "run_feynman": true,
     "run_feynman_transpiled": true,
-    "binary": "build-release/sv_prefetcher_subset_mpi.x",
+    "binary": "build-release/feynman_mpi.x",
     "mpirun": "mpirun",
     "feynman_env": {
       "OMP_NUM_THREADS": "32"

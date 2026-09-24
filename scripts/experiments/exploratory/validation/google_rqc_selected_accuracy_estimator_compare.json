@@ -2,7 +2,7 @@
   "description": "google_rqc_selected_accuracy_estimator_compare",
   "repo_root": ".",
   "output_root": "data/outputs/validation",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "binary": "build-release/feynman_mpi.x",
   "mpirun": "mpirun",
   "ranks": 1,
   "feynman_env": {

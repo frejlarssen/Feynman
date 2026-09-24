@@ -1,17 +1,27 @@
 {
   "description": "Small quantum-walk MPI strong scaling",
   "repo_root": ".",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "binary": "build-release/feynman_mpi.x",
   "vary": "ranks",
-  "values": [1, 2, 4],
+  "values": [
+    1,
+    2,
+    4
+  ],
   "repeat": 3,
   "feynman_env": {
     "OMP_NUM_THREADS": "1"
   },
-  "batch_size": 0,
+  "batch_size": 32,
   "fraction": 1.0,
   "threshold": 0.0,
-  "cases": [{"name": "fixed_thirds", "p": "thirds", "r": "thirds"}],
+  "cases": [
+    {
+      "name": "fixed_thirds",
+      "p": "thirds",
+      "r": "thirds"
+    }
+  ],
   "circuit": {
     "generator": "qwalk",
     "n": 6,
@@ -26,5 +36,6 @@
   },
   "timeout_seconds": 60,
   "output_root": "data/outputs/experiments",
-  "notes": "Local workflow smoke test: exact histories and fixed thirds checkpoints. Static partitioning uses every MPI rank for computation; one OpenMP thread per rank. Small runtimes may be dominated by startup and I/O, so efficiency is not a production scaling result."
+  "notes": "Local workflow smoke test: exact histories and fixed thirds checkpoints. Static partitioning uses every MPI rank for computation; one OpenMP thread per rank. Small runtimes may be dominated by startup and I/O, so efficiency is not a production scaling result.",
+  "schedule": "static-block"
 }

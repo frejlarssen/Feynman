@@ -38,7 +38,7 @@ _AMP_RE = re.compile(
     r"^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)i$"
 )
 _INTERNAL_RUNTIME_RE = re.compile(
-    r"Total clocktime \(including I/O\) for sv\.cpp:\s+([0-9eE+.\-]+) seconds"
+    r"Total clocktime \(including I/O\) for feynman:\s+([0-9eE+.\-]+) seconds"
 )
 _ABS_STATS_ARTIFACT_BASENAMES = (
     "contribution2AbsMinMax.csv",
@@ -104,7 +104,7 @@ def _merge_config(args: argparse.Namespace) -> dict[str, Any]:
         "output_root": str(
             _pick(cfg, "output_root", args.output_root, "data/outputs/validation")
         ),
-        "binary": str(_pick(cfg, "binary", args.binary, "build-cloud/cloud_task.x")),
+        "binary": str(_pick(cfg, "binary", args.binary, "build-standalone/feynman.x")),
         "mpirun": str(_pick(cfg, "mpirun", args.mpirun, "mpirun")),
         "ranks": int(_pick(cfg, "ranks", args.ranks, 1)),
         "feynman_env": dict(_pick(cfg, "feynman_env", None, {}) or {}),
@@ -190,7 +190,7 @@ def _ordered_vector(sparse: dict[int, complex], subset_indices: list[int]) -> np
 
 
 def _binary_requires_mpirun(binary: Path) -> bool:
-    return "mpi" in binary.name
+    return binary.name == "feynman_mpi.x"
 
 
 def _parse_internal_runtime(stdout: str) -> float | None:

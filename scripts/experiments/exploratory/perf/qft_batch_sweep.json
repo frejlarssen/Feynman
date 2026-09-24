@@ -30,5 +30,5 @@
   "r": 4,
   "output_root": "data/outputs/experiments",
   "notes": "Sweep batch size for qft_n8_k2.",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+  "binary": "build-release/feynman_mpi.x"
 }

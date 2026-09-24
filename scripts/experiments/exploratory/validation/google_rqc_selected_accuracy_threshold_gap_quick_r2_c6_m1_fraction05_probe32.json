@@ -1,6 +1,6 @@
 {
   "description": "google_rqc_r2_c6_m1_fraction05_threshold_gap_quick_probe32",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x",
+  "binary": "build-release/feynman_mpi.x",
   "feynman_env": {
     "OMP_NUM_THREADS": "1"
   },

@@ -20,5 +20,5 @@
     0.0001,
     0.0002
   ],
-  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+  "binary": "build-release/feynman_mpi.x"
 }

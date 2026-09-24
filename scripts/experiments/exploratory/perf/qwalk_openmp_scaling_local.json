@@ -1,7 +1,7 @@
 {
   "description": "Small quantum-walk OpenMP strong scaling",
   "repo_root": ".",
-  "binary": "build-openmp/cloud_task.x",
+  "binary": "build-standalone/feynman.x",
   "vary": "omp_threads",
   "values": [
     1,
@@ -12,7 +12,7 @@
   "feynman_env": {
     "OMP_DYNAMIC": "FALSE"
   },
-  "batch_size": 0,
+  "batch_size": 32,
   "fraction": 1.0,
   "threshold": 0.0,
   "cases": [

@@ -161,8 +161,8 @@ def resolve_paths_and_runtime(config: SweepConfig, repo_root: Path) -> tuple[Pro
 
     if ranks < 1:
         raise ValueError(f"Invalid ranks={ranks}. Must be >= 1.")
-    if batch_size < 0:
-        raise ValueError(f"Invalid batch_size={batch_size}. Must be >= 0.")
+    if batch_size < 1:
+        raise ValueError(f"Invalid batch_size={batch_size}. Must be >= 1.")
     if verbosity < 0:
         raise ValueError(f"Invalid verbosity={verbosity}. Must be >= 0.")
 

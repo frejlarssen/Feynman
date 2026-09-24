@@ -1,6 +1,6 @@
 {
   "description": "Google RQC accuracy vs threshold",
-  "binary": "build-cloud-make/cloud_task.x",
+  "binary": "build-standalone/feynman.x",
   "feynman_env": {
     "OMP_NUM_THREADS": "1",
     "OMP_DYNAMIC": "FALSE",

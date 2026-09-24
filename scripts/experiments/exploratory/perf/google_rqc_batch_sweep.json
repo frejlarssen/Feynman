@@ -34,5 +34,5 @@
   "r": 4,
   "output_root": "data/outputs/experiments",
   "notes": "Sweep batch size for a byte-aligned 4x4 Google-style RQC with seeded random selected outputs.",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+  "binary": "build-release/feynman_mpi.x"
 }

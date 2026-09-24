@@ -23,7 +23,7 @@ Options get_options(int argc, char *argv[]) {
   Options opts;
 
   const char *helpstr =
-      "Usage: ./cloud_split_batches.x -h hexstrings_file -o output_dir "
+      "Usage: ./feynman_split_batches.x -h hexstrings_file -o output_dir "
       "(-n batch_size | -k target_num_batches) [-x xcom_output_file] "
       "[-p output_prefix] "
       "[-s output_suffix] [-v verbosity]\n";

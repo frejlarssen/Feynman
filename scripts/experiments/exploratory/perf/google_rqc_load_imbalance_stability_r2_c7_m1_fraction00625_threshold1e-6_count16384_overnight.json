@@ -31,5 +31,5 @@
   },
   "output_root": "data/outputs/experiments",
   "notes": "Use repeated local MPI runs to test whether per-output runtimes are stable enough to support heavy-first scheduler stress experiments.",
-  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+  "binary": "build-release/feynman_mpi.x"
 }

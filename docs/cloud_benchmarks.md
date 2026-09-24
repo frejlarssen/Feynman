@@ -73,7 +73,7 @@ in the benchmark JSON:
 ```
 
 Cloud benchmark configs may also set the simulator pruning threshold passed as
-`-t` to `cloud_task.x`:
+`-t` to `feynman.x`:
 
 ```json
 {
@@ -85,7 +85,7 @@ Cloud benchmark configs may also set the simulator pruning threshold passed as
 If omitted, the cloud workflow keeps the historical default of `0.0`.
 
 Cloud benchmark configs may also set the chunk-2 sampling fraction passed as
-`-f` to `cloud_task.x`:
+`-f` to `feynman.x`:
 
 ```json
 {
@@ -386,7 +386,7 @@ Each summary row includes:
 - `simulate_worker_simulate_calls_seconds_*`: pure `simulate(...)`
   totals/means/maxima extracted from `Total clocktime for all simulate calls: ...`
 - `simulate_worker_full_seconds_*`: full worker totals/means/maxima extracted
-  from `Total clocktime (including I/O) for sv.cpp: ...`
+  from `Total clocktime (including I/O) for feynman: ...`
 
 That makes it easier to separate orchestration overhead from actual parallel
 simulation work.
