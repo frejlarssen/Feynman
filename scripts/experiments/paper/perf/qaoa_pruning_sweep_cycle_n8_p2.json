@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qaoa_pruning_sweep_cycle_n8_p2",
+  "description": "qaoa_pruning_sweep_cycle_n8_p2",
   "repo_root": ".",
   "output_root": "data/outputs/experiments",
   "base_config": "scripts/experiments/exploratory/validation/qaoa_cycle_n8_p2_qiskit_validation.json",

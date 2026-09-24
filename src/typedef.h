@@ -1,5 +1,7 @@
 #pragma once
 
+#include <complex>
+
 #define STR_IMPL(x) #x
 #define STR(x) STR_IMPL(x)
 
@@ -14,7 +16,6 @@ constexpr int PADDING = 256;
 
 // Select type
 
-// using TypeLongInt = __int128;
-
-// Fall back for ARM
-using TypeLongInt = long long;
+using TypeLongInt = __int128; //Note: Might not work for ARM
+using TypeAmpReal = double;
+using TypeAmp = std::complex<TypeAmpReal>;

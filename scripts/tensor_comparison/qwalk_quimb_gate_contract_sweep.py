@@ -26,7 +26,6 @@ DEFAULT_CONTRACT_VALUES: tuple[Any, ...] = (
     "auto-split-gate",
 )
 
-
 def _utc_stamp() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
 
@@ -97,11 +96,12 @@ def main(argv: list[str] | None = None) -> int:
         else list(DEFAULT_CONTRACT_VALUES)
     )
 
-    base_experiment_name = str(base_config.get("experiment_name", "qwalk_quimb_qubit_sweep"))
+    base_description = str(base_config.get("description", "")).strip()
+    base_experiment_tag = base_config_path.stem
     base_output_root = args.output_root or Path(base_config.get("output_root", "data/outputs/experiments"))
     if not base_output_root.is_absolute():
         base_output_root = repo_root / base_output_root
-    outer_dir = base_output_root / f"{_utc_stamp()}_{_sanitize(base_experiment_name)}_gate_contract"
+    outer_dir = base_output_root / f"{_utc_stamp()}_{_sanitize(base_experiment_tag)}_gate_contract"
     configs_dir = outer_dir / "configs"
     configs_dir.mkdir(parents=True, exist_ok=False)
 
@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     for value in values:
         label = _contract_label(value)
         config = json.loads(json.dumps(base_config))
-        config["experiment_name"] = f"{base_experiment_name}_contract_{label}"
+        config["description"] = (base_description + f" contract={label}").strip()
         config["output_root"] = str(outer_dir)
         validation = dict(config.get("validation", {}))
         validation["quimb_gate_contract"] = value

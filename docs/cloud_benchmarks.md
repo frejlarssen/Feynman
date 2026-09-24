@@ -1,0 +1,576 @@
+# Cloud benchmarks
+
+## Manual trigger
+
+For benchmarking a fixed problem at different batch counts, keep the circuit and
+hexstring file fixed and vary the target batch count at trigger time. While
+running Airflow standalone, trigger from another terminal:
+
+```bash
+airflow dags trigger feynman --conf '{"target_num_batches": 4}'
+```
+
+The split stage derives an appropriate batch size from the input hexstring
+count and emits approximately that many batch files, which in turn become that
+many `simulate_batch` task instances. You can also override the batch size
+directly:
+
+```bash
+airflow dags trigger feynman --conf '{"max_hexstrings_per_batch": 125}'
+```
+
+The DAG uses one shared Airflow pool, `simulate_pool`, by default. All stages
+belong to that pool, but the lightweight orchestration stages use one slot
+each, and `simulate_batch` also uses one slot each by default. That gives a
+clean way to overdecompose the run into many batches while still capping the
+total concurrent work shown in the Gantt chart.
+
+Before using the DAG with the default pool-based throttling, create the pool in
+your Airflow environment:
+
+```bash
+source "$HOME/micromamba/bin/activate" airflow
+sh scripts/setup_airflow_pool.sh simulate_pool 4
+```
+
+Or equivalently, run the Airflow CLI directly:
+
+```bash
+source "$HOME/micromamba/bin/activate" airflow
+airflow pools set simulate_pool 4 "Limit concurrent simulate_batch Kubernetes pods"
+airflow pools list | grep simulate_pool
+```
+
+If you want a different pool name or per-task slot cost, set these before
+starting or refreshing Airflow:
+
+```bash
+export FEYNMAN_SHARED_POOL=simulate_pool
+export FEYNMAN_LIGHT_TASK_POOL_SLOTS=1
+export FEYNMAN_SIMULATE_TASK_POOL_SLOTS=1
+```
+
+Then copy the updated DAG into the local Airflow DAG directory:
+
+```bash
+sh scripts/copy_dags.sh
+```
+
+With that in place, a run can have, for example, about 12 batches total while
+only 4 pooled tasks run concurrently.
+
+## Benchmark config
+
+To keep laptop runs safer by default, `simulate_batch` runs with
+`OMP_NUM_THREADS=1`. For config-driven runs, put the fixed thread count directly
+in the benchmark JSON:
+
+```json
+{
+  "description": "qwalk_n64_it4",
+  "simulate_omp_num_threads": 2
+}
+```
+
+Cloud benchmark configs may also set the simulator pruning threshold passed as
+`-t` to `cloud_task.x`:
+
+```json
+{
+  "description": "qwalk_n64_it4",
+  "threshold": 1e-8
+}
+```
+
+If omitted, the cloud workflow keeps the historical default of `0.0`.
+
+Cloud benchmark configs may also set the chunk-2 sampling fraction passed as
+`-f` to `cloud_task.x`:
+
+```json
+{
+  "description": "qwalk_n64_it4",
+  "fraction": 0.1
+}
+```
+
+If omitted, the cloud workflow keeps the historical default of `1.0`.
+
+You can still override it explicitly in `dag_run.conf` for ad hoc manual
+triggers:
+
+```bash
+airflow dags trigger feynman --conf '{"simulate_omp_num_threads": 2}'
+```
+
+For fixed-batch scheduler experiments, the `.hs` order controls which output
+bitstrings end up in the same Airflow batch. The `output_bitstrings` generator
+therefore also accepts an optional `ordering` object:
+
+```json
+{
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 1024,
+    "ordering": {
+      "method": "shuffle",
+      "seed": 11,
+      "label": "random"
+    }
+  }
+}
+```
+
+Supported ordering methods are:
+
+- `contiguous`: keep the generated order unchanged
+- `shuffle`: shuffle the same output set with a fixed `seed`
+- `heavy_first`: sort the same output set by a ranking CSV, descending
+- `light_first`: sort the same output set by a ranking CSV, ascending
+- `sort_by_csv`: generic CSV-based ordering with an explicit `descending` flag
+
+For large archived cloud runs, `heavy_first`, `light_first`, and
+`sort_by_csv` may also use `csv_glob` instead of `csv`, for example to rank
+from many per-batch `*.timeBitstrings.csv` files produced by one benchmark run.
+
+For the CSV-based methods, use a per-output CSV such as `timeBitstrings.csv`
+and point at the relevant score column:
+
+```json
+{
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 1024,
+    "ordering": {
+      "method": "heavy_first",
+      "csv": "data/outputs/experiments/20260814_220534_rqc_load_imbalance_stress/run_0001_fraction_0.00625_threshold_1e-06_batch_size-32_rep01/timeBitstrings.csv",
+      "index_column": "bitstring_hex",
+      "value_column": "elapsed_seconds",
+      "label": "heavy_with_heavy"
+    }
+  }
+}
+```
+
+That keeps the requested output set fixed while changing only how fixed-size
+batches are packed, which is useful for scheduler-stress experiments.
+
+For deterministic scheduler-stress orderings derived from local probe runs, use
+`scripts/build_output_ordering_csv.py`. It currently supports named proxy modes
+`stable_proxy_v1` and `stable_proxy_reverse`, and writes a ranking CSV that can
+be referenced from `output_bitstrings.ordering.csv`. That proxy path is optional
+and exploratory; the recommended paper-style batching comparison is the simpler
+`random` versus `contiguous` pair.
+
+## Sweep scripts
+
+### Adaptive Airflow pool autoscaling
+
+An autoscaled fixed-batch run adjusts the shared Airflow pool while one DAG run
+is active. Add an `autoscaler` object to the cloud config:
+
+```json
+{
+  "max_hexstrings_per_batch": 16,
+  "autoscaler": {
+    "enabled": true,
+    "pool_name": "simulate_pool",
+    "initial_pool_slots": 1,
+    "max_pool_slots": 64,
+    "target_completion_seconds": 3600,
+    "check_interval_seconds": 300,
+    "warmup_seconds": 1200,
+    "cooldown_seconds": 300,
+    "scale_factor": 2,
+    "restore_pool_on_exit": true
+  }
+}
+```
+
+Run it with:
+
+```bash
+sh scripts/benchmark_cloud_autoscale.sh \
+  --config scripts/experiments/cloud/rqc_autoscale_opencube.json
+```
+
+After the warmup, the controller estimates throughput from completed mapped
+`simulate_batch` tasks. If the projected remaining duration exceeds the time
+left before `target_completion_seconds`, it multiplies the pool size by
+`scale_factor`, subject to the cooldown and `max_pool_slots`. A window restarts
+after each scale event so later decisions use throughput observed at the new
+pool size. `max_pool_slots` is the configured capacity guard; set it no higher
+than the useful concurrency of the machine.
+
+`autoscaler.pool_name` must match the pool configured for the DAG through
+`FEYNMAN_SHARED_POOL` (the default for both is `simulate_pool`).
+
+Each run archives `autoscaler_events.jsonl`, `autoscaler_summary.json`, an
+`autoscaler_timeline.pdf`, and the controller's stdout/stderr logs. Every
+observation records progress, throughput, projected time, current/next pool
+size, and the decision reason. The initial pool size is restored when the
+controller exits by default.
+
+Validate a config and print its normalized values without starting Airflow:
+
+```bash
+python scripts/airflow_pool_autoscaler.py \
+  --config scripts/experiments/cloud/rqc_autoscale_opencube.json \
+  --validate-config
+```
+
+A simple benchmark sweep is available in:
+
+`sh scripts/benchmark_cloud_runner.sh`
+
+When `--config` is used, the script looks for `target_num_batches_list` and
+`repeat` in ordinary batch-sweep benchmark JSON, and uses those batch counts
+and repeated runs from the config.
+
+The runner does not invent any benchmark sweep on its own. You must provide
+batch counts explicitly, either on the command line or through
+`target_num_batches_list` in the config.
+
+`benchmark_cloud_runner.sh` is intentionally strict in direct use: treat it as
+the batch-sweep benchmark entrypoint. If a config sets
+`max_hexstrings_per_batch`, run it through `benchmark_cloud_pool_sweep.sh`
+instead. That avoids having config fields that look meaningful but are only
+treated as labels.
+
+Example:
+
+```json
+{
+  "description": "qwalk_n64_it4",
+  "target_num_batches_list": [1, 2, 4],
+  "repeat": 3
+}
+```
+
+Example fixed-batch Gantt config:
+
+```json
+{
+  "description": "qwalk_n64_it15_count1200_batch100_pool4",
+  "target_pool_slots_list": [4],
+  "max_hexstrings_per_batch": 100,
+  "repeat": 1
+}
+```
+
+This produces roughly 12 batches for 1200 requested output bitstrings, while a
+shared Airflow pool of size 4 keeps only four pooled tasks active at once.
+
+Explicit batch counts on the command line still override the JSON list:
+
+`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_batch_sweep.json 1 2`
+
+You can also pass an explicit DAG id and batch counts:
+
+`sh scripts/benchmark_cloud_runner.sh feynman 1 2 4 8`
+
+Cloud benchmark configs live under `scripts/experiments/cloud/` and reuse the
+same high-level sections as the non-cloud configs: `circuit`,
+`input_statevector`, and `output_bitstrings`.
+
+Example with the quantum-walk benchmark case:
+
+`sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_batch_sweep.json`
+
+For the single-run Gantt demo:
+
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/qwalk_gantt_pool4_batch100.json`
+
+For fixed-batch configs, including single-point runs with only one pool size,
+use:
+
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/qwalk_pool_sweep_opencube.json`
+
+For the RQC load-imbalance scheduler stress test with one output bitstring per
+batch, use:
+
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/google_rqc_load_imbalance_stress_pool_sweep_laptop.json`
+
+For paper-style batching comparisons, keep `max_hexstrings_per_batch` fixed and
+run separate configs or copies of the same config with different
+`output_bitstrings.ordering.label` values such as `contiguous` and `random`.
+
+For the short-named laptop RQC batching comparison set, you can either run one
+case at a time:
+
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/rqc_imbalance_laptop_random.json`
+
+`sh scripts/benchmark_cloud_pool_sweep.sh --config scripts/experiments/cloud/rqc_imbalance_laptop_contiguous.json`
+
+or run the built-in suite runner:
+
+`sh scripts/benchmark_rqc_imbalance_laptop_suite.sh`
+
+That suite currently runs these named cases into one suite directory:
+
+- `contiguous`
+- `random`
+
+You can also run just one or both of those cases through the suite runner:
+
+- `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh random`
+- `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh contiguous`
+- `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh contiguous random`
+- `sh scripts/benchmark_rqc_imbalance_laptop_suite.sh --list`
+
+This wrapper updates the Airflow pool size before each labeled run, then calls
+`benchmark_cloud_runner.sh` one label at a time while keeping a single
+benchmark output directory.
+
+For longer local runs, consider launching the sweep inside `tmux` so a
+terminal-window close does not kill the local polling script.
+
+The script runs batch counts sequentially, repeats each batch count according
+to the config's `repeat` value, waits for each DAG run to finish, and prints
+the wall-clock time per run. By default it saves a timestamped summary CSV
+under `data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv`.
+
+If that directory exists with the wrong owner or mode, fix it before running
+the benchmark:
+
+```bash
+sudo mkdir -p data/outputs/cloud_benchmarks
+sudo chown -R "$USER:$USER" data/outputs/cloud_benchmarks
+chmod u+rwx data/outputs/cloud_benchmarks
+```
+
+If you prefer not to change the default directory, point the script elsewhere:
+
+```bash
+RESULTS_FILE=data/outputs/somewhere_else/summary.csv \
+  sh scripts/benchmark_cloud_runner.sh --config scripts/experiments/cloud/qwalk_batch_sweep.json
+```
+
+## Outputs
+
+The benchmark output follows the repo's experiment-artifact pattern more
+closely. By default it creates a directory named
+`data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/` with:
+
+- `summary.csv`
+- `benchmark_metadata.json` with git/provenance context
+- `git_diff_airflow_scripts_docs.patch`
+- one run directory per Airflow run under `runs/<run_id>/`
+- the raw simulator batch outputs and merged `.hsv` output for that run stored directly inside `runs/<run_id>/`
+- one per-batch timing file per worker batch as `*.timeBitstrings.csv`
+- per-benchmark per-bitstring timing histograms generated from those timing files
+- `summary.csv` rows also record `output_ordering_method` and `output_ordering_label`
+- one combined per-run timing histogram per archived run as `runs/<run_id>/timebitstrings_hist*.pdf`
+- archived per-batch contribution stats as `*.contribution2AbsMinMax.csv`, `*.contribution1AbsMinMax.csv`, and `*.contribution0AbsMinMax.csv`
+- per-run `task_states.json`, normalized `task_instances.json`, `simulate_batch_instances.json`, task/log summaries, and single-run Gantt PDFs
+- a sweep-level `gantt_multiexec.pdf`
+- the usual cloud benchmark PDFs from `plot_cloud_benchmark.py`
+
+The sweep script captures `task_states.json` from the local Airflow CLI after
+each run finishes, then renders the archive/Gantt artifacts from that file.
+That keeps benchmark archiving independent of Airflow REST API credentials. For
+config-driven sweeps, this also avoids creating a second top-level
+`data/outputs/cloud_benchmarks/<config_stem>/` runtime-output tree.
+
+Each summary row includes:
+
+- `num_batches`: number of `simulate_batch` task instances created for the run
+- `repeat_index`: which repeated run this was for the given batch count
+- `elapsed_seconds`: full DAG wall-clock time
+- `simulate_stage_elapsed_seconds`: the span from the first `simulate_batch`
+  task instance start to the last `simulate_batch` task instance end
+- `simulate_task_instance_seconds_sum`: the sum of all finished
+  `simulate_batch` task-instance durations
+- `simulate_autotuning_seconds_*`: autotuning totals/means/maxima extracted from
+  the worker logs
+- `simulate_worker_simulate_calls_seconds_*`: pure `simulate(...)`
+  totals/means/maxima extracted from `Total clocktime for all simulate calls: ...`
+- `simulate_worker_full_seconds_*`: full worker totals/means/maxima extracted
+  from `Total clocktime (including I/O) for sv.cpp: ...`
+
+That makes it easier to separate orchestration overhead from actual parallel
+simulation work.
+
+### Memory profiling
+
+Cloud workers write `<experiment_tag>_batch_<id>.memory.json`
+beside their `.hsv` output. No benchmark-config flag or additional package is needed.
+Each profile records:
+
+- Process peak resident memory in MiB and lifetime major page-fault count,
+  using `getrusage(RUSAGE_SELF)`, including all OpenMP threads.
+- Worker cgroup memory PSI `some` and `full` counter snapshots, their increases
+  in seconds, and the corresponding percentages of the worker measurement
+  interval. `some` means at least one task stalled on memory; `full` means all
+  non-idle tasks in that cgroup stalled simultaneously.
+- Measurement duration, cgroup pressure-file path, and availability status.
+
+PSI is read at worker start and after output I/O, covering parsing, autotuning,
+simulation, and output writes. Counter deltas measure stalls over this interval;
+they are not the kernel's rolling `avg10`/`avg60`/`avg300` averages. This adds
+two pressure-file reads, with no sampling thread. The worker resolves its own
+cgroup v2 through `/proc/self/cgroup` and `/proc/self/mountinfo`, including
+container namespaces. It requires readable cgroup `memory.pressure` and kernel
+PSI support. Missing or invalid PSI is recorded as unavailable, never zero,
+and does not prevent the simulation from completing. There is no host-wide
+fallback. Local executions measure the containing cgroup, which may also
+contain other processes; in the cloud this is normally the worker container.
+
+The runner collects these files into `runs/<run_id>/`, writes
+`memory_summary.json` with individual worker records, and appends these columns
+to `summary.csv`:
+
+- `simulate_memory_expected_workers`, `simulate_memory_profile_count`,
+  `simulate_memory_process_count`, and `simulate_memory_psi_count` for coverage.
+- `simulate_worker_peak_rss_mib_{mean,max}`.
+- `simulate_worker_major_faults_{sum,mean,max}`.
+- `simulate_worker_memory_psi_{some,full}_{seconds,percent}_{mean,max}`.
+
+Each mean is an unweighted mean across workers in that DAG run. Aggregates
+remain blank unless every expected worker has that measurement. A missing
+profile (for example after a killed worker) therefore cannot bias the reported
+mean downward. A retried batch overwrites its sidecar; these metrics describe
+the final completed batch executions, not cumulative resource use of retries.
+Peak RSS and overlapping PSI intervals are never summed as cluster totals.
+The archive manifest and `simulate_batch_instances.json` link the profiles.
+
+The runner automatically generates all 13 memory metric PDFs and aggregate
+CSVs in `<benchmark>/memory/`, beside `runs/`, against the swept batch count
+or pool size. This also applies to individual memory `--metric` plots.
+Plots show individual runs
+and repeat mean/std, use linear memory axes (including zero faults/stalls),
+and do not show a strong-scaling efficiency overlay. Unavailable metrics are
+skipped with a warning. Regenerate them with:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv data/outputs/cloud_benchmarks/<benchmark>/summary.csv \
+  --memory-all
+```
+
+Use `--metric simulate_worker_peak_rss_mib_max` (or another memory column)
+for a single plot. Compare PSI with worker compute time as concurrency grows:
+rising RSS alone does not demonstrate memory-induced delays. Major faults
+require I/O but do not specifically identify swap activity. PSI measures
+memory-pressure stalls; cache misses and memory-bandwidth saturation require
+separate hardware-counter measurements.
+
+For a quick independent check, run a small local worker under
+`/usr/bin/time -v`: its maximum resident set size in KiB should approximately
+match `peak_rss_mib * 1024`. The JSON's raw PSI counter differences divided
+by `1e6` must equal its stall seconds, and `100 * stall_seconds /
+profile_seconds` must equal its stall percentage.
+
+Counter semantics: [getrusage documentation](https://man7.org/linux/man-pages/man2/getrusage.2.html)
+and [Linux PSI documentation](https://docs.kernel.org/accounting/psi.html).
+
+When `--config` is used, the sweep script renders the Airflow `dag_run.conf`
+with the repo's `feynman` development Python by default
+(`~/micromamba/envs/feynman/bin/python`). That keeps the Airflow venv lean
+while still letting benchmark configs reuse the normal generator/materialization
+stack. Override with `CONFIG_RENDER_PYTHON=...` if needed.
+
+While a `simulate_batch` pod is running, its logs emit periodic heartbeat
+lines of the form `processed X / Y output bitstrings ...` at normal verbosity.
+Use `kubectl logs -f <simulate-pod-name>` if you want to watch long-running
+cloud tasks make progress.
+
+Before triggering anything, it checks that `feynman-simulate`, `feynman-split`,
+and `feynman-concat` are present inside the `feynman-cluster` k3d node. If any
+are missing, it fails loudly and tells you to rerun:
+
+`sh scripts/build_and_import_cloud_images.sh feynman-cluster`
+
+It warns once node usage reaches 80%, because that is the "start paying
+attention" level for this setup.
+
+It also fails loudly if the k3d node root filesystem is already at or above the
+default kubelet image-GC high threshold (85%), because in that state kubelet
+may garbage-collect unused task images out from under the benchmark.
+
+You can override the destination if you want:
+
+`RESULTS_FILE=data/outputs/cloud_benchmark_results.csv sh scripts/benchmark_cloud_runner.sh`
+
+If you need to abort a running benchmark:
+
+- Press `Ctrl-C` in the terminal running `sh scripts/benchmark_cloud_runner.sh`
+  to stop the local polling script.
+- That does not stop the already-triggered Airflow DAG run.
+- To stop the actual running cloud task, find the pod and delete it:
+
+```bash
+kubectl get pods
+kubectl delete pod <simulate-pod-name>
+```
+
+- Deleting the running `simulate_batch` pod should fail that task and therefore
+  fail the DAG run.
+
+## Plotting
+
+After the sweep, switch back to the `feynman` development environment and plot:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv
+```
+
+To plot the parallel compute stage instead of the full DAG wall-clock time:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv \
+  --metric simulate_stage_elapsed_seconds
+```
+
+Wall-clock and `simulate_stage_elapsed_seconds` plots overlay a strong-scaling
+efficiency line by default. It uses the smallest plotted batch count as the
+baseline, so efficiency is computed as:
+
+`efficiency(b) = 100 * T_base * batches_base / (T_b * b)`
+
+For the default wall-clock metric (`elapsed_seconds`), the plot uses log-log
+scales on the primary axes. The efficiency overlay keeps its y-axis linear.
+Mean-per-task and worker-internal plots do not show the efficiency overlay by
+default, because the generic strong-scaling formula is hard to interpret for
+those metrics.
+
+Disable it with:
+
+```bash
+python scripts/plot_cloud_benchmark.py \
+  --summary-csv data/outputs/cloud_benchmarks/<timestamp>_<config_stem>/summary.csv \
+  --no-efficiency
+```
+
+To generate a table suitable for reporting strong-scaling results, including
+the individual repeats, means, sample standard deviations, speedups,
+efficiencies, and any runs removed from a filtered CSV, use:
+
+```bash
+python scripts/summarize_cloud_strong_scaling.py \
+  --summary-csv data/outputs/cloud_benchmarks/<benchmark>/summary_no_outliers.csv \
+  --all-runs-csv data/outputs/cloud_benchmarks/<benchmark>/summary.csv \
+  --fixed-batches 64
+```
+
+The default output is `strong_scaling_summary.csv` beside the filtered input.
+Speedup is the baseline mean divided by the current mean. Efficiency is the
+speedup divided by the pool-slot increase relative to the smallest pool size.
+The optional fixed-batch value is recorded separately from `num_batches` in
+the source CSV so that stale archive metadata remains visible rather than
+being silently overwritten.
+
+For prose-ready descriptive statistics over the per-bitstring timings from one
+archived run, aggregate its per-batch files with:
+
+```bash
+python scripts/summarize_timebitstrings.py \
+  --timing-dir data/outputs/cloud_benchmarks/<benchmark>/runs/<run_id>
+```
+
+This writes `bitstring_compute_time_summary.csv` inside the run directory with
+the number of files and timing rows, status counts, minimum, median, 95th
+percentile, and maximum. The percentile uses linear interpolation at position
+`(n - 1) p`, also known as Hyndman--Fan type 7.

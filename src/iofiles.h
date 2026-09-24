@@ -6,13 +6,17 @@
 #include <complex>
 #include <fstream>
 #include <limits>
-#include <mpi.h>
 #include <string>
 #include <vector>
 
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
+
+
 struct InputBitstrings {
   vector<bool> index;      // basis-state index
-  std::complex<float> amp; // amplitude
+  TypeAmp amp; // amplitude
 };
 
 static inline string input_bitstring_to_string(const InputBitstrings &ib) {
@@ -34,8 +38,26 @@ static inline string input_bitstring_to_string(const InputBitstrings &ib) {
 // static_assert(std::is_trivially_copyable_v<InputBitstrings>);
 
 static inline bool parse_int(const char *b, const char *e, TypeLongInt &out) {
-  auto res = std::from_chars(b, e, out, 10);
-  return res.ec == std::errc{} && res.ptr == e;
+  if (b == e) {
+    return false;
+  }
+  bool negative = false;
+  if (*b == '-') {
+    negative = true;
+    ++b;
+  }
+  if (b == e) {
+    return false;
+  }
+  TypeLongInt value = 0;
+  for (const char *p = b; p != e; ++p) {
+    if (*p < '0' || *p > '9') {
+      return false;
+    }
+    value = value * 10 + static_cast<TypeLongInt>(*p - '0');
+  }
+  out = negative ? -value : value;
+  return true;
 }
 
 // Load & parse once
@@ -90,6 +112,28 @@ inline vector<char> read_file_to_buffer(const std::string &path) {
   return buffer;
 }
 
+inline void write_string_to_file(const std::string &path,
+                                 const std::string &str) {
+  const std::vector<char> buffer(str.begin(), str.end());
+
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  if (!file)
+    throw std::runtime_error("Bad file path: " + path);
+
+  const size_t write_size =
+      !buffer.empty() && buffer.back() == '\0' ? buffer.size() - 1 : buffer.size();
+  if (write_size > 0 &&
+      !file.write(buffer.data(), static_cast<streamsize>(write_size)))
+    throw std::runtime_error("Error writing file: " + path);
+}
+
+inline std::vector<InputBitstrings> read_input_bitstrings_from_file(const std::string &path, const bool dense) {
+  vector<char> buffer;
+  buffer = read_file_to_buffer(path);
+  return read_input_bitstrings(buffer, dense);
+}
+
+#ifdef USE_MPI
 inline std::vector<InputBitstrings>
 load_input_bitvectors_from_master(const std::string &path, const bool dense,
                                   const int world_rank, MPI_Comm comm) {
@@ -115,6 +159,7 @@ load_input_bitvectors_from_master(const std::string &path, const bool dense,
 
   return input_bitstrings;
 }
+#endif
 
 static inline std::vector<TypeLongInt>
 read_output_bitstrings(const std::string &path) {
@@ -140,9 +185,7 @@ read_output_bitstrings(const std::string &path) {
     TypeLongInt tmp = 0;
     const char *first = sv.data();
     const char *last = sv.data() + sv.size();
-    auto [ptr, ec] = std::from_chars(first, last, tmp, 10);
-
-    if (ec != std::errc{} || ptr != last) {
+    if (!parse_int(first, last, tmp)) {
       throw std::runtime_error("Invalid integer line in " + path + ": \"" +
                                std::string(sv) + "\"");
     }
@@ -156,6 +199,7 @@ read_output_bitstrings(const std::string &path) {
   return output_bitstrings;
 }
 
+#ifdef USE_MPI
 inline std::vector<TypeLongInt>
 load_output_bitstrings_from_masterV0(const std::string &path,
                                      const int world_rank, MPI_Comm comm) {
@@ -189,7 +233,9 @@ load_output_bitstrings_from_masterV0(const std::string &path,
   }
   return output_bitstrings;
 }
+#endif
 
+#ifdef USE_MPI
 // template <typename TypeLongInt>
 inline std::vector<TypeLongInt> load_output_bitstrings_from_master_as_intvector(
     const std::string &path, const int world_rank, MPI_Comm comm) {
@@ -243,7 +289,51 @@ inline std::vector<TypeLongInt> load_output_bitstrings_from_master_as_intvector(
 
   return output_bitstrings;
 }
+#endif
 
+inline std::vector<std::vector<bool>>
+load_output_bitvectors_from_file(const std::string &path) {
+  vector<char> hexstrings_buffer;
+  std::size_t buffer_size;
+
+  // Must return std::vector<TypeLongInt>
+  hexstrings_buffer = read_file_to_buffer(path);
+
+  std::vector<std::vector<bool>> bitstrings;
+
+  std::istringstream ss(hexstrings_buffer.data());
+  // First lines are
+  // num_bitstrings\n
+  // size_bitstring_in_hexchars\n
+  std::string line;
+  std::getline(ss, line);
+  const std::size_t N = std::stoull(line);
+
+  std::getline(ss, line);
+  const std::size_t size_hexchars = std::stoull(line);
+
+  bitstrings.reserve(N);
+
+  while (std::getline(ss, line)) {
+    // Line is of type 0xABCDEF...
+    if (line.size() < 2 || line[0] != '0' || line[1] != 'x') {
+      throw std::runtime_error("Hexstring line does not start with 0x: " +
+                               line);
+    }
+    line = line.substr(2); // Remove 0x
+
+    if (line.size() != size_hexchars * 2) {
+      throw std::runtime_error("Hexstring line has incorrect length: " + line);
+    }
+
+    std::vector<bool> bits = hexstring_to_bitvector(line);
+    bitstrings.push_back(bits);
+  }
+
+  return bitstrings;
+}
+
+#ifdef USE_MPI
 // template <typename TypeLongInt>
 inline std::vector<std::vector<bool>>
 load_output_bitvectors_from_master(const std::string &path,
@@ -314,7 +404,9 @@ load_output_bitvectors_from_master(const std::string &path,
 
   return bitstrings;
 }
+#endif
 
+#ifdef USE_MPI
 inline int write_output_to_disk(const std::string &filename,
                                 const std::string &local_buf,
                                 const int world_rank, MPI_Comm comm) {
@@ -338,3 +430,4 @@ inline int write_output_to_disk(const std::string &filename,
   MPI_File_close(&fh);
   return rc;
 }
+#endif

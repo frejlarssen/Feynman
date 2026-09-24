@@ -1,0 +1,492 @@
+// Target to be containerized to use in cloud workflow
+
+#include "../src/iofiles.h"
+#include "../src/memory_profile.h"
+#include "../src/simulator.h"
+#include "../src/typedef.h"
+#include "../src/utils.h"
+#include <cstdio>
+#include <filesystem>
+#include <iostream>
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
+
+#define EXECUTE_RUN 1
+#define PERF_INSTRUMENT 0
+#define CLOSE_TO_ZERO 1e-8
+
+using namespace std;
+namespace fs = std::filesystem;
+
+struct Options {
+  string circuit_file;
+  string input_statevector_file;
+  string batch_file;
+  string output_statevector_file;
+  int num_chunk1 = -1;
+  int num_chunk2 = -1;
+  TypeAmpReal fraction = 1.0;
+  TypeAmpReal threshold = CLOSE_TO_ZERO;
+  int verbosity = 1;
+  bool dense = false;
+};
+
+Options get_options(int argc, char *argv[]) {
+  Options opts;
+
+  const char *helpstr =
+      "Usage: ./cloud_task.x -c circuit_file -i input_statevector_file "
+      "-b batch_file -o output_statevector_file -p num_chunk1 -r num_chunk2 "
+      "-f fraction_of_histories -v verbosity (-D [Dense])\n";
+
+  if (argc < 4) {
+    cout << helpstr;
+    exit(1);
+  }
+
+  int k;
+
+  auto to_int = [](const std::string &word) -> int {
+    return std::atoi(word.c_str());
+  };
+
+  auto to_real = [](const std::string &word) -> TypeAmpReal {
+    return std::atof(word.c_str());
+  };
+
+  for (int i = 0; i < argc; i++) {
+    cout << argv[i] << " ";
+  }
+  cout << '\n';
+
+  while ((k = getopt(argc, argv, "c:i:b:o:p:r:s:f:t:v:D")) != -1) {
+    switch (k) {
+    case 'c':
+      opts.circuit_file = optarg;
+      break;
+    case 'i':
+      opts.input_statevector_file = optarg;
+      break;
+    case 'b':
+      opts.batch_file = optarg;
+      break;
+    case 'o':
+      opts.output_statevector_file = optarg;
+      break;
+    case 'p':
+      opts.num_chunk2 = to_int(optarg);
+      break;
+    case 'r':
+      opts.num_chunk1 = to_int(optarg);
+      break;
+    case 'f':
+      opts.fraction = to_real(optarg);
+      break;
+    case 't':
+      opts.threshold = to_real(optarg);
+      break;
+    case 'v':
+      opts.verbosity = to_int(optarg);
+      break;
+    case 'D':
+      opts.dense = true;
+      break;
+    default:
+      cout << helpstr;
+      exit(1);
+    }
+  }
+  return opts;
+}
+
+void configure_logging() {
+  std::cout << std::unitbuf;
+  std::cerr << std::unitbuf;
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  std::setvbuf(stderr, nullptr, _IOLBF, 0);
+}
+
+void run(Options &opts) {
+  const memory_profile::Profile memory;
+  auto start_svcc_all = get_time();
+#ifdef USE_OPENMP
+  const int t_omp = omp_get_max_threads();
+#else
+  const int t_omp = 0;
+#endif
+
+  const fs::path output_path(opts.output_statevector_file);
+  if (output_path.has_parent_path()) {
+    fs::create_directories(output_path.parent_path());
+  }
+  const fs::path timing_file_path =
+      output_path.parent_path() /
+      (output_path.stem().string() + ".timeBitstrings.csv");
+  const fs::path contribution2_abs_stats_file_path =
+      output_path.parent_path() /
+      (output_path.stem().string() + ".contribution2AbsMinMax.csv");
+  const fs::path contribution1_abs_stats_file_path =
+      output_path.parent_path() /
+      (output_path.stem().string() + ".contribution1AbsMinMax.csv");
+  const fs::path contribution0_abs_stats_file_path =
+      output_path.parent_path() /
+      (output_path.stem().string() + ".contribution0AbsMinMax.csv");
+  if (timing_file_path.has_parent_path()) {
+    fs::create_directories(timing_file_path.parent_path());
+  }
+  if (contribution2_abs_stats_file_path.has_parent_path()) {
+    fs::create_directories(contribution2_abs_stats_file_path.parent_path());
+  }
+  if (contribution1_abs_stats_file_path.has_parent_path()) {
+    fs::create_directories(contribution1_abs_stats_file_path.parent_path());
+  }
+  if (contribution0_abs_stats_file_path.has_parent_path()) {
+    fs::create_directories(contribution0_abs_stats_file_path.parent_path());
+  }
+  const auto append_abs_stats_row =
+      [](std::string &buffer, const std::string &bitstring_hex,
+         const AmplitudeAbsStats &stats) {
+        buffer += bitstring_hex;
+        if (stats.count > 0) {
+          buffer +=
+              "," +
+              (std::isfinite(stats.min_nonzero_abs)
+                   ? real_to_string(stats.min_nonzero_abs)
+                   : string("nan")) +
+              "," + real_to_string(stats.max_abs) + "," +
+              type_long_int_to_string(stats.count) + "," +
+              type_long_int_to_string(stats.count_nonzero) + "\n";
+        } else {
+          buffer += ",nan,nan,0,0\n";
+        }
+      };
+
+  if (opts.verbosity >= 1) {
+    std::cout << "cloud_task: starting run\n"
+              << "  circuit_file=" << opts.circuit_file << '\n'
+              << "  input_statevector_file=" << opts.input_statevector_file
+              << '\n'
+              << "  batch_file=" << opts.batch_file << '\n'
+              << "  output_statevector_file=" << opts.output_statevector_file
+              << '\n'
+              << "  verbosity=" << opts.verbosity << '\n'
+              << "  dense=" << opts.dense << '\n'
+              << "  fraction=" << opts.fraction << '\n'
+              << "  threshold=" << opts.threshold << '\n'
+              << "  output directories prepared\n";
+  }
+
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: parsing circuit\n";
+  ParsedCircuit::parse_circuit(opts.circuit_file);
+  if (opts.verbosity >= 1) {
+    std::cout << "cloud_task: parsed circuit with n=" << ParsedCircuit::n
+              << " qubits and " << ParsedCircuit::nr_gates << " gates\n";
+  }
+  const bool use_autotune = (opts.num_chunk1 == -1 && opts.num_chunk2 == -1);
+
+  if (use_autotune) {
+    // Autotune if checkpoints not given. (This takes longer time initially.)
+    if (opts.verbosity >= 1)
+      std::cout << "cloud_task: starting autotuned circuit build\n";
+    Circuit::build_autotuned_circuit();
+  } else if (opts.num_chunk1 > -1 && opts.num_chunk2 > -1) {
+    if (opts.verbosity >= 1) {
+      std::cout << "cloud_task: building fixed circuit with checkpoints ("
+                << opts.num_chunk1 << ", " << opts.num_chunk2 << ")\n";
+    }
+    Circuit::build_circuit(opts.num_chunk1, opts.num_chunk2);
+  } else {
+    cerr << "Both -p and -r must be set, or none of them for autotuning."
+         << '\n';
+    exit(1);
+  }
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: circuit build complete\n";
+
+  if (opts.verbosity >= 3)
+    printf("After build: %s\n", Circuit::circuit_to_string(-1, 2).c_str());
+
+  if (opts.verbosity >= 1) {
+    const int num_gates = ParsedCircuit::nr_gates;
+    printf("Circuit has %d gates. Distributed as:\n", num_gates);
+    printf("  Chunk 0: %zu gates\n", Circuit::chunks.at(0).gates.size());
+    printf("  Chunk 1: %zu gates\n", Circuit::chunks.at(1).gates.size());
+    printf("  Chunk 2: %zu gates\n", Circuit::chunks.at(2).gates.size());
+    const int num_artificial = Circuit::chunks.at(0).num_artificial +
+                               Circuit::chunks.at(1).num_artificial +
+                               Circuit::chunks.at(2).num_artificial;
+    printf("Total number of artificial sources: %d. Distributed as:\n",
+           num_artificial);
+    printf("  Chunk 0: %d\n", Circuit::chunks.at(0).num_artificial);
+    printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
+    printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
+
+    printf("For each simulate call we simulate over: \n");
+    try {
+      const TypeLongInt num_histories_total = mul_checked(
+          mul_checked(
+              pow2_checked(Circuit::chunks.at(0).num_artificial,
+                           "Chunk-0 history count"),
+              pow2_checked(Circuit::chunks.at(1).num_artificial,
+                           "Chunk-1 history count"),
+              "Total history count partial product"),
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count"),
+          "Total history count");
+      const TypeLongInt num_histories_parallel =
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count");
+      std::cout << "  " << type_long_int_to_string(num_histories_total)
+                << " histories in total.\n";
+      std::cout << "  " << type_long_int_to_string(num_histories_parallel)
+                << " histories in parallel.\n";
+    } catch (const std::runtime_error &err) {
+      std::cout << "  exact total history count unavailable: " << err.what()
+                << '\n';
+    }
+    if (use_autotune) {
+      std::cout << "Autotuning time: " << Circuit::last_autotune_seconds
+                << " seconds (candidates=" << Circuit::last_autotune_candidates
+                << ", step_size=" << Circuit::last_autotune_step_size
+                << ", best_gate_ops_estimate="
+                << type_long_int_to_string(Circuit::last_autotune_best_gate_ops)
+                << ", mode=autotuned)\n";
+    } else {
+      printf(
+          "Autotuning time: 0.000000 seconds (candidates=0, step_size=0, "
+          "best_gate_ops_estimate=0, mode=fixed)\n");
+    }
+  }
+
+  // Load input bitstrings
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: loading input statevector file\n";
+  vector<InputBitstrings> input_bitstrings = read_input_bitstrings_from_file(
+      opts.input_statevector_file, opts.dense);
+  if (opts.verbosity >= 1) {
+    std::cout << "cloud_task: loaded " << input_bitstrings.size()
+              << " input basis amplitudes\n";
+  }
+
+  // Load output bitstrings to simulate (if the option is ON)
+  // #ifdef USE_SUBSET_OUTBITSTRINGS
+  if (opts.verbosity >= 1)
+    std::cout << "cloud_task: loading output bitstrings batch\n";
+  vector<vector<bool>> output_bitstrings = load_output_bitvectors_from_file(
+      opts.batch_file);
+  const TypeLongInt total_output_bitstrings =
+      static_cast<TypeLongInt>(output_bitstrings.size());
+  // #else
+  //     const TypeLongInt total_output_bitstrings = 1ULL << Circuit::n; //
+  //     overflow if n >= 128
+  // #endif
+  if (opts.verbosity >= 1)
+    std::cout << "Total output bitstrings to simulate: "
+              << type_long_int_to_string(total_output_bitstrings) << '\n';
+
+  // Loop through all input-output pairs. Start with amplitude depending on
+  // input statevector.
+  std::string local_buf;
+  local_buf.reserve(1 << 20);
+  std::string local_buf_timing = "bitstring_hex,elapsed_seconds,status\n";
+  local_buf_timing.reserve(1 << 16);
+  std::string local_buf_contribution2_abs_stats =
+      "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n";
+  local_buf_contribution2_abs_stats.reserve(1 << 16);
+  std::string local_buf_contribution1_abs_stats =
+      "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n";
+  local_buf_contribution1_abs_stats.reserve(1 << 16);
+  std::string local_buf_contribution0_abs_stats =
+      "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n";
+  local_buf_contribution0_abs_stats.reserve(1 << 16);
+
+  if (opts.verbosity >= 1) {
+    std::cout << "Starting simulation over all input-output pairs:\n"
+              << " -- Total output bitstrings = "
+              << type_long_int_to_string(total_output_bitstrings)
+              << " - OMP_THREADS per worker = " << t_omp << " --:\n";
+  }
+
+  duration<double> total_clocktime_simulate = zero_duration();
+  int num_calls_simulate = 0;
+
+  // Loop though all output bitstrings
+  std::size_t count_processed_bitstrings = 0;
+  auto start_svcc_sim = get_time();
+  const std::size_t progress_interval =
+      (total_output_bitstrings <= 10)
+          ? 1
+          : (total_output_bitstrings <= 100 ? 10 : 100);
+
+  // Worker body
+  auto process_outputs = [&](std::size_t start, std::size_t end) {
+
+  };
+  // prctl(PR_TASK_PERF_EVENTS_ENABLE, 0, 0, 0, 0);
+#if PERF_INSTRUMENT
+  ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);  // zero all
+  ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP); // begin region
+#endif
+
+#if EXECUTE_RUN
+  // Run the simulation
+  for (std::size_t output_int = 0; output_int < output_bitstrings.size(); ++output_int) {
+    if (output_int >= total_output_bitstrings)
+      break;
+    //    #ifdef USE_SUBSET_OUTBITSTRINGS
+    const vector<bool> output_bits = output_bitstrings[output_int];
+    //    #else
+    //            const TypeLongInt bitstringDecimal = output_int;
+    //            std::vector<bool> output_bits =
+    //            bit_array_from_int(bitstringDecimal, Circuit::n);
+    //    #endif
+    auto start_simulate_bitstring = get_time();
+    ++count_processed_bitstrings;
+
+    TypeAmp output_amp(0.0, 0.0);
+    SimulateAbsStats output_abs_stats;
+
+    // Loop through the input bitstrings specified in input file
+    for (const auto &input : input_bitstrings) {
+      std::vector<bool> input_bits = input.index;
+
+      TypeAmp amp_in = input.amp;
+
+      auto start_simulate = get_time();
+      output_amp +=
+          simulate(output_bits, input_bits, amp_in, opts.fraction,
+                   opts.threshold, 3, &output_abs_stats);
+      auto end_simulate = get_time();
+      num_calls_simulate++;
+
+      const duration<double> clocktime_simulate =
+          end_simulate - start_simulate;
+
+      if (opts.verbosity >= 2) {
+        printf("Clocktime to simulate input |");
+        for (int i = Circuit::n - 1; i >= 0; --i)
+          printf("%d", input_bits[i] ? 1 : 0);
+        printf("> to output |");
+        for (int i = Circuit::n - 1; i >= 0; --i)
+          printf("%d", output_bits[i] ? 1 : 0);
+        printf("> : %f seconds\n", clocktime_simulate.count());
+      }
+
+      total_clocktime_simulate += clocktime_simulate;
+      // Reset all values (for all threads if OpenMP is used)
+      Circuit::reset_values_all();
+    }
+
+      auto end_simulate_bitstring = get_time();
+      const duration<double> clocktime_bitstring =
+          end_simulate_bitstring - start_simulate_bitstring;
+      const bool supported = (std::abs(output_amp) > opts.threshold);
+      const std::string bitstring_hex = bitvector_to_hexstring(output_bits);
+      local_buf_timing += bitstring_hex + "," +
+                          real_to_string(clocktime_bitstring.count()) + "," +
+                          (supported ? "supported" : "rejected") + "\n";
+      append_abs_stats_row(local_buf_contribution2_abs_stats, bitstring_hex,
+                           output_abs_stats.contribution2);
+      append_abs_stats_row(local_buf_contribution1_abs_stats, bitstring_hex,
+                           output_abs_stats.contribution1);
+      append_abs_stats_row(local_buf_contribution0_abs_stats, bitstring_hex,
+                           output_abs_stats.contribution0);
+
+      // Write to output file
+      bool writeFlag = (opts.dense || supported);
+      if (writeFlag) {
+        local_buf += bitstring_hex + ":" + complex_to_string(output_amp) + "\n";
+      }
+
+      const bool should_report_progress =
+          opts.verbosity >= 1 &&
+          (count_processed_bitstrings == total_output_bitstrings ||
+           (count_processed_bitstrings % progress_interval) == 0);
+      if (should_report_progress) {
+        const duration<double> elapsed_progress = get_time() - start_svcc_sim;
+        const double elapsed_seconds = elapsed_progress.count();
+        const double processed = static_cast<double>(count_processed_bitstrings);
+        const double total = static_cast<double>(total_output_bitstrings);
+        const double percent_done = (total > 0.0) ? (100.0 * processed / total) : 100.0;
+        const double rate =
+            (elapsed_seconds > 0.0) ? (processed / elapsed_seconds) : 0.0;
+        const double eta_seconds =
+            (rate > 0.0) ? ((total - processed) / rate) : 0.0;
+        printf(
+            "Progress: processed %zu / %s output bitstrings (%.1f%%, "
+            "elapsed %.1fs, rate %.2f bitstrings/s, eta %.1fs)\n",
+            count_processed_bitstrings,
+            type_long_int_to_string(total_output_bitstrings).c_str(),
+            percent_done, elapsed_seconds, rate, eta_seconds);
+      }
+    }
+#endif
+#if PERF_INSTRUMENT
+  ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+  // prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
+#endif
+
+  auto end_svcc_simulation = get_time();
+
+  // parallel output to disk
+  write_string_to_file(opts.output_statevector_file, local_buf);
+  write_string_to_file(timing_file_path.string(), local_buf_timing);
+  write_string_to_file(contribution2_abs_stats_file_path.string(),
+                       local_buf_contribution2_abs_stats);
+  write_string_to_file(contribution1_abs_stats_file_path.string(),
+                       local_buf_contribution1_abs_stats);
+  write_string_to_file(contribution0_abs_stats_file_path.string(),
+                       local_buf_contribution0_abs_stats);
+
+  if (opts.verbosity >= 1) {
+    printf("Number of simulate calls: %d\n", num_calls_simulate);
+    printf("Total clocktime for all simulate calls: %f seconds\n",
+           total_clocktime_simulate.count());
+    printf("Average clocktime per simulate call: %f seconds\n",
+           total_clocktime_simulate.count() / num_calls_simulate);
+  }
+
+  // out_file.close();
+  fflush(stdin);
+
+  auto end_svcc_full = get_time();
+
+  duration<double> total_clocktime_svcc_sim =
+      end_svcc_simulation - start_svcc_sim;
+  duration<double> total_clocktime_svcc_full = end_svcc_full - start_svcc_all;
+  duration<double> total_clocktime_svcc_writing =
+      end_svcc_full - end_svcc_simulation;
+
+  if (opts.verbosity >= 1) {
+    printf("Total clocktime sim for sv.cpp: %f seconds\n",
+           total_clocktime_svcc_sim.count());
+    printf("Total clocktime writing to disk for sv.cpp: %f seconds\n",
+           total_clocktime_svcc_writing.count());
+    printf("Total clocktime (including I/O) for sv.cpp: %f seconds\n",
+           total_clocktime_svcc_full.count());
+  }
+  memory.write(output_path.parent_path() /
+               (output_path.stem().string() + ".memory.json"));
+}
+
+int main(int argc, char *argv[]) {
+  // prctl(PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0);
+#if PERF_INSTRUMENT
+  int fd =
+      open_leader(getpid(), -1, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES);
+#endif
+  configure_logging();
+
+  Options opts = get_options(argc, argv);
+
+  try {
+    run(opts);
+  } catch (const std::exception &e) {
+    cerr << "Exception in run() function: " << e.what() << '\n';
+    return 1;
+  }
+
+  return 0;
+}

@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qwalk_quimb_smoke",
+  "description": "qwalk_quimb_smoke",
   "repo_root": ".",
   "output_root": "data/outputs/validation",
   "circuit": {
@@ -8,12 +8,10 @@
     "it": 4
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 2
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 2,
     "count": 8
   },
   "qiskit_optimization_level": 1,

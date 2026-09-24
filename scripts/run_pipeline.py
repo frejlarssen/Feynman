@@ -12,7 +12,7 @@ from typing import Iterable
 
 def _add_common_sweep_flags(parser: argparse.ArgumentParser, *, require_config: bool = True) -> None:
     parser.add_argument("--config", required=require_config, help="Path to sweep config JSON.")
-    parser.add_argument("--experiment-name", default="", help="Optional experiment name override.")
+    parser.add_argument("--description", default="", help="Optional description override.")
     parser.add_argument("--repo-root", default="", help="Optional repo root override.")
     parser.add_argument("--output-root", default="", help="Optional output root override.")
     parser.add_argument("--dry-run", action="store_true")
@@ -26,8 +26,8 @@ def _sweep_argv(args: argparse.Namespace) -> list[str]:
     argv = []
     if args.config:
         argv.extend(["--config", args.config])
-    if args.experiment_name:
-        argv.extend(["--experiment-name", args.experiment_name])
+    if args.description:
+        argv.extend(["--description", args.description])
     if args.repo_root:
         argv.extend(["--repo-root", args.repo_root])
     if args.output_root:
@@ -141,6 +141,15 @@ def build_parser() -> argparse.ArgumentParser:
     qwalk_quimb.add_argument("--repo-root", default="", help="Optional repo root override.")
     qwalk_quimb.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
 
+    selected_accuracy = validation_sub.add_parser(
+        "selected-output-accuracy",
+        help="Run exact-vs-approx selected-output accuracy validation.",
+    )
+    selected_accuracy.add_argument("--config", required=False, default="", help="Path to validation config JSON.")
+    selected_accuracy.add_argument("--output-root", default="", help="Optional output root override.")
+    selected_accuracy.add_argument("--repo-root", default="", help="Optional repo root override.")
+    selected_accuracy.add_argument("extra", nargs=argparse.REMAINDER, help="Extra mode-specific passthrough flags.")
+
     plot = sub.add_parser("plot", help="Plot from existing summary/output artifacts.")
     plot_sub = plot.add_subparsers(dest="plot_kind", required=True)
 
@@ -242,11 +251,39 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_qaoa_val.add_argument("--output", default="")
     p_qaoa_val.add_argument("--label-fontsize", type=float, default=None)
+
+    p_selected = plot_sub.add_parser(
+        "selected-output-accuracy",
+        help="Plot selected-output fraction/runtime tradeoff from validation artifacts.",
+    )
+    p_selected_input = p_selected.add_mutually_exclusive_group(required=True)
+    p_selected_input.add_argument("--summary-csv", default="")
+    p_selected_input.add_argument(
+        "--latest",
+        action="store_true",
+        help="Use newest matching validation run directory and read summary.csv from it.",
+    )
+    p_selected.add_argument(
+        "--latest-name-contains",
+        default="selected_accuracy",
+        help="Substring filter for selecting latest selected-output validation run directory.",
+    )
+    p_selected.add_argument(
+        "--comparison-csv",
+        default="",
+        help="Optional comparison.csv override. Defaults to the one next to summary.csv.",
+    )
+    p_selected.add_argument("--time-column", default="internal_runtime_s")
+    p_selected.add_argument("--output", default="")
+    p_selected.add_argument("--title", default="")
+    p_selected.add_argument("--label-fontsize", type=float, default=None)
     return parser
 
 
 def _validation_argv(args: argparse.Namespace) -> list[str]:
-    argv = ["--config", args.config]
+    argv: list[str] = []
+    if args.config:
+        argv.extend(["--config", args.config])
     if args.repo_root:
         argv.extend(["--repo-root", args.repo_root])
     if args.output_root:
@@ -408,6 +445,7 @@ def _resolve_summary_csv_arg(
 
 
 def _plot_perf_sweep(args: argparse.Namespace) -> int:
+    from plot_timebitstrings_hist import auto_plot_timebitstrings_histograms
     from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
 
     summary_path = _resolve_summary_csv_arg(args=args, run_type="experiments")
@@ -438,6 +476,15 @@ def _plot_perf_sweep(args: argparse.Namespace) -> int:
         label_fontsize=args.label_fontsize,
     )
     print(f"Saved plot: {output_path}")
+    try:
+        hist_plots = auto_plot_timebitstrings_histograms(
+            summary_csv=summary_path,
+            label_fontsize=args.label_fontsize,
+        )
+        for hist_path in hist_plots:
+            print(f"Saved timing histogram: {hist_path}")
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"Skipped timing histogram plot: {exc}", file=sys.stderr)
     return 0
 
 
@@ -674,6 +721,31 @@ def _plot_qaoa_qiskit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plot_selected_output_accuracy(args: argparse.Namespace) -> int:
+    from validation.selected_output_accuracy_plotting import plot_fraction_tradeoff
+
+    summary_csv = _resolve_summary_csv_arg(args=args, run_type="validation")
+    if not summary_csv.exists():
+        raise FileNotFoundError(f"Summary CSV not found: {summary_csv}")
+    comparison_csv = Path(args.comparison_csv).resolve() if args.comparison_csv else None
+    output = Path(args.output).resolve() if args.output else _default_plot_path(
+        artifact_path=summary_csv,
+        run_type="validation",
+        current_stem="fraction_tradeoff",
+        multiple_plots_for_config=False,
+    )
+    saved = plot_fraction_tradeoff(
+        summary_csv=summary_csv,
+        comparison_csv=comparison_csv,
+        output=output,
+        time_column=args.time_column,
+        title=args.title or None,
+        label_fontsize=args.label_fontsize,
+    )
+    print(f"Saved plot: {saved}")
+    return 0
+
+
 def _detect_experiment_mode(config_path: Path) -> str:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -689,6 +761,16 @@ def _detect_experiment_mode(config_path: Path) -> str:
         return "perf-sweep"
     if config_type == "validation":
         stem = config_path.stem.lower()
+        if (
+            "selected_accuracy" in stem
+            or "selected_output_accuracy" in stem
+            or (
+                isinstance(payload.get("cases"), list)
+                and isinstance(payload.get("reference", {}), dict)
+                and "output_bitstrings" in payload
+            )
+        ):
+            return "validation:selected-output-accuracy"
         if "quimb" in stem or str(payload.get("backend", "")).lower() == "quimb":
             return "validation:qwalk-quimb"
         if "qiskit_validation" in stem or "qiskit" in stem:
@@ -722,6 +804,15 @@ def _build_run_all_command(script_path: Path, cfg: Path, mode: str) -> list[str]
         return [sys.executable, str(script_path), "validation", "qaoa-qiskit", "--config", str(cfg)]
     if mode == "validation:qwalk-quimb":
         return [sys.executable, str(script_path), "validation", "qwalk-quimb", "--config", str(cfg)]
+    if mode == "validation:selected-output-accuracy":
+        return [
+            sys.executable,
+            str(script_path),
+            "validation",
+            "selected-output-accuracy",
+            "--config",
+            str(cfg),
+        ]
     if mode == "validation:qft-demo":
         return [sys.executable, str(script_path), "validation", "qft-demo", "--config", str(cfg)]
     raise ValueError(f"Unsupported run-all mode: {mode}")
@@ -821,6 +912,10 @@ def main(argv: list[str] | None = None) -> int:
             from tensor_comparison.qwalk_quimb import main as qwalk_quimb_main
 
             return qwalk_quimb_main(val_argv)
+        if args.validation_kind == "selected-output-accuracy":
+            from validation.selected_output_accuracy import main as selected_output_accuracy_main
+
+            return selected_output_accuracy_main(val_argv)
         if args.validation_kind == "qft-demo":
             from validation.qft_demo import main as qft_demo_main
 
@@ -837,6 +932,8 @@ def main(argv: list[str] | None = None) -> int:
             return _plot_qaoa_pruning(args)
         if args.plot_kind == "qaoa-qiskit":
             return _plot_qaoa_qiskit(args)
+        if args.plot_kind == "selected-output-accuracy":
+            return _plot_selected_output_accuracy(args)
         parser.error(f"Unknown plot kind: {args.plot_kind}")
     parser.error(f"Unknown command: {args.command}")
     return 2

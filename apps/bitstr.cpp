@@ -4,13 +4,17 @@
 #include "../src/simulator.h"
 #include "../src/utils.h"
 
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
+
 struct Options {
   string circuit_file;
   vector<bool> input_bits;
   vector<bool> output_bits;
   int num_chunk1 = -1;
   int num_chunk2 = -1;
-  float fraction = 1.0;
+  TypeAmpReal fraction = 1.0;
   bool only_build = false;
 };
 
@@ -32,7 +36,7 @@ Options get_options(int argc, char *argv[]) {
     return std::atoi(word.c_str());
   };
 
-  auto to_float = [](const std::string &word) -> float {
+  auto to_real = [](const std::string &word) -> TypeAmpReal {
     return std::atof(word.c_str());
   };
 
@@ -64,7 +68,7 @@ Options get_options(int argc, char *argv[]) {
       break;
     case 'f':
       cout << "f optarg: " << optarg << '\n';
-      opts.fraction = to_float(optarg);
+      opts.fraction = to_real(optarg);
       printf("opts.fraction: %f\n", opts.fraction);
       cout << "opts.fraction: " << opts.fraction << '\n';
       break;
@@ -145,9 +149,10 @@ int main(int argc, char *argv[]) {
   } else {
     // TODO: For benchmarking: Run this many times with different input/output
     // pairs.
-    const std::complex<float> input_amp(1.0f, 0.0f);
-    complex<float> amp = simulate(opts.output_bits, opts.input_bits, input_amp,
-                                  opts.fraction, 0.0f, 3);
+    const TypeAmp input_amp(1.0, 0.0);
+    TypeAmp amp =
+        simulate(opts.output_bits, opts.input_bits, input_amp, opts.fraction,
+                 0.0, 3);
     //        int a = simulate();
     printf("Total amplitude: %f + i%f\n", amp.real(), amp.imag());
   }

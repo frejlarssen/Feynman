@@ -1,0 +1,22 @@
+{
+  "description": "qwalk_n16_it6",
+  "target_num_batches_list": [
+    1,
+    2,
+    4
+  ],
+  "repeat": 1,
+  "simulate_omp_num_threads": 1,
+  "circuit": {
+    "generator": "qwalk",
+    "n": 16,
+    "it": 6
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 32
+  }
+}

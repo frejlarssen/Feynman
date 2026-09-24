@@ -73,7 +73,7 @@ OVERRIDE_FIELDS = (
 
 DEFAULT_OPTIONS: dict[str, Any] = {
     "config": "",
-    "experiment_name": None,
+    "description": "",
     "repo_root": ".",
     "output_root": "data/outputs/experiments",
     "base_config": None,
@@ -98,7 +98,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "feynman_env": None,
 }
 
-REQUIRED_FIELDS = ("experiment_name", "base_config", "thresholds")
+REQUIRED_FIELDS = ("base_config", "thresholds")
 
 NUMERIC_CASTS: dict[str, Any] = {
     "reference_threshold": float,
@@ -117,7 +117,8 @@ BOOLEAN_FIELDS = ("continue_on_error", "dry_run", "no_plot")
 @dataclass(frozen=True)
 class SweepConfig:
     config: str
-    experiment_name: str
+    description: str
+    experiment_tag: str
     repo_root: str
     output_root: str
     base_config: str

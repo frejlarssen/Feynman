@@ -5,6 +5,8 @@ This file is the full command catalog for the unified pipeline in
 
 All runs write into `data/outputs/experiments/` or `data/outputs/validation/`.
 Experiment and validation runs generate their associated plots automatically.
+Perf sweeps also auto-generate per-bitstring timing histograms from
+`timeBitstrings.csv` when those artifacts are present.
 
 For perf experiments, build the release binary first:
 
@@ -15,7 +17,7 @@ cmake --build --preset release --target sv_prefetcher_mpi_subsetbitstrings -j
 
 Perf configs in this catalog use `build-release/sv_prefetcher_subset_mpi.x`.
 
-Perf run telemetry now records:
+Perf run telemetry records:
 
 - `summary.csv`: `ranks`, `feynman_env`, `active_workers`, `omp_threads_per_worker`
 - `sweep_metadata.json`: host logical core counts (`os.cpu_count` and `nproc`)
@@ -52,6 +54,10 @@ python scripts/run_pipeline.py plot perf-sweep \
   --y-column total_full_s \
   --mode meanstd
 ```
+
+That plot command also regenerates `timebitstrings_hist.pdf`, plus
+`timebitstrings_hist_supported.pdf` and `timebitstrings_hist_rejected.pdf` when
+the timing files include the embedded support status.
 
 ### Checkpoint Ablations
 
@@ -147,6 +153,83 @@ circuit used by quimb. The sweep records runtime, peak RSS, and lowered
 operation counts, then writes time, memory, and operation-count plots.
 
 ## Validation Workflows
+
+### Selected-Output Accuracy
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_smoke.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
+This workflow runs one exact selected-output reference and one or more
+approximate selected-output runs on the same output-bitstring set, then writes
+`summary.csv`, `comparison.csv`, `reference_outputs.csv`, and `summary.json`
+under `data/outputs/validation/`.
+
+For fast exploratory sweeps where the exact reference is too slow, set
+`"compute_reference": false` in the config or pass `--skip-reference` after
+the `--` separator. Those runs still write `summary.csv` and `summary.json`,
+but they skip `comparison.csv` and `reference_outputs.csv`, leave
+reference-dependent summary fields blank, and do not emit the tradeoff plot.
+
+Use this to tune `fraction` and `threshold` locally before moving to cloud
+benchmarks. When using the MPI binary, keep the launcher path above:
+`--binary build-release/sv_prefetcher_subset_mpi.x --ranks 1`. The validation
+driver will invoke `mpirun -n 1` for that binary.
+
+Each case defaults to the usual `|A_hat|^2` population estimate. For fraction
+experiments you can instead request a cross-seeded population estimator:
+
+```json
+{
+  "population_estimator": "cross_seeded",
+  "history_seeds": [1, 2],
+  "vary": "fraction",
+  "values": [0.9, 0.75, 0.5]
+}
+```
+
+For ordinary selected-output-accuracy configs, prefer this sweep style over an
+explicit `cases` array:
+
+- set shared defaults once at top level
+- set `vary` to either `fraction` or `threshold`
+- list the sweep points in `values`
+
+The script auto-generates one run per sweep value and derives case names from
+the varied parameter. That runs the same approximate amplitude job once per
+seed, then scores the selected-output populations using the average of
+`Re(A_i conj(A_j))` over all seed pairs. In `summary.csv`,
+`fidelity_to_reference` remains the primary one-number score; for cross-seeded
+cases it is the selected-population Bhattacharyya fidelity rather than
+amplitude-overlap fidelity.
+
+Google-RQC scaling ladder configs are available for fixed `m=1` at:
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c5_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c6_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c7_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_ladder_r2_c8_m1.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
+These keep a fixed `1024`-bitstring probe set and compare cross-seeded
+fractions `0.5`, `0.25`, and `0.10` against one exact selected-output
+reference at each size. They are meant as a calibration ladder: stop when the
+exact reference becomes too slow, then carry the last acceptable fraction into
+larger benchmark-only runs.
 
 ### QWalk vs quimb
 

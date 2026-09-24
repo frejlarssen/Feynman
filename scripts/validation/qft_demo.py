@@ -32,6 +32,7 @@ if str(SCRIPT_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_REPO_ROOT))
 
 from scripts.sweeplib.materialize import (  # noqa: E402
+    infer_circuit_qubits,
     resolve_circuit_input,
     resolve_output_bitstrings_input,
     resolve_statevector_input,
@@ -41,6 +42,7 @@ from scripts.sweeplib.plot_style import (  # noqa: E402
     resolve_subplot_title_fontsize,
     single_column_figure_size,
 )
+from scripts.sweeplib.utils import experiment_tag_from_config  # noqa: E402
 
 
 def _utc_stamp() -> str:
@@ -65,11 +67,16 @@ def _strip_timestamp_prefix(run_dir_name: str) -> str:
 
 def _parse_complex_token(token: str) -> complex:
     s = token.strip()
-    plus = s.find("+", 1)
-    i_pos = s.find("i", 1)
-    if plus == -1 or i_pos == -1:
+    i_pos = s.rfind("i")
+    if i_pos != len(s) - 1:
         raise ValueError(f"Invalid complex token: {token!r}")
-    return complex(float(s[:plus]), float(s[plus + 1 : i_pos]))
+    split = -1
+    for pos in range(1, i_pos):
+      if s[pos] in "+-" and s[pos - 1] not in "eE":
+        split = pos
+    if split == -1:
+        raise ValueError(f"Invalid complex token: {token!r}")
+    return complex(float(s[:split]), float(s[split:i_pos]))
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -94,7 +101,7 @@ def _merge_config(
         return cli_value if cli_value is not None else cfg.get(key, default)
 
     merged = {
-        "experiment_name": pick("experiment_name", args.experiment_name, "qft_demo"),
+        "description": pick("description", args.description, ""),
         "binary": pick("binary", args.binary, "build-release/sv_prefetcher_subset_mpi.x"),
         "mpirun": pick("mpirun", args.mpirun, "mpirun"),
         "ranks": int(pick("ranks", args.ranks, 1)),
@@ -135,6 +142,7 @@ def _merge_config(
         raise ValueError("batch_size must be >= 0")
     if merged["plot_max_xticks"] < 2:
         raise ValueError("plot_max_xticks must be >= 2")
+    merged["experiment_tag"] = experiment_tag_from_config(config_path_str, fallback="qft_demo")
     return merged, cfg, config_path_str
 
 
@@ -449,6 +457,9 @@ def _run_sv_prefetcher(
     r: int | None,
     feynman_env: dict[str, str] | None,
 ) -> tuple[list[str], int, str, str]:
+    def _binary_requires_mpirun(path: Path) -> bool:
+        return "mpi" in path.name
+
     run_args = [
         str(binary),
         "-c",
@@ -473,8 +484,7 @@ def _run_sv_prefetcher(
     if dense:
         run_args.append("-D")
 
-    # Running single-rank directly avoids fragile PMIx startup in constrained envs.
-    if ranks == 1:
+    if ranks == 1 and not _binary_requires_mpirun(binary):
         cmd = run_args
     else:
         cmd = [mpirun, "-n", str(ranks), *run_args]
@@ -562,7 +572,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Run a QFT frequency demo and produce a PDF plot."
     )
     parser.add_argument("--config", default=None, help="JSON config path.")
-    parser.add_argument("--experiment-name", default=None)
+    parser.add_argument("--description", default=None)
     parser.add_argument("--repo-root", default=None)
     parser.add_argument("--binary", default=None)
     parser.add_argument("--mpirun", default=None)
@@ -593,7 +603,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     cfg, raw_cfg, config_path_str = _merge_config(args)
-    config_stem = Path(config_path_str).stem if config_path_str else _sanitize(str(cfg["experiment_name"]))
+    config_stem = Path(config_path_str).stem if config_path_str else str(cfg["experiment_tag"])
 
     repo_root = Path(cfg["repo_root"]).resolve()
 
@@ -675,16 +685,21 @@ def main(argv: list[str] | None = None) -> int:
     if not binary.is_absolute():
         binary = (repo_root / binary).resolve()
 
+    circuit_qubits = infer_circuit_qubits(cfg["circuit"], repo_root)
     circuit, circuit_generated = resolve_circuit_input(cfg["circuit"], repo_root)
-    input_statevector, input_generated = resolve_statevector_input(cfg["input_statevector"], repo_root)
-    output_bitstrings, output_generated = resolve_output_bitstrings_input(cfg["output_bitstrings"], repo_root)
+    input_statevector, input_generated = resolve_statevector_input(
+        cfg["input_statevector"], repo_root, circuit_qubits=circuit_qubits
+    )
+    output_bitstrings, output_generated = resolve_output_bitstrings_input(
+        cfg["output_bitstrings"], repo_root, circuit_qubits=circuit_qubits
+    )
     output_root = (repo_root / cfg["output_root"]).resolve()
 
     for p in (binary, circuit, input_statevector, output_bitstrings):
         if not p.exists():
             raise FileNotFoundError(f"Required path not found: {p}")
 
-    sweep_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_name'])}"
+    sweep_dir = output_root / f"{_utc_stamp()}_{_sanitize(cfg['experiment_tag'])}"
     sweep_dir.mkdir(parents=True, exist_ok=False)
 
     output_bins, size_bytes = _read_output_bitstrings(output_bitstrings)
@@ -898,7 +913,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = {
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "experiment_name": cfg["experiment_name"],
+        "experiment_tag": cfg["experiment_tag"],
         "config_file": config_path_str,
         "config_from_file": raw_cfg,
         "config_effective": cfg,

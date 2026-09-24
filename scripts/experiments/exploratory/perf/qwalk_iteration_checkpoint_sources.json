@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qwalk_iteration_checkpoint_sources",
+  "description": "qwalk_iteration_checkpoint_sources",
   "repo_root": ".",
   "vary": "circuit_it",
   "values": [
@@ -25,27 +25,22 @@
     "it": 1
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 1
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 1,
     "count": 1
   },
   "cases": [
     {
-      "name": "no_cp",
       "p": 0,
       "r": 0
     },
     {
-      "name": "fixed_cp_thirds",
       "p": "thirds",
       "r": "thirds"
     },
     {
-      "name": "autotuned_cp",
       "p": null,
       "r": null
     }

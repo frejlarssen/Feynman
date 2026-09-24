@@ -1,0 +1,29 @@
+{
+  "description": "Bare-metal per-output timing characterization matching the OpenCube QWalk pool sweep",
+  "repo_root": ".",
+  "vary": "batch_size",
+  "values": [1024],
+  "repeat": 1,
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "8",
+    "OMP_DYNAMIC": "FALSE"
+  },
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "qwalk",
+    "n": 100,
+    "it": 17
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 1024
+  },
+  "output_root": "data/outputs/experiments",
+  "binary": "build-cloud-make/cloud_task.x",
+  "notes": "One direct cloud_task process on OpenCube with the QWalk pool-sweep workload. The effective batch contains all 1024 outputs; no Airflow, Kubernetes, MPI, or pod startup is included."
+}

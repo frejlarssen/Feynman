@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qft_qiskit_validation_two_tone",
+  "description": "qft_qiskit_validation_two_tone",
   "binary": "build-release/sv_prefetcher_subset_mpi.x",
   "mpirun": "mpirun",
   "ranks": 16,
@@ -13,14 +13,12 @@
   },
   "input_statevector": {
     "generator": "two_tone",
-    "n_qubits": 8,
     "f1": 7,
     "f2": 23,
     "rel_amp": 0.7
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 1,
     "count": 51
   },
   "fraction": 1.0,

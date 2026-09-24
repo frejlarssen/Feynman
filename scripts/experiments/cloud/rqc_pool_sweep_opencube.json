@@ -1,0 +1,33 @@
+{
+  "description": "OpenCube pool sweep of the same problem as 20260807T221437Z_google_rqc_r2_c6_m1_fraction05_count1024 (source commit 361a2ff1649b6d83725d0f75e4bb05174da870b3), using the current simulator and 64 fixed batches.",
+  "target_pool_slots_list": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64
+  ],
+  "max_hexstrings_per_batch": 16,
+  "repeat": 3,
+  "simulate_omp_num_threads": 1,
+  "fraction": 0.5,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 6,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 1024,
+    "seed": 11
+  }
+}

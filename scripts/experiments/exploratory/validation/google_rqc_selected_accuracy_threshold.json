@@ -1,0 +1,25 @@
+{
+  "description": "google_rqc_selected_accuracy_threshold",
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 4,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 64,
+    "seed": 11
+  },
+  "vary": "threshold",
+  "values": [0.1, 0.001, 1e-05, 1e-08, 1e-11, 1e-14, 1e-17, 1e-20, 1e-21, 1e-22, 1e-23, 1e-26],
+  "nonzero_eps": 1e-26
+}

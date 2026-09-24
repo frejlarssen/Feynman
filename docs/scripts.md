@@ -21,6 +21,12 @@ Regenerate all existing plots after style changes:
 python scripts/regenerate_all_plots.py
 ```
 
+Run a fixed-batch cloud benchmark with adaptive Airflow pool sizing:
+
+```bash
+sh scripts/benchmark_cloud_autoscale.sh --config <cloud-config.json>
+```
+
 `--latest` can be used in plot/replot flows to auto-pick a recent run directory.
 Use explicit `--summary-csv`, `--comparison-csv`, or `--summary-json` when you
 want strict reproducibility.

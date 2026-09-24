@@ -55,12 +55,29 @@ python scripts/run_pipeline.py perf-sweep \
   --config scripts/experiments/exploratory/perf/qft_batch_sweep.json
 ```
 
+Selected-output accuracy validation:
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_smoke.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
+Cross-seeded selected-population validation:
+
+```bash
+python scripts/run_pipeline.py validation selected-output-accuracy \
+  --config scripts/experiments/exploratory/validation/google_rqc_selected_accuracy_cross_seeded_smoke.json \
+  -- --binary build-release/sv_prefetcher_subset_mpi.x --ranks 1
+```
+
 ## Documentation Map
 
 - More utilities of experiment scripts: `docs/scripts.md`
 - Full experiment/validation catalog: `docs/experiments.md`
 - Paper-targeted reproducibility map: `docs/paper_experiments.md`
 - File formats of input files: `docs/file_formats.md`
+- Cloud setup: `docs/cloud.md`
 
 ## Development
 

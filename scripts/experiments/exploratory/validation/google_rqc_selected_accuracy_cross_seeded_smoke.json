@@ -1,0 +1,27 @@
+{
+  "description": "google_rqc_selected_accuracy_cross_seeded_smoke",
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 4,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 64,
+    "seed": 11
+  },
+  "population_estimator": "cross_seeded",
+  "history_seeds": [1, 2],
+  "vary": "fraction",
+  "values": [0.5],
+  "nonzero_eps": 1e-12
+}

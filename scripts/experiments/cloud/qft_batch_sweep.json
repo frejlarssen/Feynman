@@ -1,0 +1,23 @@
+{
+  "description": "qft_n8_k2",
+  "target_num_batches_list": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "repeat": 3,
+  "simulate_omp_num_threads": 1,
+  "circuit": {
+    "generator": "qft",
+    "n": 8,
+    "k": 2
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 10
+  }
+}

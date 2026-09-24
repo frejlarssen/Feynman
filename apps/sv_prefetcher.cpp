@@ -23,8 +23,8 @@ struct Options {
   int num_chunk1 = -1;
   int num_chunk2 = -1;
   std::size_t batch_size = 32;
-  float fraction = 1.0;
-  float threshold = CLOSE_TO_ZERO;
+  TypeAmpReal fraction = 1.0;
+  TypeAmpReal threshold = CLOSE_TO_ZERO;
   int verbosity = 1;
   bool dense = false;
 };
@@ -48,8 +48,8 @@ Options get_options(int argc, char *argv[]) {
     return std::atoi(word.c_str());
   };
 
-  auto to_float = [](const std::string &word) -> float {
-    return float(std::atof(word.c_str()));
+  auto to_real = [](const std::string &word) -> TypeAmpReal {
+    return std::atof(word.c_str());
   };
 
   for (int i = 0; i < argc; i++) {
@@ -81,10 +81,10 @@ Options get_options(int argc, char *argv[]) {
       opts.batch_size = to_int(optarg);
       break;
     case 'f':
-      opts.fraction = to_float(optarg);
+      opts.fraction = to_real(optarg);
       break;
     case 't':
-      opts.threshold = to_float(optarg);
+      opts.threshold = to_real(optarg);
       break;
     case 'v':
       opts.verbosity = to_int(optarg);
@@ -148,21 +148,36 @@ void run(Options &opts, const int world_rank, const int world_size,
     printf("  Chunk 1: %d\n", Circuit::chunks.at(1).num_artificial);
     printf("  Chunk 2: %d\n", Circuit::chunks.at(2).num_artificial);
 
-    const TypeLongInt num_histories_total =
-        (TypeLongInt(1) << Circuit::chunks.at(0).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(1).num_artificial) *
-        (TypeLongInt(1) << Circuit::chunks.at(2).num_artificial);
-
     printf("For each simulate call we simulate over: \n");
-    printf("  %lld histories in total.\n", num_histories_total);
-    printf("  %d histories in parallel.\n",
-           (1 << Circuit::chunks.at(2).num_artificial));
+    try {
+      const TypeLongInt num_histories_total = mul_checked(
+          mul_checked(
+              pow2_checked(Circuit::chunks.at(0).num_artificial,
+                           "Chunk-0 history count"),
+              pow2_checked(Circuit::chunks.at(1).num_artificial,
+                           "Chunk-1 history count"),
+              "Total history count partial product"),
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count"),
+          "Total history count");
+      const TypeLongInt num_histories_parallel =
+          pow2_checked(Circuit::chunks.at(2).num_artificial,
+                       "Chunk-2 history count");
+      std::cout << "  " << type_long_int_to_string(num_histories_total)
+                << " histories in total.\n";
+      std::cout << "  " << type_long_int_to_string(num_histories_parallel)
+                << " histories in parallel.\n";
+    } catch (const std::runtime_error &err) {
+      std::cout << "  exact total history count unavailable: " << err.what()
+                << '\n';
+    }
     if (use_autotune) {
-      printf(
-          "Autotuning time: %.6f seconds (candidates=%d, step_size=%d, "
-          "best_gate_ops_estimate=%lld, mode=autotuned)\n",
-          Circuit::last_autotune_seconds, Circuit::last_autotune_candidates,
-          Circuit::last_autotune_step_size, Circuit::last_autotune_best_gate_ops);
+      std::cout << "Autotuning time: " << Circuit::last_autotune_seconds
+                << " seconds (candidates=" << Circuit::last_autotune_candidates
+                << ", step_size=" << Circuit::last_autotune_step_size
+                << ", best_gate_ops_estimate="
+                << type_long_int_to_string(Circuit::last_autotune_best_gate_ops)
+                << ", mode=autotuned)\n";
     } else {
       printf(
           "Autotuning time: 0.000000 seconds (candidates=0, step_size=0, "
@@ -186,7 +201,7 @@ void run(Options &opts, const int world_rank, const int world_size,
   // #endif
   if (print_rank0_timings)
     std::cout << "Total output bitstrings to simulate: "
-              << static_cast<std::size_t>(total_output_bitstrings) << '\n';
+              << type_long_int_to_string(total_output_bitstrings) << '\n';
 
   // Loop through all input-output pairs. Start with amplitude depending on
   // input statevector.
@@ -195,8 +210,24 @@ void run(Options &opts, const int world_rank, const int world_size,
   const std::size_t my_worker = world_rank;
   std::string local_buf;
   local_buf.reserve(1 << 20);
-  std::string local_buf_timing;
+  std::string local_buf_timing =
+      (world_rank == 0) ? "bitstring_hex,elapsed_seconds,status\n" : "";
   local_buf_timing.reserve(1 << 16);
+  std::string local_buf_contribution2_abs_stats =
+      (world_rank == 0)
+          ? "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n"
+          : "";
+  local_buf_contribution2_abs_stats.reserve(1 << 16);
+  std::string local_buf_contribution1_abs_stats =
+      (world_rank == 0)
+          ? "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n"
+          : "";
+  local_buf_contribution1_abs_stats.reserve(1 << 16);
+  std::string local_buf_contribution0_abs_stats =
+      (world_rank == 0)
+          ? "bitstring_hex,min_nonzero_abs,max_abs,count,count_nonzero\n"
+          : "";
+  local_buf_contribution0_abs_stats.reserve(1 << 16);
 
   const std::size_t batch_size =
       (opts.batch_size > 0)
@@ -204,11 +235,12 @@ void run(Options &opts, const int world_rank, const int world_size,
           : ((total_output_bitstrings + num_workers - 1) / num_workers);
 
   if (print_rank0_timings && opts.verbosity >= 1) {
-    printf(
-        "Starting simulation over all input-output pairs:\n -- Total output "
-        "bitstrings = %lld -- active workers = %zu - OMP_THREADS per worker = "
-        "%d - batch_size = %zu --:\n",
-        total_output_bitstrings, num_workers, t_omp, batch_size);
+    std::cout << "Starting simulation over all input-output pairs:\n"
+              << " -- Total output bitstrings = "
+              << type_long_int_to_string(total_output_bitstrings)
+              << " -- active workers = " << num_workers
+              << " - OMP_THREADS per worker = " << t_omp
+              << " - batch_size = " << batch_size << " --:\n";
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -218,6 +250,23 @@ void run(Options &opts, const int world_rank, const int world_size,
   // Loop though all output bitstrings
   std::size_t count_processed_bitstrings = 0;
   auto start_svcc_sim = get_time();
+  const auto append_abs_stats_row =
+      [](std::string &buffer, const std::string &bitstring_hex,
+         const AmplitudeAbsStats &stats) {
+        buffer += bitstring_hex;
+        if (stats.count > 0) {
+          buffer +=
+              "," +
+              (std::isfinite(stats.min_nonzero_abs)
+                   ? real_to_string(stats.min_nonzero_abs)
+                   : string("nan")) +
+              "," + real_to_string(stats.max_abs) + "," +
+              type_long_int_to_string(stats.count) + "," +
+              type_long_int_to_string(stats.count_nonzero) + "\n";
+        } else {
+          buffer += ",nan,nan,0,0\n";
+        }
+      };
 
   // Worker body
   auto process_outputs = [&](std::size_t start, std::size_t end) {
@@ -234,17 +283,19 @@ void run(Options &opts, const int world_rank, const int world_size,
       auto start_simulate_bitstring = get_time();
       ++count_processed_bitstrings;
 
-      std::complex<float> output_amp(0, 0);
+      TypeAmp output_amp(0.0, 0.0);
+      SimulateAbsStats output_abs_stats;
 
       // Loop through the input bitstrings specified in input file
       for (const auto &input : input_bitstrings) {
         std::vector<bool> input_bits = input.index;
 
-        std::complex<float> amp_in = input.amp;
+        TypeAmp amp_in = input.amp;
 
         auto start_simulate = get_time();
-        output_amp += simulate(output_bits, input_bits, amp_in, opts.fraction,
-                               opts.threshold, 3);
+        output_amp +=
+            simulate(output_bits, input_bits, amp_in, opts.fraction,
+                     opts.threshold, 3, &output_abs_stats);
         auto end_simulate = get_time();
         num_calls_simulate++;
 
@@ -269,15 +320,22 @@ void run(Options &opts, const int world_rank, const int world_size,
       auto end_simulate_bitstring = get_time();
       const duration<double> clocktime_bitstring =
           end_simulate_bitstring - start_simulate_bitstring;
-      local_buf_timing += bitvector_to_hexstring(output_bits) + ":" +
-                          std::to_string(clocktime_bitstring.count()) + "\n";
+      const bool supported = (std::abs(output_amp) > opts.threshold);
+      const std::string bitstring_hex = bitvector_to_hexstring(output_bits);
+      local_buf_timing += bitstring_hex + "," +
+                          real_to_string(clocktime_bitstring.count()) + "," +
+                          (supported ? "supported" : "rejected") + "\n";
+      append_abs_stats_row(local_buf_contribution2_abs_stats, bitstring_hex,
+                           output_abs_stats.contribution2);
+      append_abs_stats_row(local_buf_contribution1_abs_stats, bitstring_hex,
+                           output_abs_stats.contribution1);
+      append_abs_stats_row(local_buf_contribution0_abs_stats, bitstring_hex,
+                           output_abs_stats.contribution0);
 
       // Write to output file
-      bool writeFlag = (opts.dense || (std::abs(output_amp) > opts.threshold));
+      bool writeFlag = (opts.dense || supported);
       if (writeFlag) {
-        local_buf += bitvector_to_hexstring(output_bits) + ":" +
-                     std::to_string(output_amp.real()) + "+" +
-                     std::to_string(output_amp.imag()) + "i\n";
+        local_buf += bitstring_hex + ":" + complex_to_string(output_amp) + "\n";
       }
     }
   };
@@ -321,9 +379,24 @@ void run(Options &opts, const int world_rank, const int world_size,
   int err = write_output_to_disk(opts.output_statevector_file, local_buf,
                                  world_rank, MPI_COMM_WORLD);
   auto timing_file_path =
-      replace_filename(opts.output_statevector_file, "timeBitstrings.tm");
+      replace_filename(opts.output_statevector_file, "timeBitstrings.csv");
   int err1 = write_output_to_disk(timing_file_path, local_buf_timing,
                                   world_rank, MPI_COMM_WORLD);
+  auto contribution2_abs_stats_file_path = replace_filename(
+      opts.output_statevector_file, "contribution2AbsMinMax.csv");
+  int err2 = write_output_to_disk(contribution2_abs_stats_file_path,
+                                  local_buf_contribution2_abs_stats, world_rank,
+                                  MPI_COMM_WORLD);
+  auto contribution1_abs_stats_file_path = replace_filename(
+      opts.output_statevector_file, "contribution1AbsMinMax.csv");
+  int err3 = write_output_to_disk(contribution1_abs_stats_file_path,
+                                  local_buf_contribution1_abs_stats, world_rank,
+                                  MPI_COMM_WORLD);
+  auto contribution0_abs_stats_file_path = replace_filename(
+      opts.output_statevector_file, "contribution0AbsMinMax.csv");
+  int err4 = write_output_to_disk(contribution0_abs_stats_file_path,
+                                  local_buf_contribution0_abs_stats, world_rank,
+                                  MPI_COMM_WORLD);
 
   int tot_num_calls_simulate = 0;
   MPI_Reduce(&num_calls_simulate, &tot_num_calls_simulate, 1, MPI_INT, MPI_SUM,
@@ -338,8 +411,10 @@ void run(Options &opts, const int world_rank, const int world_size,
   if (opts.verbosity >= 1) {
     fflush(stdin);
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("Worker %zu - processed %zu / %lld bitstrings\n", my_worker,
-           count_processed_bitstrings, total_output_bitstrings);
+    std::cout << "Worker " << my_worker << " - processed "
+              << count_processed_bitstrings << " / "
+              << type_long_int_to_string(total_output_bitstrings)
+              << " bitstrings\n";
   }
 
   // out_file.close();

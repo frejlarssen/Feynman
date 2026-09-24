@@ -1,5 +1,5 @@
 {
-  "experiment_name": "qwalk_checkpoint_ablation",
+  "description": "qwalk_checkpoint_ablation",
   "repo_root": ".",
   "vary": "batch_size",
   "values": [
@@ -19,27 +19,22 @@
     "it": 16
   },
   "input_statevector": {
-    "generator": "ket0",
-    "size": 2
+    "generator": "ket0"
   },
   "output_bitstrings": {
     "generator": "one_interval",
-    "size": 2,
     "count": 10
   },
   "cases": [
     {
-      "name": "no_cp",
       "p": 0,
       "r": 0
     },
     {
-      "name": "fixed_cp",
       "p": 176,
       "r": 176
     },
     {
-      "name": "autotuned_cp",
       "p": null,
       "r": null
     }

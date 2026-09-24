@@ -1,0 +1,26 @@
+{
+  "description": "google_rqc_r4_c6_m12_count1024",
+  "target_num_batches_list": [
+    1,
+    2,
+    4
+  ],
+  "repeat": 3,
+  "simulate_omp_num_threads": 1,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 4,
+    "cols": 6,
+    "cycles": 12,
+    "seed": 23,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 1024,
+    "seed": 29
+  }
+}

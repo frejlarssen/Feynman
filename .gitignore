@@ -48,8 +48,13 @@ __pycache__/
 compile_commands.json
 build/
 build-release/
+build-cloud/
+build-cloud-make/
 
 data/outputs/
 
 # Generated data
 data/generated/
+
+# Local script secrets
+scripts/constants_local.py

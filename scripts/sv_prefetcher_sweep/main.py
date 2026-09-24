@@ -16,6 +16,7 @@ from sweeplib.plot_style import (
     single_column_figure_size,
 )
 from sweeplib.plotting import default_plot_output_path, load_xy_from_summary, render_sweep_plot
+from plot_timebitstrings_hist import auto_plot_timebitstrings_histograms
 
 from .cli import build_config
 from .project import build_metadata, build_run_points, make_run_one, resolve_paths
@@ -216,7 +217,7 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 mode="meanstd",
                 x_label=x_label,
                 y_label="total_full_s",
-                title=config.experiment_name,
+                title=config.description or config.experiment_tag,
                 output_path=output_path,
                 label_fontsize=None,
             )
@@ -224,13 +225,13 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 print(f"Auto-generated plot (partial sweep): {output_path}")
             else:
                 print(f"Auto-generated plot: {output_path}")
-        except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        except (RuntimeError, ValueError, FileNotFoundError, ImportError) as exc:
             print(f"Auto-plot skipped: {exc}", file=sys.stderr)
 
         try:
             case_plot = _plot_cases_total_full(summary_csv, config_stem=config_stem)
             print(f"Auto-generated case plot: {case_plot}")
-        except (RuntimeError, ValueError, FileNotFoundError):
+        except (RuntimeError, ValueError, FileNotFoundError, ImportError):
             pass
         try:
             structure_case_plot = _plot_cases_vs_x(
@@ -242,12 +243,18 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 yscale="log",
             )
             print(f"Auto-generated structure case plot: {structure_case_plot}")
-        except (RuntimeError, ValueError, FileNotFoundError):
+        except (RuntimeError, ValueError, FileNotFoundError, ImportError):
             pass
+        try:
+            hist_plots = auto_plot_timebitstrings_histograms(summary_csv=summary_csv)
+            for plot_path in hist_plots:
+                print(f"Auto-generated timing histogram: {plot_path}")
+        except (RuntimeError, ValueError, FileNotFoundError, ImportError) as exc:
+            print(f"Auto timing-histogram plot skipped: {exc}", file=sys.stderr)
 
     return run_sweep(
         output_root=paths.output_root,
-        experiment_name=config.experiment_name,
+        experiment_tag=config.experiment_tag,
         summary_fields=SUMMARY_FIELDS,
         values=run_points,
         repeat=config.repeat,

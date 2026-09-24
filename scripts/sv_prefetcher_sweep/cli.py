@@ -5,6 +5,9 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from sweeplib.utils import experiment_tag_from_config
+from sweeplib.utils import sanitize
+
 from .schema import (
     BOOLEAN_FIELDS,
     CASE_OVERRIDE_FIELDS,
@@ -16,6 +19,31 @@ from .schema import (
     VARY_CHOICES,
     SweepConfig,
 )
+
+
+def _format_case_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.12g}"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "auto"
+    return str(value)
+
+
+def _default_case_name(raw_case: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in CASE_OVERRIDE_FIELDS:
+        if key not in raw_case:
+            continue
+        value = raw_case[key]
+        if key == "feynman_env":
+            parts.append("env")
+            continue
+        parts.append(f"{key}_{_format_case_value(value)}")
+    if not parts:
+        return "default"
+    return sanitize("_".join(parts))
 
 
 def _to_bool(name: str, value: Any) -> bool:
@@ -55,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Sweep one parameter for sv_prefetcher and store results with metadata."
     )
     parser.add_argument("--config", default=argparse.SUPPRESS)
-    parser.add_argument("--experiment-name", default=argparse.SUPPRESS)
+    parser.add_argument("--description", default=argparse.SUPPRESS)
     parser.add_argument("--repo-root", default=argparse.SUPPRESS)
     parser.add_argument("--vary", choices=VARY_CHOICES, default=argparse.SUPPRESS)
     parser.add_argument("--values", nargs="+", default=argparse.SUPPRESS)
@@ -136,11 +164,15 @@ def _normalize_options(options: dict[str, Any]) -> None:
                 f"Allowed keys: {', '.join(sorted(allowed_case_keys))}"
             )
 
-        name = case.get("name")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError(f"Case #{idx} must have a non-empty string 'name'.")
+        name_raw = case.get("name")
+        if name_raw is None:
+            name = _default_case_name(case)
+        elif isinstance(name_raw, str) and name_raw.strip():
+            name = name_raw.strip()
+        else:
+            raise ValueError(f"Case #{idx} has invalid 'name': {name_raw!r}")
 
-        normalized_case: dict[str, Any] = {"name": name.strip()}
+        normalized_case: dict[str, Any] = {"name": name}
         for key in CASE_OVERRIDE_FIELDS:
             if key not in case:
                 continue
@@ -228,6 +260,10 @@ def _parse_values(options: dict[str, Any]) -> None:
     options["values"] = [_to_number("values", value, conv) for value in options["values"]]
 
 
+def _derive_experiment_tag(options: dict[str, Any]) -> None:
+    options["experiment_tag"] = experiment_tag_from_config(options.get("config"), fallback="sweep")
+
+
 def build_config(argv: list[str] | None = None) -> SweepConfig:
     parser = build_parser()
     try:
@@ -236,6 +272,7 @@ def build_config(argv: list[str] | None = None) -> SweepConfig:
         _validate_required(options)
         _validate_semantics(options)
         _parse_values(options)
+        _derive_experiment_tag(options)
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
 

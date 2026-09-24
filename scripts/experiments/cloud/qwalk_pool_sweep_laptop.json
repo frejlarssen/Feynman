@@ -1,0 +1,25 @@
+{
+  "description": "Laptop version of strong scaling meant for OpenCube.",
+  "target_pool_slots_list": [
+    1,
+    2,
+    3
+  ],
+  "max_hexstrings_per_batch": 8,
+  "repeat": 1,
+  "simulate_omp_num_threads": 1,
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "circuit": {
+    "generator": "qwalk",
+    "n": 100,
+    "it": 8
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 128
+  }
+}

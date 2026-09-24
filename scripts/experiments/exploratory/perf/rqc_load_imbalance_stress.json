@@ -1,0 +1,39 @@
+{
+  "description": "Google-RQC load-imbalance stress ladder",
+  "repo_root": ".",
+  "vary": "batch_size",
+  "values": [
+    32
+  ],
+  "repeat": 1,
+  "ranks": 1,
+  "feynman_env": {
+    "OMP_NUM_THREADS": "1"
+  },
+  "batch_size": 32,
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 8,
+    "cycles": 1,
+    "seed": 11,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 16384,
+    "seed": 18
+  },
+  "cases": [
+    {
+      "fraction": 0.00005,
+      "threshold": 1e-6
+    }
+  ],
+  "output_root": "data/outputs/experiments",
+  "notes": "Single-rank single-thread Google-RQC probe tuned to expose per-output runtime spread without changing circuit depth.",
+  "binary": "build-release/sv_prefetcher_subset_mpi.x"
+}

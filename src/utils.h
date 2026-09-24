@@ -6,7 +6,11 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -70,6 +74,60 @@ inline double duration_to_double(const steady_clock::time_point &start,
   return dur.count();
 }
 
+inline TypeLongInt type_long_int_max() {
+  return std::numeric_limits<TypeLongInt>::max();
+}
+
+inline constexpr int type_long_int_value_bits() {
+  return static_cast<int>(sizeof(TypeLongInt) * 8) - 1;
+}
+
+inline constexpr int max_exact_pow2_exponent() {
+  return type_long_int_value_bits() - 1;
+}
+
+inline TypeLongInt pow2_saturated(int exponent) {
+  if (exponent < 0) {
+    return 0;
+  }
+  if (exponent > max_exact_pow2_exponent()) {
+    return type_long_int_max();
+  }
+  return TypeLongInt(1) << exponent;
+}
+
+inline TypeLongInt mul_saturated(TypeLongInt a, TypeLongInt b) {
+  if (a == 0 || b == 0) {
+    return 0;
+  }
+  const TypeLongInt max_value = type_long_int_max();
+  if (a > max_value / b) {
+    return max_value;
+  }
+  return a * b;
+}
+
+inline TypeLongInt add_checked(TypeLongInt a, TypeLongInt b,
+                               const std::string &context) {
+  const TypeLongInt max_value = type_long_int_max();
+  if (a > max_value - b) {
+    throw std::runtime_error(context + " exceeds TypeLongInt capacity.");
+  }
+  return a + b;
+}
+
+inline TypeLongInt mul_checked(TypeLongInt a, TypeLongInt b,
+                               const std::string &context) {
+  if (a == 0 || b == 0) {
+    return 0;
+  }
+  const TypeLongInt max_value = type_long_int_max();
+  if (a > max_value / b) {
+    throw std::runtime_error(context + " exceeds TypeLongInt capacity.");
+  }
+  return a * b;
+}
+
 // printf-style function that writes to any std::ostream safely
 // Let's you write to a buffer and then output when desired.
 void fprintf_stream(std::ostream &os, const char *fmt, ...) {
@@ -131,16 +189,41 @@ const vector<bool> bit_array_from_int(TypeLongInt value, int n) {
   return bits;
 }
 
-const complex<float> string_to_complex(const string &s) {
-  size_t plus_pos = s.find('+', 1); // start at 1 to avoid leading +
-  size_t i_pos = s.find('i', 1);
-  if (plus_pos == string::npos || i_pos == string::npos) {
+inline std::string real_to_string(TypeAmpReal value) {
+  std::ostringstream oss;
+  oss << std::scientific
+      << std::setprecision(std::numeric_limits<TypeAmpReal>::max_digits10)
+      << value;
+  return oss.str();
+}
+
+inline std::string complex_to_string(const TypeAmp &value) {
+  return real_to_string(value.real()) + "+" + real_to_string(value.imag()) +
+         "i";
+}
+
+const TypeAmp string_to_complex(const string &s) {
+  const size_t i_pos = s.find_last_of('i');
+  if (i_pos == string::npos || i_pos != s.size() - 1) {
     cerr << "Invalid complex string: " << s << '\n';
     exit(1);
   }
-  float real_part = std::stof(s.substr(0, plus_pos));
-  float imag_part = std::stof(s.substr(plus_pos + 1, i_pos - plus_pos - 1));
-  return complex<float>(real_part, imag_part);
+
+  size_t split_pos = string::npos;
+  for (size_t pos = 1; pos < i_pos; ++pos) {
+    const char ch = s[pos];
+    if ((ch == '+' || ch == '-') && s[pos - 1] != 'e' && s[pos - 1] != 'E') {
+      split_pos = pos;
+    }
+  }
+  if (split_pos == string::npos) {
+    cerr << "Invalid complex string: " << s << '\n';
+    exit(1);
+  }
+
+  TypeAmpReal real_part = std::stod(s.substr(0, split_pos));
+  TypeAmpReal imag_part = std::stod(s.substr(split_pos, i_pos - split_pos));
+  return TypeAmp(real_part, imag_part);
 }
 
 template <typename Tdata> string int128_to_string(Tdata value) {
@@ -161,6 +244,23 @@ template <typename Tdata> string int128_to_string(Tdata value) {
     result += '-';
   reverse(result.begin(), result.end());
   return result;
+}
+
+inline string type_long_int_to_string(TypeLongInt value) {
+  return int128_to_string<TypeLongInt>(value);
+}
+
+inline TypeLongInt pow2_checked(int exponent, const std::string &context) {
+  if (exponent < 0) {
+    throw std::runtime_error(context + " must be non-negative.");
+  }
+  if (exponent > max_exact_pow2_exponent()) {
+    throw std::runtime_error(
+        context + " requires 2^" + std::to_string(exponent) +
+        ", which exceeds scalar TypeLongInt history capacity. "
+        "Use a different chunking or a wider history representation.");
+  }
+  return TypeLongInt(1) << exponent;
 }
 
 TypeLongInt string_to_int128(const string &s) {

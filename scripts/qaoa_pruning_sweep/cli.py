@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from sweeplib.utils import experiment_tag_from_config
+
 from .schema import (
     BOOLEAN_FIELDS,
     DEFAULT_OPTIONS,
@@ -63,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--config", default=argparse.SUPPRESS)
-    parser.add_argument("--experiment-name", default=argparse.SUPPRESS)
+    parser.add_argument("--description", default=argparse.SUPPRESS)
     parser.add_argument("--repo-root", default=argparse.SUPPRESS)
     parser.add_argument("--output-root", default=argparse.SUPPRESS)
     parser.add_argument("--base-config", default=argparse.SUPPRESS)
@@ -190,6 +192,10 @@ def _finalize_thresholds(options: dict[str, Any]) -> None:
         raise ValueError("No thresholds left after applying --max-cases.")
 
 
+def _derive_experiment_tag(options: dict[str, Any]) -> None:
+    options["experiment_tag"] = experiment_tag_from_config(options.get("config"), fallback="qaoa_pruning_sweep")
+
+
 def build_config(argv: list[str] | None = None) -> SweepConfig:
     parser = build_parser()
     try:
@@ -198,6 +204,7 @@ def build_config(argv: list[str] | None = None) -> SweepConfig:
         _validate_required(options)
         _validate_semantics(options)
         _finalize_thresholds(options)
+        _derive_experiment_tag(options)
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
 

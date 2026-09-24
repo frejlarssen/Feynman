@@ -1,0 +1,36 @@
+{
+  "description": "Adaptive Airflow-pool run of the OpenCUBE RQC benchmark.",
+  "max_hexstrings_per_batch": 16,
+  "repeat": 1,
+  "simulate_omp_num_threads": 1,
+  "fraction": 0.5,
+  "threshold": 0.0,
+  "autoscaler": {
+    "enabled": true,
+    "pool_name": "simulate_pool",
+    "initial_pool_slots": 1,
+    "max_pool_slots": 64,
+    "target_completion_seconds": 3600,
+    "check_interval_seconds": 300,
+    "warmup_seconds": 1200,
+    "cooldown_seconds": 300,
+    "scale_factor": 2,
+    "restore_pool_on_exit": true
+  },
+  "circuit": {
+    "generator": "google_rqc",
+    "rows": 2,
+    "cols": 6,
+    "cycles": 1,
+    "seed": 1,
+    "variant": "sycamore"
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "random_uniform",
+    "count": 1024,
+    "seed": 11
+  }
+}

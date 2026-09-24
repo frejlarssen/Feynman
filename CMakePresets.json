@@ -25,6 +25,24 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
+    },
+    {
+      "name": "cloud",
+      "displayName": "Cloud (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-cloud",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_MPI_TARGETS": "OFF"
+      }
+    },
+    {
+      "name": "cloud-make",
+      "displayName": "Cloud (Unix Makefiles)",
+      "inherits": "cloud",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-cloud-make"
     }
   ],
   "buildPresets": [
@@ -35,6 +53,14 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "cloud",
+      "configurePreset": "cloud"
+    },
+    {
+      "name": "cloud-make",
+      "configurePreset": "cloud-make"
     }
   ]
 }
