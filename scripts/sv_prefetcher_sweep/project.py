@@ -340,7 +340,12 @@ def make_run_one(
 
         params = base_params(config)
         params.update(case_overrides)
-        if config.vary != "circuit_it":
+        if config.vary == "omp_threads":
+            params["feynman_env"] = {
+                **(params.get("feynman_env") or {}),
+                "OMP_NUM_THREADS": str(varied_value),
+            }
+        elif config.vary != "circuit_it":
             params[config.vary] = varied_value
 
         run_dir = sweep_dir / _run_tag(case_name, config.vary, varied_value, run_index, rep)

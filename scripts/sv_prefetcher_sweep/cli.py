@@ -258,6 +258,8 @@ def _validate_semantics(options: dict[str, Any]) -> None:
 def _parse_values(options: dict[str, Any]) -> None:
     conv = float if options["vary"] in FLOAT_SWEEP_PARAMS else int
     options["values"] = [_to_number("values", value, conv) for value in options["values"]]
+    if options["vary"] == "omp_threads" and any(v < 1 for v in options["values"]):
+        raise ValueError("OpenMP thread counts must be >= 1")
 
 
 def _derive_experiment_tag(options: dict[str, Any]) -> None:

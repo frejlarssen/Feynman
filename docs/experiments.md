@@ -41,6 +41,20 @@ python scripts/run_pipeline.py run-all-experiments --scope exploratory --fail-fa
 
 ## Perf Sweeps
 
+For a single-process OpenMP sweep without MPI installed:
+
+```bash
+cmake -S . -B build-openmp -DBUILD_MPI_TARGETS=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build-openmp --target cloud_task -j 8
+python scripts/run_pipeline.py perf-sweep \
+  --config scripts/experiments/exploratory/perf/qwalk_openmp_scaling_local.json
+```
+
+`cloud_task.x` runs locally using the shared simulator core; no cloud services
+are needed. `"vary": "omp_threads"` sets `OMP_NUM_THREADS` per run and generates
+the same runtime/efficiency plot, using thread counts instead of MPI ranks.
+The config uses 1, 2, and 4 threads, fixed checkpoints, and `OMP_DYNAMIC=FALSE`.
+
 Rank sweeps (`"vary": "ranks"`) automatically use a strong-scaling plot for
 `total_full_s` (the default), `total_sim_s`, or `walltime_s`. This applies to
 initial runs, `plot perf-sweep`, and `regenerate_all_plots.py`.

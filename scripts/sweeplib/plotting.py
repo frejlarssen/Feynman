@@ -110,7 +110,8 @@ def default_plot_output_path(summary_path: Path, *, x_column: str, y_column: str
     return summary_path.parent / f"plot_{y_column}_vs_{x_column}.pdf"
 
 
-def strong_scaling_series(rows: list[dict[str, str]], y_column: str) -> dict:
+def strong_scaling_series(rows: list[dict[str, str]], y_column: str,
+                          varied_param: str = "ranks") -> dict:
     """Aggregate successful timings per case; efficiency counts all MPI ranks."""
     grouped = {}
     settings = {}
@@ -118,13 +119,17 @@ def strong_scaling_series(rows: list[dict[str, str]], y_column: str) -> dict:
         "batch_size", "p", "r", "fraction", "threshold", "dense",
         "circuit_file_used", "omp_threads_per_worker", "feynman_env",
     )
+    if varied_param == "omp_threads":
+        fixed_fields = tuple(k for k in fixed_fields if k != "omp_threads_per_worker") + ("ranks",)
     for row in rows:
         if int(row.get("returncode", "1")) != 0:
             continue
         case = row.get("case_name") or "default"
+        env = json.loads(row.get("feynman_env") or "{}")
+        if varied_param == "omp_threads":
+            env.pop("OMP_NUM_THREADS", None)
         signature = tuple(
-            json.dumps(json.loads(row[key]), sort_keys=True)
-            if key == "feynman_env" and row.get(key) else row.get(key, "")
+            json.dumps(env, sort_keys=True) if key == "feynman_env" else row.get(key, "")
             for key in fixed_fields
         )
         if case in settings and settings[case] != signature:
@@ -161,7 +166,7 @@ def render_perf_sweep_plot(
         rows = list(csv.DictReader(handle))
     varied = {row.get("varied_param", "") for row in rows}
     # Efficiency is meaningful for elapsed time, not arbitrary telemetry.
-    if varied != {"ranks"} or y_column not in {"total_full_s", "total_sim_s", "walltime_s"}:
+    if varied not in ({"ranks"}, {"omp_threads"}) or y_column not in {"total_full_s", "total_sim_s", "walltime_s"}:
         xs, ys = load_xy_from_summary(
             summary_path=summary_path, x_column="varied_value", y_column=y_column,
             include_failures=include_failures,
@@ -171,7 +176,8 @@ def render_perf_sweep_plot(
             title=title, output_path=output_path, label_fontsize=label_fontsize,
         )
 
-    series = strong_scaling_series(rows, y_column)
+    varied_param = next(iter(varied))
+    series = strong_scaling_series(rows, y_column, varied_param)
     configure_headless_matplotlib()
     import matplotlib.pyplot as plt
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
@@ -191,7 +197,8 @@ def render_perf_sweep_plot(
                            markersize=3, label=f"{label}efficiency")
         baselines.append(f"{label}P₀={ranks[0]}")
     ax.set_xticks(range(len(ranks_all)), [str(p) for p in ranks_all])
-    ax.set_xlabel("Number of MPI processes")
+    ax.set_xlabel("Number of OpenMP threads" if varied_param == "omp_threads"
+                  else "Number of MPI processes")
     timing_labels = {
         "total_full_s": "Execution time including I/O [s]",
         "total_sim_s": "Simulation time [s]",

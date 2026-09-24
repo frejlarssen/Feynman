@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-VARY_CHOICES = ("ranks", "batch_size", "fraction", "threshold", "p", "r", "circuit_it")
+VARY_CHOICES = ("omp_threads", "ranks", "batch_size", "fraction", "threshold", "p", "r", "circuit_it")
 FLOAT_SWEEP_PARAMS = {"fraction", "threshold"}
 CASE_OVERRIDE_FIELDS = (
     "ranks",

@@ -50,6 +50,7 @@ build/
 build-release/
 build-cloud/
 build-cloud-make/
+build-openmp/
 
 data/outputs/
 
