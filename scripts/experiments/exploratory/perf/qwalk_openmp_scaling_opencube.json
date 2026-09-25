@@ -10,7 +10,10 @@
   ],
   "repeat": 1,
   "feynman_env": {
-    "OMP_DYNAMIC": "FALSE"
+    "FEYNMAN_HISTORY_TIMINGS": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PLACES": "cores",
+    "OMP_PROC_BIND": "close"
   },
   "batch_size": 1,
   "fraction": 1.0,
@@ -36,6 +39,6 @@
   },
   "timeout_seconds": 1200,
   "output_root": "data/outputs/experiments",
-  "notes": "Single-process OpenMP sweep using the MPI-free executable and the shared simulator core. No cloud services required. Fixed workload and checkpoints; startup and I/O may dominate. For laptop execution but larger than smoke test.",
+  "notes": "OpenCube single-process OpenMP pilot with fixed workload and checkpoints. Per-history timing is enabled for load-balance analysis.",
   "ranks": 1
 }
