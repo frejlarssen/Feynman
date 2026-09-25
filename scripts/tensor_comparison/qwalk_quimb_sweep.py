@@ -138,7 +138,7 @@ def _build_provenance_metadata(
     launcher = str(validation.get("mpirun", "mpirun"))
     scope_paths = [
         "CMakeLists.txt",
-        "requirements.txt",
+        "requirements",
         "src",
         "apps",
         "scripts/run_pipeline.py",

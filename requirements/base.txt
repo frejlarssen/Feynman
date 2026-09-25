@@ -1,0 +1,2 @@
+# Minimal dependencies for generators and config-driven experiment execution.
+numpy

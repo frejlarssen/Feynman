@@ -1,0 +1,4 @@
+-r base.txt
+
+# Plot generation from experiment summaries and timing artifacts.
+matplotlib

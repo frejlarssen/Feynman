@@ -9,8 +9,13 @@ Activate the environment:
 ```bash
 python3 -m venv ~/venvs/feynman-mysystem
 source ~/venvs/feynman-mysystem/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -r requirements/validation.txt
 ```
+
+Use `requirements/base.txt` for experiment execution,
+`requirements/plotting.txt` to additionally generate plots, or
+`requirements/validation.txt` for the complete environment including Qiskit
+and Quimb.
 
 Generate input artifacts:
 

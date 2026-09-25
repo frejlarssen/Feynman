@@ -1,0 +1,5 @@
+-r plotting.txt
+
+# External quantum simulators used by validation and tensor comparisons.
+qiskit==2.5.0
+quimb==1.14.0

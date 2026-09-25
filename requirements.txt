@@ -1,4 +1,0 @@
-numpy
-matplotlib
-qiskit==2.5.0
-quimb==1.14.0

@@ -44,7 +44,7 @@ The final paper reruns used a module-based Linux environment with:
 - GCC `13.2.0`
 - Python `3.11.7`
 - Open MPI `4.1.6`
-- Python dependencies installed from `requirements.txt`
+- Python dependencies installed from `requirements/validation.txt`
 
 Equivalent setup:
 
@@ -57,7 +57,7 @@ module load openmpi/4.1.6-gcc-13.2.0-4x5z7ie
 python3 -m venv ~/feynman-venv
 source ~/feynman-venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install -r requirements/validation.txt
 ```
 
 Build:
