@@ -445,6 +445,10 @@ def _resolve_summary_csv_arg(
 
 
 def _plot_perf_sweep(args: argparse.Namespace) -> int:
+    from perf_sweep.main import (
+        _config_stem_from_metadata,
+        _plot_history_load_balance,
+    )
     from plot_timebitstrings_hist import auto_plot_timebitstrings_histograms
     from sweeplib.plotting import default_plot_output_path, render_perf_sweep_plot
 
@@ -478,6 +482,19 @@ def _plot_perf_sweep(args: argparse.Namespace) -> int:
             print(f"Saved timing histogram: {hist_path}")
     except (RuntimeError, ValueError, FileNotFoundError) as exc:
         print(f"Skipped timing histogram plot: {exc}", file=sys.stderr)
+    try:
+        config_stem = _config_stem_from_metadata(
+            summary_path.parent / "sweep_metadata.json",
+            summary_path.parent.name,
+        )
+        history_plot = _plot_history_load_balance(
+            summary_path,
+            config_stem=config_stem,
+            label_fontsize=args.label_fontsize,
+        )
+        print(f"Saved history load-balance plot: {history_plot}")
+    except (RuntimeError, ValueError, FileNotFoundError, ImportError) as exc:
+        print(f"Skipped history load-balance plot: {exc}", file=sys.stderr)
     return 0
 
 

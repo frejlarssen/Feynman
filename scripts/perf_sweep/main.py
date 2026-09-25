@@ -183,7 +183,12 @@ def _plot_cases_vs_x(
     return output_path
 
 
-def _plot_history_load_balance(summary_csv: Path, *, config_stem: str) -> Path:
+def _plot_history_load_balance(
+    summary_csv: Path,
+    *,
+    config_stem: str,
+    label_fontsize: float | None = None,
+) -> Path:
     points: dict[float, list[tuple[float, float]]] = defaultdict(list)
     with summary_csv.open("r", newline="", encoding="utf-8") as handle:
         for run in csv.DictReader(handle):
@@ -236,7 +241,7 @@ def _plot_history_load_balance(summary_csv: Path, *, config_stem: str) -> Path:
     configure_headless_matplotlib()
     import matplotlib.pyplot as plt
 
-    apply_plot_fontsizes(plt=plt, label_fontsize=None)
+    apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
     xs = sorted(points)
     balance_means = [statistics.mean(v[0] for v in points[x]) for x in xs]
     imbalance_means = [statistics.mean(v[1] for v in points[x]) for x in xs]
