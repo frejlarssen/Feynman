@@ -10,7 +10,9 @@
   ],
   "repeat": 1,
   "feynman_env": {
-    "OMP_DYNAMIC": "FALSE"
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PLACES": "cores",
+    "OMP_PROC_BIND": "close"
   },
   "batch_size": 32,
   "fraction": 1.0,

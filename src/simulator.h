@@ -370,15 +370,31 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
 
   vector<TypeAmp> amplitudes(num_par_histories);
   vector<SimulateAbsStats> thread_simulate_abs_stats(static_cast<size_t>(t_omp));
+  vector<double> thread_iteration_seconds(static_cast<size_t>(t_omp), 0.0);
 
   std::srand(history_sampling_seed());
 
+  const auto start_sampling = get_time();
+  // TODO: If f > fLIMIT we do not need this vector.
   par_histories =
       sample_histories_without_replacement(num_histories_c2, num_par_histories);
 
+  const double seconds_sampling =
+      duration<double>(get_time() - start_sampling).count();
+  printf("Total clocktime sampling: %.9f seconds\n", seconds_sampling);
+
   // MPI, OpenMP, or threads parallelizing over histories in chunk 2.
   const TypeAmpReal threshold2 = threshold * threshold;
+  const auto start_parallel_for = get_time();
   parallel_for(0, num_par_histories, [&](TypeLongInt history2_ind, int t_idx) {
+    struct IterationTimer {
+      double &seconds;
+      decltype(get_time()) start = get_time();
+      ~IterationTimer() {
+        seconds += duration<double>(get_time() - start).count();
+      }
+    } iteration_timer{thread_iteration_seconds.at(static_cast<size_t>(t_idx))};
+
     TypeAmp local_sum(0, 0);
 
     const int thread_ind = t_idx;
@@ -389,8 +405,6 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     };
     const TypeLongInt history2 =
         (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
-
-    auto start_history2 = std::chrono::steady_clock::now();
 
     // TODO: Make a real run setting the values of all internal wires.
     // We only need to iterate a vector of all deterministic, wire-breaking
@@ -489,6 +503,17 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     amplitudes.at(history2_ind) = local_sum;
     reset_thread_chunks();
   });
+
+  const double seconds_parallel_for =
+      duration<double>(get_time() - start_parallel_for).count();
+  double seconds_parallel_for_iterations = 0.0;
+  for (double seconds : thread_iteration_seconds)
+    seconds_parallel_for_iterations += seconds;
+
+  printf("Total clocktime seconds_parallel_for: %.9f seconds\n",
+         seconds_parallel_for);
+  printf("Total clocktime sum of parallel_for iterations: %.9f seconds\n",
+         seconds_parallel_for_iterations);
 
   auto total_amplitude = parallel_reduce(
       0, num_par_histories, [&](size_t i) { return amplitudes[i]; });

@@ -5,10 +5,63 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from sweeplib.provenance import _hardware_metadata, _system_command_metadata
+from sweeplib.provenance import (
+    _compile_command_metadata,
+    _hardware_metadata,
+    _system_command_metadata,
+    _toolchain_metadata,
+)
 
 
 class SystemMetadataTests(unittest.TestCase):
+    def test_compile_command_reports_effective_optimization(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build = root / 'build'
+            source = root / 'apps' / 'feynman.cpp'
+            build.mkdir()
+            source.parent.mkdir()
+            source.write_text('// test\n', encoding='utf-8')
+            cache = build / 'CMakeCache.txt'
+            cache.write_text('', encoding='utf-8')
+            database = [{
+                'directory': str(build),
+                'arguments': ['/usr/bin/g++', '-O0', '-O3', '-DNDEBUG', '-c', str(source)],
+                'file': str(source),
+            }]
+            (build / 'compile_commands.json').write_text(
+                json.dumps(database), encoding='utf-8'
+            )
+
+            result = _compile_command_metadata(build / 'feynman.x', cache, root)
+            self.assertEqual(result['status'], 'ok')
+            self.assertEqual(result['optimization_flags'], ['-O0', '-O3'])
+            self.assertEqual(result['effective_optimization'], '-O3')
+            self.assertIn('-DNDEBUG', result['arguments'])
+
+    @patch('sweeplib.provenance._system_command_metadata')
+    def test_toolchain_metadata_reports_compiler_and_openmp_spec_date(self, probe):
+        probe.return_value = dict(stdout='version output\n', stderr='', returncode=0, status='ok')
+        cache = {
+            'CMAKE_CXX_COMPILER': '/usr/bin/g++',
+            'CMAKE_CXX_COMPILER_ID': 'GNU',
+            'CMAKE_CXX_COMPILER_VERSION': '14.2.0',
+            'OpenMP_CXX_SPEC_DATE': '202011',
+            'OpenMP_CXX_FLAGS': '-fopenmp',
+            'OpenMP_CXX_LIB_NAMES': 'gomp;pthread',
+            'OpenMP_gomp_LIBRARY': '/usr/lib/libgomp.so',
+        }
+        result = _toolchain_metadata(cache, Path.cwd())
+        self.assertEqual(result['compiler']['path'], '/usr/bin/g++')
+        self.assertEqual(result['compiler']['cmake_reported_version'], '14.2.0')
+        self.assertEqual(result['openmp']['spec_date'], '202011')
+        self.assertNotIn('version', result['openmp'])
+        self.assertEqual(result['openmp']['libraries']['OpenMP_gomp_LIBRARY'], '/usr/lib/libgomp.so')
+        probe.assert_any_call(['/usr/bin/g++', '--version'], Path.cwd())
+
     @patch('sweeplib.provenance.subprocess.run')
     def test_capture_success_and_nonzero(self, run):
         for code, status in [(0, 'ok'), (1, 'failed')]:

@@ -41,6 +41,15 @@ METRIC_PATTERNS = {
     "avg_simulate_call_s": re.compile(
         r"Average clocktime per simulate call:\s+([0-9eE+.\-]+) seconds"
     ),
+    "total_sampling_s": re.compile(
+        r"Total clocktime sampling:\s+([0-9eE+.\-]+) seconds"
+    ),
+    "total_parallel_for_s": re.compile(
+        r"Total clocktime seconds_parallel_for:\s+([0-9eE+.\-]+) seconds"
+    ),
+    "total_parallel_for_iterations_s": re.compile(
+        r"Total clocktime sum of parallel_for iterations:\s+([0-9eE+.\-]+) seconds"
+    ),
     "total_sim_s": re.compile(
         r"Total clocktime sim for feynman:\s+([0-9eE+.\-]+) seconds"
     ),

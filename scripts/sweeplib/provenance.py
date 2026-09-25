@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import json
 import os
 import platform
+import re
 import shlex
 import subprocess
 import sys
@@ -24,8 +26,10 @@ CMAKE_KEYS_OF_INTEREST = [
     "CMAKE_CXX_FLAGS_DEBUG",
     "MPI_CXX_COMPILER",
     "OpenMP_CXX_FLAGS",
+    "OpenMP_CXX_INCLUDE_DIR",
+    "OpenMP_CXX_LIB_NAMES",
+    "OpenMP_CXX_SPEC_DATE",
 ]
-
 
 def _run_git(repo_root: Path, *args: str) -> str:
     proc = run_capture(["git", "-C", str(repo_root), *args], cwd=repo_root)
@@ -151,6 +155,115 @@ def _parse_cmake_cache(cache_path: Path) -> dict[str, str]:
     return out
 
 
+def _toolchain_metadata(cache: dict[str, str], repo_root: Path) -> dict[str, Any]:
+    compiler = cache.get("CMAKE_CXX_COMPILER", "")
+    compiler_probes: dict[str, Any] = {}
+    if compiler:
+        compiler_probes = {
+            "version": _system_command_metadata([compiler, "--version"], repo_root),
+            "full_version": _system_command_metadata(
+                [compiler, "-dumpfullversion", "-dumpversion"], repo_root
+            ),
+            "target": _system_command_metadata([compiler, "-dumpmachine"], repo_root),
+        }
+
+    spec_date = cache.get("OpenMP_CXX_SPEC_DATE", "")
+    openmp_libraries = {
+        key: value
+        for key, value in cache.items()
+        if key.startswith("OpenMP_") and key.endswith("_LIBRARY")
+    }
+    return {
+        "compiler": {
+            "path": compiler,
+            "id": cache.get("CMAKE_CXX_COMPILER_ID", ""),
+            "cmake_reported_version": cache.get("CMAKE_CXX_COMPILER_VERSION", ""),
+            "probes": compiler_probes,
+        },
+        "cmake": _system_command_metadata(["cmake", "--version"], repo_root),
+        "openmp": {
+            "spec_date": spec_date,
+            "compile_flags": cache.get("OpenMP_CXX_FLAGS", ""),
+            "include_dir": cache.get("OpenMP_CXX_INCLUDE_DIR", ""),
+            "library_names": cache.get("OpenMP_CXX_LIB_NAMES", ""),
+            "libraries": openmp_libraries,
+        },
+    }
+
+
+def _compile_command_metadata(
+    binary_path: Path, cache_path: Path, repo_root: Path
+) -> dict[str, Any]:
+    database_path = cache_path.parent / "compile_commands.json"
+    if not database_path.exists():
+        return {
+            "status": "unavailable",
+            "path": _path_for_metadata(database_path, repo_root),
+        }
+
+    try:
+        entries = json.loads(database_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as err:
+        return {
+            "status": "invalid",
+            "path": _path_for_metadata(database_path, repo_root),
+            "error": str(err),
+        }
+
+    source_path = (repo_root / "apps" / f"{binary_path.stem}.cpp").resolve()
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        directory = Path(str(entry.get("directory", cache_path.parent)))
+        entry_file = Path(str(entry.get("file", "")))
+        if not entry_file.is_absolute():
+            entry_file = directory / entry_file
+        if entry_file.resolve() != source_path:
+            continue
+
+        raw_arguments = entry.get("arguments")
+        if isinstance(raw_arguments, list):
+            arguments = [str(token) for token in raw_arguments]
+        else:
+            command = entry.get("command", "")
+            arguments = shlex.split(command) if isinstance(command, str) else []
+        optimization_flags = [
+            token
+            for token in arguments
+            if re.fullmatch(r"-O(?:0|1|2|3|g|s|z|fast)", token)
+            or re.fullmatch(r"/O(?:1|2|d|t|x)", token, flags=re.IGNORECASE)
+        ]
+        return {
+            "status": "ok",
+            "database_path": _path_for_metadata(database_path, repo_root),
+            "database_sha256": _sha256_file(database_path),
+            "source": _path_for_metadata(source_path, repo_root),
+            "directory": str(directory),
+            "arguments": arguments,
+            "command": shlex.join(arguments),
+            "optimization_flags": optimization_flags,
+            "effective_optimization": optimization_flags[-1]
+            if optimization_flags
+            else "",
+        }
+
+    return {
+        "status": "entry_not_found",
+        "database_path": _path_for_metadata(database_path, repo_root),
+        "source": _path_for_metadata(source_path, repo_root),
+    }
+
+
+def _linked_library_metadata(binary_path: Path, repo_root: Path) -> dict[str, Any]:
+    if platform.system() == "Darwin":
+        command = ["otool", "-L", str(binary_path)]
+    elif platform.system() == "Linux":
+        command = ["ldd", str(binary_path)]
+    else:
+        return {"status": "unsupported", "command": []}
+    return _system_command_metadata(command, repo_root)
+
+
 def _build_metadata(binary_path: Path, repo_root: Path) -> dict[str, Any]:
     cache_path = _find_cmake_cache(binary_path, repo_root)
     if cache_path is None:
@@ -166,6 +279,11 @@ def _build_metadata(binary_path: Path, repo_root: Path) -> dict[str, Any]:
         "cmake_cache_sha256": _sha256_file(cache_path),
         "cmake_cache_size_bytes": cache_path.stat().st_size,
         "cmake": {k: cache.get(k, "") for k in CMAKE_KEYS_OF_INTEREST},
+        "toolchain": _toolchain_metadata(cache, repo_root),
+        "compile_command": _compile_command_metadata(
+            binary_path, cache_path, repo_root
+        ),
+        "linked_libraries": _linked_library_metadata(binary_path, repo_root),
         "binary": describe_file(binary_path, repo_root),
     }
 
@@ -343,8 +461,11 @@ def build_sweep_metadata(
         "config": config_snapshot,
         "environment": {
             "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS", ""),
+            "OMP_DYNAMIC": os.environ.get("OMP_DYNAMIC", ""),
             "OMP_PROC_BIND": os.environ.get("OMP_PROC_BIND", ""),
             "OMP_PLACES": os.environ.get("OMP_PLACES", ""),
+            "OMP_DISPLAY_ENV": os.environ.get("OMP_DISPLAY_ENV", ""),
+            "OMP_DISPLAY_AFFINITY": os.environ.get("OMP_DISPLAY_AFFINITY", ""),
         },
         "dry_run": bool(dry_run),
     }

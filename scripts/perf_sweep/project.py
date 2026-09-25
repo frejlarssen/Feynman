@@ -164,13 +164,21 @@ def parse_metrics(stdout: str) -> dict[str, Any]:
         "active_workers",
         "omp_threads_per_worker",
     }
+    summed_float_keys = {
+        "total_sampling_s",
+        "total_parallel_for_s",
+        "total_parallel_for_iterations_s",
+    }
     for key, pattern in METRIC_PATTERNS.items():
-        match = pattern.search(stdout)
-        if not match:
+        matches = pattern.findall(stdout)
+        if not matches:
             parsed[key] = None
             continue
-        token = match.group(1)
-        parsed[key] = int(token) if key in int_keys else float(token)
+        if key in summed_float_keys:
+            parsed[key] = sum(float(token) for token in matches)
+        else:
+            token = matches[0]
+            parsed[key] = int(token) if key in int_keys else float(token)
     return parsed
 
 
@@ -396,6 +404,9 @@ def make_run_one(
             "num_simulate_calls": metrics["num_simulate_calls"],
             "total_simulate_calls_s": metrics["total_simulate_calls_s"],
             "avg_simulate_call_s": metrics["avg_simulate_call_s"],
+            "total_sampling_s": metrics["total_sampling_s"],
+            "total_parallel_for_s": metrics["total_parallel_for_s"],
+            "total_parallel_for_iterations_s": metrics["total_parallel_for_iterations_s"],
             "total_sim_s": metrics["total_sim_s"],
             "total_io_s": metrics["total_io_s"],
             "total_full_s": metrics["total_full_s"],
