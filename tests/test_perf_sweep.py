@@ -10,6 +10,7 @@ if str(ROOT / "scripts") not in sys.path:
 from perf_sweep.project import (
     _find_timing_file,
     build_command,
+    parse_metrics,
 )
 from perf_sweep.schema import ProjectPaths
 
@@ -47,6 +48,20 @@ def _params(**overrides):
 
 
 class PerfSweepCommandTests(unittest.TestCase):
+    def test_phase_timings_are_summed_across_simulate_calls(self):
+        stdout = """\
+Total clocktime sampling: 0.100000000 seconds
+Total clocktime seconds_parallel_for: 1.250000000 seconds
+Total clocktime sum of parallel_for iterations: 2.500000000 seconds
+Total clocktime sampling: 0.200000000 seconds
+Total clocktime seconds_parallel_for: 1.750000000 seconds
+Total clocktime sum of parallel_for iterations: 3.500000000 seconds
+"""
+        metrics = parse_metrics(stdout)
+        self.assertAlmostEqual(metrics["total_sampling_s"], 0.3)
+        self.assertAlmostEqual(metrics["total_parallel_for_s"], 3.0)
+        self.assertAlmostEqual(metrics["total_parallel_for_iterations_s"], 6.0)
+
     def test_feynman_runs_directly_without_batch_size_flag(self):
         paths = _paths("feynman.x")
         command = build_command(
