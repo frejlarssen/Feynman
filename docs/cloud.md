@@ -56,10 +56,10 @@ sh scripts/build_and_import_cloud_images.sh feynman-cluster
 
 ### Airflow
 
-We use a seperate venv environment for running airflow:
+We use a separate virtual environment for running Airflow:
 
 ```bash
-source ~/venvs/airflow/bin/activate
+source ~/.venvs/airflow/bin/activate
 ```
 
 When airflow is installed:
@@ -98,7 +98,7 @@ image-GC high threshold.
 If the machine was powered off and you want to resume using the cloud workflow:
 
 ```bash
-source ~/venvs/airflow/bin/activate
+source ~/.venvs/airflow/bin/activate
 docker ps
 k3d cluster list
 k3d cluster start feynman-cluster

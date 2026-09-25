@@ -7,8 +7,8 @@ A sparse-output Feynman path simulator.
 Activate the environment:
 
 ```bash
-python3 -m venv ~/venvs/feynman-mysystem
-source ~/venvs/feynman-mysystem/bin/activate
+python3 -m venv ~/.venvs/feynman-local
+source ~/.venvs/feynman-local/bin/activate
 python -m pip install -r requirements/validation.txt
 ```
 

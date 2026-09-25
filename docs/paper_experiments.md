@@ -54,8 +54,8 @@ module load gcc/13.2.0-gcc-12.2.0-a63szea
 module load python/3.11.7-gcc-13.2.0-3zbbpkg
 module load openmpi/4.1.6-gcc-13.2.0-4x5z7ie
 
-python3 -m venv ~/feynman-venv
-source ~/feynman-venv/bin/activate
+python3 -m venv ~/.venvs/feynman-paper
+source ~/.venvs/feynman-paper/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements/validation.txt
 ```
