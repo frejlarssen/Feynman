@@ -10,6 +10,7 @@
   ],
   "repeat": 1,
   "feynman_env": {
+    "FEYNMAN_HISTORY_TIMINGS": "1",
     "OMP_DYNAMIC": "FALSE",
     "OMP_PLACES": "cores",
     "OMP_PROC_BIND": "close"

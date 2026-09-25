@@ -5,6 +5,7 @@ import json
 import shlex
 import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 from sweeplib.provenance import get_git_info
@@ -182,6 +183,79 @@ def _plot_cases_vs_x(
     return output_path
 
 
+def _plot_history_load_balance(summary_csv: Path, *, config_stem: str) -> Path:
+    points: dict[float, list[tuple[float, float]]] = defaultdict(list)
+    with summary_csv.open("r", newline="", encoding="utf-8") as handle:
+        for run in csv.DictReader(handle):
+            if int(run.get("returncode", "1")) != 0:
+                continue
+            output_file = Path(run["output_file"])
+            if not output_file.is_absolute():
+                output_file = Path.cwd() / output_file
+            timing_file = output_file.with_name(
+                f"{output_file.stem}.historyTimings.csv"
+            )
+            if not timing_file.exists():
+                continue
+
+            thread_work: dict[int, float] = defaultdict(float)
+            call_rows: dict[tuple[str, str, str], list[tuple[float, float]]] = (
+                defaultdict(list)
+            )
+            with timing_file.open("r", newline="", encoding="utf-8") as timings:
+                for row in csv.DictReader(timings):
+                    elapsed = float(row["elapsed_seconds"])
+                    thread_work[int(row["thread"])] += elapsed
+                    call = (
+                        row["rank"],
+                        row["output_bitstring"],
+                        row["input_ordinal"],
+                    )
+                    call_rows[call].append(
+                        (float(row["start_seconds"]), float(row["end_seconds"]))
+                    )
+            threads = int(run["omp_threads_per_worker"])
+            wall = sum(
+                max(end for _, end in rows) - min(start for start, _ in rows)
+                for rows in call_rows.values()
+                if rows
+            )
+            total_work = sum(thread_work.values())
+            if threads <= 0 or wall <= 0.0 or not thread_work:
+                continue
+            load_balance = total_work / (threads * wall)
+            mean_work = total_work / threads
+            max_over_mean = max(thread_work.get(t, 0.0) for t in range(threads)) / mean_work
+            points[float(run["varied_value"])].append(
+                (load_balance, max_over_mean)
+            )
+
+    if not points:
+        raise ValueError("No history timing artifacts available.")
+
+    configure_headless_matplotlib()
+    import matplotlib.pyplot as plt
+
+    apply_plot_fontsizes(plt=plt, label_fontsize=None)
+    xs = sorted(points)
+    balance_means = [statistics.mean(v[0] for v in points[x]) for x in xs]
+    imbalance_means = [statistics.mean(v[1] for v in points[x]) for x in xs]
+    fig, ax = plt.subplots(figsize=single_column_figure_size())
+    ax.plot(xs, balance_means, "o-", label="load balance")
+    ax.plot(xs, imbalance_means, "s-", label="max / mean thread work")
+    ax.axhline(1.0, color="black", linewidth=0.8, alpha=0.5)
+    ax.set_xlabel("Number of OpenMP threads")
+    ax.set_ylabel("Ratio")
+    ax.set_title("OpenMP History Load Balance")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    output_path = summary_csv.parent / f"{config_stem}_history_load_balance.pdf"
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+    return output_path
+
+
 def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int:
     config = build_config(argv)
     repo_root_raw = Path(config.repo_root).expanduser()
@@ -240,6 +314,13 @@ def main(entry_script: Path | None = None, argv: list[str] | None = None) -> int
                 print(f"Auto-generated timing histogram: {plot_path}")
         except (RuntimeError, ValueError, FileNotFoundError, ImportError) as exc:
             print(f"Auto timing-histogram plot skipped: {exc}", file=sys.stderr)
+        try:
+            history_plot = _plot_history_load_balance(
+                summary_csv, config_stem=config_stem
+            )
+            print(f"Auto-generated history load-balance plot: {history_plot}")
+        except (RuntimeError, ValueError, FileNotFoundError, ImportError) as exc:
+            print(f"Auto history load-balance plot skipped: {exc}", file=sys.stderr)
 
     return run_sweep(
         output_root=paths.output_root,

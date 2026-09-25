@@ -280,6 +280,15 @@ inline void append_stats(std::string &buffer, const std::string &bits,
   }
 }
 
+inline bool history_timings_enabled() {
+  const char *value = std::getenv("FEYNMAN_HISTORY_TIMINGS");
+  if (value == nullptr)
+    return false;
+  const std::string setting(value);
+  return setting == "1" || setting == "true" || setting == "TRUE" ||
+         setting == "yes" || setting == "YES";
+}
+
 inline void run(const Options &opts, const Execution &execution) {
   const memory_profile::Profile memory;
   const auto start_full = get_time();
@@ -338,6 +347,12 @@ inline void run(const Options &opts, const Execution &execution) {
   std::string amplitudes;
   std::string timings =
       execution.rank == 0 ? "bitstring_hex,elapsed_seconds,status\n" : "";
+  const bool record_history_timings = history_timings_enabled();
+  std::string history_timings =
+      execution.rank == 0 && record_history_timings
+          ? "rank,output_bitstring,input_ordinal,iteration_index,history,thread,"
+            "start_seconds,end_seconds,elapsed_seconds,status\n"
+          : "";
   std::array<std::string, 3> stats;
   for (auto &buffer : stats)
     if (execution.rank == 0)
@@ -357,12 +372,32 @@ inline void run(const Options &opts, const Execution &execution) {
       const auto start_output = get_time();
       TypeAmp amplitude(0, 0);
       SimulateAbsStats abs_stats;
-      for (const auto &input : inputs) {
+      const auto bits = bitvector_to_hexstring(outputs[i]);
+      for (std::size_t input_ordinal = 0; input_ordinal < inputs.size();
+           ++input_ordinal) {
+        const auto &input = inputs[input_ordinal];
+        std::vector<HistoryTimingRecord> call_history_timings;
         const auto start_call = get_time();
         amplitude += simulate(outputs[i], input.index, input.amp, opts.fraction,
-                              opts.threshold, opts.verbosity, &abs_stats);
+                              opts.threshold, opts.verbosity, &abs_stats,
+                              record_history_timings ? &call_history_timings
+                                                     : nullptr);
         call_seconds += duration<double>(get_time() - start_call).count();
         ++calls;
+        for (std::size_t iteration = 0;
+             iteration < call_history_timings.size(); ++iteration) {
+          const auto &record = call_history_timings[iteration];
+          history_timings +=
+              std::to_string(execution.rank) + "," + bits + "," +
+              std::to_string(input_ordinal) + "," +
+              std::to_string(iteration) + "," +
+              type_long_int_to_string(record.history) + "," +
+              std::to_string(record.thread) + "," +
+              real_to_string(record.start_seconds) + "," +
+              real_to_string(record.end_seconds) + "," +
+              real_to_string(record.elapsed_seconds) + "," +
+              history_timing_status_name(record.status) + "\n";
+        }
         Circuit::reset_values_all();
       }
       if (amplitude_mode)
@@ -370,7 +405,6 @@ inline void run(const Options &opts, const Execution &execution) {
       const double seconds =
           duration<double>(get_time() - start_output).count();
       const bool supported = std::abs(amplitude) > opts.threshold;
-      const auto bits = bitvector_to_hexstring(outputs[i]);
       timings += bits + "," + real_to_string(seconds) + "," +
                  (supported ? "supported" : "rejected") + "\n";
       append_stats(stats[0], bits, abs_stats.contribution0);
@@ -411,6 +445,9 @@ inline void run(const Options &opts, const Execution &execution) {
   if (!opts.output_file.empty()) {
     execution.write(opts.output_file, amplitudes);
     execution.write(artifact("timeBitstrings.csv").string(), timings);
+    if (record_history_timings)
+      execution.write(artifact("historyTimings.csv").string(),
+                      history_timings);
     for (int i = 0; i < 3; ++i)
       execution.write(
           artifact("contribution" + std::to_string(i) + "AbsMinMax.csv")

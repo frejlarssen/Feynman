@@ -327,10 +327,38 @@ struct SimulateAbsStats {
   }
 };
 
+enum class HistoryTimingStatus {
+  completed,
+  incompatible_chunk2,
+  pruned_chunk2,
+};
+
+struct HistoryTimingRecord {
+  TypeLongInt history = 0;
+  int thread = 0;
+  double start_seconds = 0.0;
+  double end_seconds = 0.0;
+  double elapsed_seconds = 0.0;
+  HistoryTimingStatus status = HistoryTimingStatus::completed;
+};
+
+inline const char *history_timing_status_name(HistoryTimingStatus status) {
+  switch (status) {
+  case HistoryTimingStatus::completed:
+    return "completed";
+  case HistoryTimingStatus::incompatible_chunk2:
+    return "incompatible_chunk2";
+  case HistoryTimingStatus::pruned_chunk2:
+    return "pruned_chunk2";
+  }
+  return "unknown";
+}
+
 TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
                  TypeAmp input_amp, TypeAmpReal fraction,
                  TypeAmpReal threshold = 0.0, int verbosity = 1,
-                 SimulateAbsStats *simulate_abs_stats = nullptr) {
+                 SimulateAbsStats *simulate_abs_stats = nullptr,
+                 vector<HistoryTimingRecord> *history_timings = nullptr) {
   Circuit::validate_chunk_history_capacity("Simulation");
 
   // Debugging that should be printed only by one rank.
@@ -371,6 +399,8 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
   vector<TypeAmp> amplitudes(num_par_histories);
   vector<SimulateAbsStats> thread_simulate_abs_stats(static_cast<size_t>(t_omp));
   vector<double> thread_iteration_seconds(static_cast<size_t>(t_omp), 0.0);
+  if (history_timings != nullptr)
+    history_timings->resize(num_par_histories);
 
   std::srand(history_sampling_seed());
 
@@ -387,13 +417,35 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
   const TypeAmpReal threshold2 = threshold * threshold;
   const auto start_parallel_for = get_time();
   parallel_for(0, num_par_histories, [&](TypeLongInt history2_ind, int t_idx) {
+    const TypeLongInt history2 =
+        (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
+    HistoryTimingRecord *record =
+        history_timings == nullptr
+            ? nullptr
+            : &history_timings->at(static_cast<size_t>(history2_ind));
+    if (record != nullptr) {
+      record->history = history2;
+      record->thread = t_idx / PADDING;
+      record->start_seconds =
+          duration<double>(get_time() - start_parallel_for).count();
+    }
     struct IterationTimer {
       double &seconds;
+      HistoryTimingRecord *record;
+      decltype(get_time()) parallel_start;
       decltype(get_time()) start = get_time();
       ~IterationTimer() {
-        seconds += duration<double>(get_time() - start).count();
+        const auto end = get_time();
+        const double elapsed = duration<double>(end - start).count();
+        seconds += elapsed;
+        if (record != nullptr) {
+          record->end_seconds =
+              duration<double>(end - parallel_start).count();
+          record->elapsed_seconds = elapsed;
+        }
       }
-    } iteration_timer{thread_iteration_seconds.at(static_cast<size_t>(t_idx))};
+    } iteration_timer{thread_iteration_seconds.at(static_cast<size_t>(t_idx)),
+                      record, start_parallel_for};
 
     TypeAmp local_sum(0, 0);
 
@@ -403,9 +455,6 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
         Circuit::chunks.at(i).reset_values(thread_ind);
       }
     };
-    const TypeLongInt history2 =
-        (fraction > fLIMIT) ? history2_ind : par_histories.at(history2_ind);
-
     // TODO: Make a real run setting the values of all internal wires.
     // We only need to iterate a vector of all deterministic, wire-breaking
     // gates!
@@ -414,6 +463,8 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
       // Input, output and artificial not compatible with deterministic gates.
       // The history is rejected.
       amplitudes[history2_ind] = TypeAmp{0.0, 0.0};
+      if (record != nullptr)
+        record->status = HistoryTimingStatus::incompatible_chunk2;
       reset_thread_chunks();
       return;
     }
@@ -426,6 +477,8 @@ TypeAmp simulate(vector<bool> output_bits, vector<bool> input_bits,
     // Exact zero is absorbing across later chunks too.
     if (std::norm(contribution2) == 0.0 || std::norm(contribution2) < threshold2) {
       amplitudes[history2_ind] = TypeAmp{0.0, 0.0};
+      if (record != nullptr)
+        record->status = HistoryTimingStatus::pruned_chunk2;
       reset_thread_chunks();
       return;
     }
