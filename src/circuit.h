@@ -79,17 +79,18 @@ struct InternalWire {
 
   bool set_safe(TypeLongInt thread, bool new_val) {
     if (status == NATURAL) {
-      if (val_set.at(0) && (val.at(0) != new_val)) {
-        return false;
-      }
+      thread = 0;
+    }
+
+    if (!val_set.at(thread)) {
+      val.at(thread) = new_val;
+      val_set.at(thread) = true;
       return true;
     }
-    if (val_set.at(thread) && (val.at(thread) != new_val)) {
-      return false;
+    if (val.at(thread) == new_val) {
+      return true;
     }
-    val.at(thread) = new_val;
-    val_set.at(thread) = true;
-    return true;
+    return false;
   }
 
   bool set_safe_all(TypeLongInt num_threads, bool new_val) {
