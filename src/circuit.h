@@ -87,10 +87,7 @@ struct InternalWire {
       val_set.at(thread) = true;
       return true;
     }
-    if (val.at(thread) == new_val) {
-      return true;
-    }
-    return false;
+    return val.at(thread) == new_val;
   }
 
   bool set_safe_all(TypeLongInt num_threads, bool new_val) {
