@@ -78,11 +78,12 @@ struct InternalWire {
         artificial(artif), val_set(nr_hists, false), val(nr_hists, false) {}
 
   bool set_safe(TypeLongInt thread, bool new_val) {
-    /*
     if (status == NATURAL) {
-      thread = 0;
+      if (val_set.at(0) && (val.at(0) != new_val)) {
+        return false;
+      }
+      return true;
     }
-    */
     if (val_set.at(thread) && (val.at(thread) != new_val)) {
       return false;
     }
