@@ -5,8 +5,8 @@
   "vary": "omp_threads",
   "values": [
     32,
-    64,
-    80
+    48,
+    64
   ],
   "repeat": 1,
   "feynman_env": {
@@ -28,7 +28,7 @@
   "circuit": {
     "generator": "qwalk",
     "n": 6,
-    "it": 32
+    "it": 31
   },
   "input_statevector": {
     "generator": "ket0"
