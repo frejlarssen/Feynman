@@ -9,6 +9,10 @@
     64
   ],
   "repeat": 1,
+  "numactl": {
+    "physcpubind": "0-79",
+    "interleave": "0-1"
+  },
   "feynman_env": {
     "FEYNMAN_HISTORY_TIMINGS": "1",
     "OMP_DYNAMIC": "FALSE",
