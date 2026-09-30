@@ -69,6 +69,15 @@ are needed. `"vary": "omp_threads"` sets `OMP_NUM_THREADS` per run and generates
 the same runtime/efficiency plot, using thread counts instead of MPI ranks.
 The config uses 1, 2, and 4 threads, fixed checkpoints, and `OMP_DYNAMIC=FALSE`.
 
+On Linux, a perf-sweep config can bind CPUs and interleave NUMA memory:
+
+```json
+"numactl": {
+  "physcpubind": "0-79",
+  "interleave": "0-3"
+}
+```
+
 Rank sweeps (`"vary": "ranks"`) automatically use a strong-scaling plot for
 `total_full_s` (the default), `total_sim_s`, or `walltime_s`. This applies to
 initial runs, `plot perf-sweep`, and `regenerate_all_plots.py`.

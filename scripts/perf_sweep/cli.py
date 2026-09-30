@@ -147,6 +147,28 @@ def _normalize_options(options: dict[str, Any]) -> None:
     if isinstance(values, str) or (values is not None and not isinstance(values, list)):
         raise ValueError(f"'values' must be a list, got: {values!r}")
 
+    numactl = options.get("numactl")
+    if numactl is not None:
+        if not isinstance(numactl, dict):
+            raise ValueError(f"'numactl' must be an object when provided, got: {numactl!r}")
+        allowed_numactl_keys = {"physcpubind", "interleave"}
+        unknown_numactl_keys = sorted(set(numactl) - allowed_numactl_keys)
+        if unknown_numactl_keys:
+            raise ValueError(
+                "Unknown numactl keys: "
+                + ", ".join(unknown_numactl_keys)
+                + f". Allowed keys: {', '.join(sorted(allowed_numactl_keys))}"
+            )
+        normalized_numactl: dict[str, str] = {}
+        for key, value in numactl.items():
+            token = str(value).strip()
+            if not token:
+                raise ValueError(f"numactl.{key} must not be empty")
+            normalized_numactl[key] = token
+        if not normalized_numactl:
+            raise ValueError("'numactl' must contain at least one binding policy")
+        options["numactl"] = normalized_numactl
+
     cases_raw = options.get("cases")
     if cases_raw is None:
         return

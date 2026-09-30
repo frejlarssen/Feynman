@@ -17,6 +17,7 @@ from perf_sweep.schema import ProjectPaths
 
 class _Config:
     mpirun = "mpirun"
+    numactl = None
 
 
 def _paths(binary_name: str) -> ProjectPaths:
@@ -86,6 +87,47 @@ Total clocktime sum of parallel_for iterations: 3.500000000 seconds
             build_command(
                 _Config(), paths, paths.circuit, _params(ranks=2), Path("/tmp/output.hsv")
             )
+
+    def test_numactl_wraps_direct_binary(self):
+        class _NumactlConfig:
+            mpirun = "mpirun"
+            numactl = {"physcpubind": "0-79", "interleave": "0-3"}
+
+        paths = _paths("feynman.x")
+        command = build_command(
+            _NumactlConfig(), paths, paths.circuit, _params(), Path("/tmp/output.hsv")
+        )
+        self.assertEqual(
+            command[:4],
+            [
+                "numactl",
+                "--physcpubind=0-79",
+                "--interleave=0-3",
+                str(paths.binary),
+            ],
+        )
+
+    def test_numactl_wraps_binary_after_mpi_launcher(self):
+        class _NumactlConfig:
+            mpirun = "mpirun"
+            numactl = {"physcpubind": "0-79", "interleave": "0-3"}
+
+        paths = _paths("feynman_mpi.x")
+        command = build_command(
+            _NumactlConfig(), paths, paths.circuit, _params(ranks=2), Path("/tmp/output.hsv")
+        )
+        self.assertEqual(
+            command[:7],
+            [
+                "mpirun",
+                "-n",
+                "2",
+                "numactl",
+                "--physcpubind=0-79",
+                "--interleave=0-3",
+                str(paths.binary),
+            ],
+        )
 
     def test_static_schedule_is_explicit(self):
         paths = _paths("feynman_mpi.x")

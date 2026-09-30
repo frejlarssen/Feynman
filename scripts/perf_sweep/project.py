@@ -273,6 +273,18 @@ def _binary_supports_batch_size(binary: Path) -> bool:
     return _binary_requires_mpirun(binary)
 
 
+def _numactl_prefix(config: SweepConfig) -> list[str]:
+    policy = config.numactl
+    if policy is None:
+        return []
+    prefix = ["numactl"]
+    if "physcpubind" in policy:
+        prefix.append(f"--physcpubind={policy['physcpubind']}")
+    if "interleave" in policy:
+        prefix.append(f"--interleave={policy['interleave']}")
+    return prefix
+
+
 def build_command(
     config: SweepConfig,
     paths: ProjectPaths,
@@ -310,8 +322,14 @@ def build_command(
                 f"Direct executable {paths.binary.name!r} requires ranks=1; "
                 f"got {params['ranks']}."
             )
-        return run_args
-    return [config.mpirun, "-n", str(int(params["ranks"])), *run_args]
+        return [*_numactl_prefix(config), *run_args]
+    return [
+        config.mpirun,
+        "-n",
+        str(int(params["ranks"])),
+        *_numactl_prefix(config),
+        *run_args,
+    ]
 
 
 def _find_timing_file(run_dir: Path, output_file: Path) -> Path | None:
@@ -435,6 +453,7 @@ def make_run_one(
             "end_utc": iso_utc(end),
             "command": shlex.join(cmd),
             "feynman_env": json.dumps(dict(params.get("feynman_env") or {}), sort_keys=True),
+            "numactl": json.dumps(config.numactl or {}, sort_keys=True),
             "circuit_file_used": _rel(circuit_path, paths.repo_root),
             "commit_short": git_info.get("commit_short", ""),
             "branch": git_info.get("branch", ""),
@@ -489,6 +508,7 @@ def build_metadata(
             "binary": str(paths.binary),
             **({} if direct_execution else {"mpirun": config.mpirun}),
             "execution_mode": "direct" if direct_execution else "mpi",
+            "numactl": config.numactl,
             "circuit": str(paths.circuit),
             "input_statevector": str(paths.input_statevector),
             "output_bitstrings": str(paths.output_bitstrings),
