@@ -35,12 +35,10 @@
       "r": 0
     },
     {
-      "p": "thirds",
-      "r": "thirds"
+      "checkpoint_policy": "thirds"
     },
     {
-      "p": null,
-      "r": null
+      "checkpoint_policy": "auto"
     }
   ],
   "output_root": "data/outputs/experiments",

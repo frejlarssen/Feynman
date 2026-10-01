@@ -36,8 +36,7 @@
   },
   "cases": [
     {
-      "p": null,
-      "r": null
+      "checkpoint_policy": "auto"
     }
   ],
   "output_root": "data/outputs/experiments",

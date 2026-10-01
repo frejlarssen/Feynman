@@ -37,12 +37,10 @@
       "r": 0
     },
     {
-      "p": "thirds",
-      "r": "thirds"
+      "checkpoint_policy": "thirds"
     },
     {
-      "p": null,
-      "r": null
+      "checkpoint_policy": "auto"
     }
   ],
   "notes": "QWalk sweep over iterations; compare no_cp vs fixed thirds vs autotuned using artificial sources on x-axis.",

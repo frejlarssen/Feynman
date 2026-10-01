@@ -42,6 +42,7 @@ def _params(**overrides):
         "threshold": 0.0,
         "p": None,
         "r": None,
+        "checkpoint_policy": None,
         "verbosity": 1,
         "dense": False,
     }
@@ -139,6 +140,20 @@ Total clocktime sum of parallel_for iterations: 3.500000000 seconds
         )
         self.assertEqual(command[command.index("--schedule") + 1], "static-cyclic")
         self.assertEqual(command[command.index("--batch-size") + 1], "7")
+
+    def test_checkpoint_policy_is_passed_to_binary(self):
+        paths = _paths("feynman.x")
+        command = build_command(
+            _Config(),
+            paths,
+            paths.circuit,
+            _params(checkpoint_policy="thirds"),
+            Path("/tmp/output.hsv"),
+        )
+        self.assertIn("--checkpoint-policy", command)
+        self.assertEqual(command[command.index("--checkpoint-policy") + 1], "thirds")
+        self.assertNotIn("-p", command)
+        self.assertNotIn("-r", command)
 
     def test_perf_stat_wraps_numactl_direct_command(self):
         class _PerfConfig:

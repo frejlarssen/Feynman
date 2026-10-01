@@ -117,7 +117,7 @@ def strong_scaling_series(rows: list[dict[str, str]], y_column: str,
     grouped = {}
     settings = {}
     fixed_fields = (
-        "schedule", "batch_size", "p", "r", "fraction", "threshold", "dense",
+        "schedule", "batch_size", "p", "r", "checkpoint_policy", "fraction", "threshold", "dense",
         "circuit_file_used", "omp_threads_per_worker", "feynman_env",
     )
     if varied_param == "omp_threads":

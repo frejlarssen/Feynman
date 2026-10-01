@@ -103,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--threshold", type=float, default=argparse.SUPPRESS)
     parser.add_argument("--p", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--r", type=int, default=argparse.SUPPRESS)
+    parser.add_argument("--checkpoint-policy", choices=["auto", "thirds"], default=argparse.SUPPRESS)
     parser.add_argument("--verbosity", type=int, default=argparse.SUPPRESS)
 
     parser.add_argument("--dense", action="store_true", default=argparse.SUPPRESS)
@@ -221,11 +222,6 @@ def _normalize_options(options: dict[str, Any]) -> None:
         for key in CASE_OVERRIDE_FIELDS:
             if key not in case:
                 continue
-            if key in {"p", "r"} and isinstance(case[key], str):
-                token = case[key].strip().lower()
-                if token == SPECIAL_CHECKPOINT_POLICY_THIRDS:
-                    normalized_case[key] = SPECIAL_CHECKPOINT_POLICY_THIRDS
-                    continue
             if key in NUMERIC_CASTS:
                 normalized_case[key] = _to_number(f"cases[{idx}].{key}", case[key], NUMERIC_CASTS[key])
             elif key in BOOLEAN_FIELDS:
@@ -264,6 +260,8 @@ def _validate_semantics(options: dict[str, Any]) -> None:
         raise ValueError("--ranks must be >= 1")
     if int(options["batch_size"]) < 1:
         raise ValueError("--batch-size must be >= 1")
+    if options["checkpoint_policy"] not in {None, "auto", SPECIAL_CHECKPOINT_POLICY_THIRDS}:
+        raise ValueError("Invalid checkpoint policy")
 
     if options["vary"] == "circuit_it":
         circuit_cfg = options.get("circuit")
@@ -282,6 +280,8 @@ def _validate_semantics(options: dict[str, Any]) -> None:
     if not cases:
         if (options["p"] is None) ^ (options["r"] is None):
             raise ValueError("Provide both --p and --r, or neither.")
+        if options["checkpoint_policy"] is not None and options["p"] is not None:
+            raise ValueError("Use either checkpoint_policy or explicit p/r, not both.")
         if options["vary"] == "p" and options["r"] is None:
             raise ValueError("Sweeping --vary p requires fixed --r.")
         if options["vary"] == "r" and options["p"] is None:
@@ -297,10 +297,17 @@ def _validate_semantics(options: dict[str, Any]) -> None:
 
         p_eff = case.get("p", options["p"])
         r_eff = case.get("r", options["r"])
+        policy_eff = case.get("checkpoint_policy", options["checkpoint_policy"])
         if (p_eff is None) ^ (r_eff is None):
             raise ValueError(
                 f"Case {name!r} must resolve to both p/r set or both unset "
                 "(after applying top-level defaults)."
+            )
+        if policy_eff not in {None, "auto", SPECIAL_CHECKPOINT_POLICY_THIRDS}:
+            raise ValueError(f"Case {name!r} has invalid checkpoint policy: {policy_eff!r}")
+        if policy_eff is not None and p_eff is not None:
+            raise ValueError(
+                f"Case {name!r}: use either checkpoint_policy or explicit p/r, not both."
             )
         if options["vary"] == "p" and r_eff is None:
             raise ValueError(f"Case {name!r}: sweeping --vary p requires fixed r.")

@@ -21,8 +21,7 @@
   "cases": [
     {
       "name": "fixed_thirds",
-      "p": "thirds",
-      "r": "thirds"
+      "checkpoint_policy": "thirds"
     }
   ],
   "circuit": {

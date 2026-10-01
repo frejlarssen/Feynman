@@ -20,6 +20,7 @@ struct Options {
   std::string schedule = "serial";
 #endif
   int chunk1 = -1, chunk2 = -1;
+  std::string checkpoint_policy;
   std::size_t batch_size = 32;
   TypeAmpReal fraction = 1.0, threshold = 1e-8;
   int verbosity = 1;
@@ -38,7 +39,9 @@ inline void print_help() {
          "  -B, --build-only         Build/report circuit without simulating\n"
          "  -p N -r N               Gate counts in rightmost and middle "
          "chunks\n"
-         "                          Omit both to autotune checkpoints\n"
+         "  --checkpoint-policy MODE\n"
+         "                          auto or thirds\n"
+         "                          Omit policy and -p/-r to autotune\n"
          "  -f FRACTION             Fraction of outer histories (0 < f <= 1)\n"
          "  -t THRESHOLD            Pruning/output threshold (default 1e-8)\n"
          "  -D                      Write zero/rejected outputs too\n"
@@ -57,6 +60,7 @@ inline Options parse_options(int argc, char **argv) {
   const option long_options[] = {
       {"input-bits", required_argument, nullptr, 1000},
       {"output-bits", required_argument, nullptr, 1001},
+      {"checkpoint-policy", required_argument, nullptr, 1003},
 #ifdef USE_MPI
       {"schedule", required_argument, nullptr, 1002},
       {"batch-size", required_argument, nullptr, 's'},
@@ -136,6 +140,9 @@ inline Options parse_options(int argc, char **argv) {
     case 1002:
       opts.schedule = optarg;
       break;
+    case 1003:
+      opts.checkpoint_policy = optarg;
+      break;
     default:
       throw std::invalid_argument("Unknown option; use --help");
     }
@@ -148,6 +155,13 @@ inline Options parse_options(int argc, char **argv) {
     throw std::invalid_argument("-c CIRCUIT is required");
   if ((opts.chunk1 == -1) != (opts.chunk2 == -1))
     throw std::invalid_argument("Set both -p and -r, or neither");
+  if (!opts.checkpoint_policy.empty() && opts.checkpoint_policy != "auto" &&
+      opts.checkpoint_policy != "thirds")
+    throw std::invalid_argument("Unknown checkpoint policy: " +
+                                opts.checkpoint_policy);
+  if (!opts.checkpoint_policy.empty() && opts.chunk1 != -1)
+    throw std::invalid_argument(
+        "Use either --checkpoint-policy or explicit -p/-r, not both");
   if (opts.fraction <= 0 || opts.fraction > 1 || opts.threshold < 0)
     throw std::invalid_argument("Require 0 < fraction <= 1 and threshold >= 0");
   if (opts.batch_size == 0)
@@ -294,11 +308,18 @@ inline void run(const Options &opts, const Execution &execution) {
   const auto start_full = get_time();
   const bool print = execution.rank == 0 && opts.verbosity >= 1;
   ParsedCircuit::parse_circuit(opts.circuit_file);
-  const bool autotuned = opts.chunk1 == -1;
-  if (autotuned)
+  const bool policy_thirds = opts.checkpoint_policy == "thirds";
+  const bool policy_auto = opts.checkpoint_policy.empty() ||
+                           opts.checkpoint_policy == "auto";
+  const bool autotuned = opts.chunk1 == -1 && policy_auto;
+  if (autotuned) {
     Circuit::build_autotuned_circuit();
-  else
+  } else if (policy_thirds) {
+    const int checkpoint = ParsedCircuit::nr_gates / 3;
+    Circuit::build_circuit(checkpoint, checkpoint);
+  } else {
     Circuit::build_circuit(opts.chunk1, opts.chunk2);
+  }
   if (print && opts.verbosity >= 3)
     std::cout << Circuit::circuit_to_string(-1, 2) << '\n';
   report_circuit(print || (opts.build_only && execution.rank == 0), autotuned);

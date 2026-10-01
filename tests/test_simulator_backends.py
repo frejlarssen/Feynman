@@ -100,6 +100,41 @@ class SimulatorBackends(unittest.TestCase):
             self.assertIn('Circuit has 3 gates', proc.stdout)
             self.assertNotIn('Number of simulate calls:', proc.stdout)
 
+    def test_thirds_checkpoint_policy(self):
+        circuit = self.root / 'four_gates.qasm'
+        circuit.write_text(
+            'OPENQASM 3.0;\ninclude "stdgates.inc";\nqreg q[3];\n'
+            'h q[0];\ncx q[0],q[1];\ncx q[1],q[2];\nx q[2];\n'
+        )
+        for ranks in [None] + ([3] if self.mpi else []):
+            proc = self.invoke(
+                ['-c', str(circuit), '--build-only', '--checkpoint-policy', 'thirds'],
+                ranks,
+            )
+            self.assertIn('Circuit has 4 gates', proc.stdout)
+            self.assertRegex(
+                proc.stdout,
+                r'Chunk 0: 2 gates\s+Chunk 1: 1 gates\s+Chunk 2: 1 gates',
+            )
+            auto_proc = self.invoke(
+                ['-c', str(circuit), '--build-only', '--checkpoint-policy', 'auto'],
+                ranks,
+            )
+            self.assertIn('mode=autotuned', auto_proc.stdout)
+            self.invoke(
+                [
+                    '-c', str(circuit), '--build-only', '--checkpoint-policy',
+                    'thirds', '-p', '1', '-r', '1',
+                ],
+                ranks,
+                success=False,
+            )
+            self.invoke(
+                ['-c', str(circuit), '--build-only', '--checkpoint-policy', 'unknown'],
+                ranks,
+                success=False,
+            )
+
     def test_failure_exit_and_no_mpi_hang(self):
         for ranks in [None] + ([3] if self.mpi else []):
             self.invoke(['-c', str(self.circuit), '-i', str(self.root / 'missing.hsv'),

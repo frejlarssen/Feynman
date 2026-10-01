@@ -16,6 +16,7 @@ CASE_OVERRIDE_FIELDS = (
     "threshold",
     "p",
     "r",
+    "checkpoint_policy",
     "verbosity",
     "dense",
     "feynman_env",
@@ -29,6 +30,7 @@ PARAM_FIELDS = (
     "threshold",
     "p",
     "r",
+    "checkpoint_policy",
     "verbosity",
     "dense",
 )
@@ -125,6 +127,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "threshold": 1e-8,
     "p": None,
     "r": None,
+    "checkpoint_policy": None,
     "verbosity": 1,
     "dense": False,
     "timeout_seconds": None,
@@ -185,6 +188,7 @@ class SweepConfig:
     threshold: float
     p: int | None
     r: int | None
+    checkpoint_policy: str | None
     verbosity: int
     dense: bool
     timeout_seconds: float | None

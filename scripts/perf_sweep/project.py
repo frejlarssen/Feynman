@@ -131,6 +131,7 @@ def base_params(config: SweepConfig) -> dict[str, Any]:
         "threshold": config.threshold,
         "p": config.p,
         "r": config.r,
+        "checkpoint_policy": config.checkpoint_policy,
         "verbosity": config.verbosity,
         "dense": config.dense,
         "feynman_env": config.feynman_env,
@@ -224,21 +225,6 @@ def parse_structure_metrics(stdout: str) -> dict[str, Any]:
     return parsed
 
 
-def _count_qasm_gate_lines(circuit_path: Path) -> int:
-    total = 0
-    for raw in circuit_path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("//"):
-            continue
-        if line.startswith("OPENQASM ") or line.startswith("include "):
-            continue
-        if line.startswith("qreg ") or line.startswith("qubit "):
-            continue
-        if line.endswith(";"):
-            total += 1
-    return total
-
-
 def _resolve_dynamic_circuit_path(config: SweepConfig, repo_root: Path, varied_value: Any) -> Path:
     if config.vary != "circuit_it":
         circuit_path, _ = resolve_circuit_input(config.circuit, repo_root)
@@ -249,20 +235,6 @@ def _resolve_dynamic_circuit_path(config: SweepConfig, repo_root: Path, varied_v
     circuit_spec["it"] = int(varied_value)
     circuit_path, _ = resolve_circuit_input(circuit_spec, repo_root)
     return circuit_path
-
-
-def _resolve_dynamic_checkpoints(params: dict[str, Any], circuit_path: Path) -> tuple[Any, Any]:
-    p_raw = params.get("p")
-    r_raw = params.get("r")
-    if p_raw is None and r_raw is None:
-        return None, None
-    if p_raw == "thirds" or r_raw == "thirds":
-        if p_raw != "thirds" or r_raw != "thirds":
-            raise ValueError("Checkpoint policy 'thirds' must be set for both p and r.")
-        total_gates = _count_qasm_gate_lines(circuit_path)
-        checkpoint = int(total_gates // 3)
-        return checkpoint, checkpoint
-    return p_raw, r_raw
 
 
 def _binary_requires_mpirun(binary: Path) -> bool:
@@ -322,7 +294,9 @@ def build_command(
     ]
     if _binary_supports_batch_size(paths.binary):
         run_args.extend(["--schedule", params["schedule"], "--batch-size", str(int(params["batch_size"]))])
-    if params["p"] is not None and params["r"] is not None:
+    if params["checkpoint_policy"] is not None:
+        run_args.extend(["--checkpoint-policy", str(params["checkpoint_policy"])])
+    elif params["p"] is not None and params["r"] is not None:
         run_args.extend(["-p", str(int(params["p"])), "-r", str(int(params["r"]))])
     if bool(params["dense"]):
         run_args.append("-D")
@@ -402,9 +376,6 @@ def make_run_one(
 
         circuit_path = _resolve_dynamic_circuit_path(config, paths.repo_root, varied_value)
         _preflight_validate_dimensions(circuit_path, paths.input_statevector, paths.output_bitstrings)
-        p_eff, r_eff = _resolve_dynamic_checkpoints(params, circuit_path)
-        params["p"] = p_eff
-        params["r"] = r_eff
         cmd = build_command(config, paths, circuit_path, params, output_file)
         start = dt.datetime.now(dt.timezone.utc)
         rc, elapsed_s, stdout_text, stderr_text = execute_command(
@@ -434,8 +405,17 @@ def make_run_one(
             "batch_size": params["batch_size"],
             "fraction": params["fraction"],
             "threshold": params["threshold"],
-            "p": params["p"],
-            "r": params["r"],
+            "p": (
+                structure_metrics["chunk2_gates"]
+                if params["checkpoint_policy"] is not None
+                else params["p"]
+            ),
+            "r": (
+                structure_metrics["chunk1_gates"]
+                if params["checkpoint_policy"] is not None
+                else params["r"]
+            ),
+            "checkpoint_policy": params["checkpoint_policy"] or "",
             "verbosity": params["verbosity"],
             "dense": int(bool(params["dense"])),
             "returncode": rc,

@@ -31,14 +31,12 @@
       "r": 0
     },
     {
-      "p": 8,
-      "r": 8
+      "checkpoint_policy": "thirds"
     },
     {
-      "p": null,
-      "r": null
+      "checkpoint_policy": "auto"
     }
   ],
-  "notes": "Checkpoint ablation: no_cp vs fixed_cp vs autotuned_cp on qft.",
+  "notes": "Checkpoint ablation: no_cp vs thirds vs autotuned_cp on qft.",
   "binary": "build-release/feynman_mpi.x"
 }
