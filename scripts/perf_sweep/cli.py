@@ -169,6 +169,28 @@ def _normalize_options(options: dict[str, Any]) -> None:
             raise ValueError("'numactl' must contain at least one binding policy")
         options["numactl"] = normalized_numactl
 
+    perf_stat = options.get("perf_stat")
+    if perf_stat is not None:
+        if not isinstance(perf_stat, dict):
+            raise ValueError(f"'perf_stat' must be an object when provided, got: {perf_stat!r}")
+        unknown_perf_keys = sorted(set(perf_stat) - {"events"})
+        if unknown_perf_keys:
+            raise ValueError(
+                "Unknown perf_stat keys: "
+                + ", ".join(unknown_perf_keys)
+                + ". Allowed keys: events"
+            )
+        events = perf_stat.get("events")
+        if not isinstance(events, list) or not events:
+            raise ValueError("perf_stat.events must be a nonempty list")
+        normalized_events: list[str] = []
+        for event in events:
+            token = str(event).strip()
+            if not token:
+                raise ValueError("perf_stat.events entries must not be empty")
+            normalized_events.append(token)
+        options["perf_stat"] = {"events": normalized_events}
+
     cases_raw = options.get("cases")
     if cases_raw is None:
         return

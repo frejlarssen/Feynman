@@ -99,6 +99,7 @@ SUMMARY_FIELDS = list(
         "command",
         "feynman_env",
         "numactl",
+        "perf_stat_file",
         "commit_short",
         "branch",
         "dirty",
@@ -134,6 +135,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "cases": None,
     "feynman_env": None,
     "numactl": None,
+    "perf_stat": None,
 }
 
 REQUIRED_FIELDS = (
@@ -192,6 +194,7 @@ class SweepConfig:
     cases: list[dict[str, Any]] | None
     feynman_env: dict[str, str] | None
     numactl: dict[str, str] | None
+    perf_stat: dict[str, Any] | None
 
 
 @dataclass(frozen=True)

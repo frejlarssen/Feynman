@@ -18,6 +18,7 @@ from perf_sweep.schema import ProjectPaths
 class _Config:
     mpirun = "mpirun"
     numactl = None
+    perf_stat = None
 
 
 def _paths(binary_name: str) -> ProjectPaths:
@@ -138,6 +139,52 @@ Total clocktime sum of parallel_for iterations: 3.500000000 seconds
         )
         self.assertEqual(command[command.index("--schedule") + 1], "static-cyclic")
         self.assertEqual(command[command.index("--batch-size") + 1], "7")
+
+    def test_perf_stat_wraps_numactl_direct_command(self):
+        class _PerfConfig:
+            mpirun = "mpirun"
+            numactl = {"physcpubind": "0-79", "interleave": "0-1"}
+            perf_stat = {
+                "events": [
+                    "task-clock,context-switches",
+                    "{cycles,instructions,l2d_cache,l2d_cache_refill}",
+                ]
+            }
+
+        paths = _paths("feynman.x")
+        command = build_command(
+            _PerfConfig(), paths, paths.circuit, _params(), Path("/tmp/run/output.hsv")
+        )
+        self.assertEqual(
+            command[:13],
+            [
+                "perf",
+                "stat",
+                "-o",
+                "/tmp/run/perf_stat.txt",
+                "-e",
+                "task-clock,context-switches",
+                "-e",
+                "{cycles,instructions,l2d_cache,l2d_cache_refill}",
+                "--",
+                "numactl",
+                "--physcpubind=0-79",
+                "--interleave=0-1",
+                str(paths.binary),
+            ],
+        )
+
+    def test_perf_stat_rejects_mpi_launcher(self):
+        class _PerfConfig:
+            mpirun = "mpirun"
+            numactl = None
+            perf_stat = {"events": ["cycles"]}
+
+        paths = _paths("feynman_mpi.x")
+        with self.assertRaisesRegex(ValueError, "standalone executable"):
+            build_command(
+                _PerfConfig(), paths, paths.circuit, _params(ranks=2), Path("/tmp/output.hsv")
+            )
 
     def test_output_derived_timing_file_is_found(self):
         with tempfile.TemporaryDirectory() as directory:

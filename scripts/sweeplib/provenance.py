@@ -371,6 +371,7 @@ def _hardware_metadata(repo_root: Path) -> dict[str, Any]:
             "nproc": ["nproc"],
             "free": ["free", "-h"],
             "lsblk": ["lsblk"],
+            "perf": ["perf", "--version"],
             "os_release": ["cat", "/etc/os-release"],
         })
     elif system == "Darwin":

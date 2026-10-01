@@ -78,6 +78,20 @@ On Linux, a perf-sweep config can bind CPUs and interleave NUMA memory:
 }
 ```
 
+To collect the same `perf stat` events for every run, add:
+
+```json
+"perf_stat": {
+  "events": [
+    "task-clock,context-switches,cpu-migrations,page-faults",
+    "{cycles,instructions,stall_backend,stall_backend_cache,l1d_cache,l1d_cache_refill,l2d_cache,l2d_cache_refill}"
+  ]
+}
+```
+
+Each run writes `perf_stat.txt`; the summary records its path and complete
+command. This option is limited to the standalone executable.
+
 Rank sweeps (`"vary": "ranks"`) automatically use a strong-scaling plot for
 `total_full_s` (the default), `total_sim_s`, or `walltime_s`. This applies to
 initial runs, `plot perf-sweep`, and `regenerate_all_plots.py`.

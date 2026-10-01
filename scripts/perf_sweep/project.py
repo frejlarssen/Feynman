@@ -285,6 +285,17 @@ def _numactl_prefix(config: SweepConfig) -> list[str]:
     return prefix
 
 
+def _perf_stat_prefix(config: SweepConfig, output_file: Path) -> list[str]:
+    policy = getattr(config, "perf_stat", None)
+    if policy is None:
+        return []
+    prefix = ["perf", "stat", "-o", str(output_file.with_name("perf_stat.txt"))]
+    for events in policy["events"]:
+        prefix.extend(["-e", events])
+    prefix.append("--")
+    return prefix
+
+
 def build_command(
     config: SweepConfig,
     paths: ProjectPaths,
@@ -322,7 +333,16 @@ def build_command(
                 f"Direct executable {paths.binary.name!r} requires ranks=1; "
                 f"got {params['ranks']}."
             )
-        return [*_numactl_prefix(config), *run_args]
+        return [
+            *_perf_stat_prefix(config, output_file),
+            *_numactl_prefix(config),
+            *run_args,
+        ]
+    if getattr(config, "perf_stat", None) is not None:
+        raise ValueError(
+            "perf_stat is supported only for the standalone executable; "
+            "wrapping mpirun would profile only the launcher host."
+        )
     return [
         config.mpirun,
         "-n",
@@ -396,6 +416,7 @@ def make_run_one(
         )
         end = dt.datetime.now(dt.timezone.utc)
         timing_file = _find_timing_file(run_dir, output_file)
+        perf_stat_file = run_dir / "perf_stat.txt" if config.perf_stat is not None else None
 
         stdout_file.write_text(stdout_text, encoding="utf-8")
         stderr_file.write_text(stderr_text, encoding="utf-8")
@@ -454,6 +475,9 @@ def make_run_one(
             "command": shlex.join(cmd),
             "feynman_env": json.dumps(dict(params.get("feynman_env") or {}), sort_keys=True),
             "numactl": json.dumps(config.numactl or {}, sort_keys=True),
+            "perf_stat_file": (
+                _rel(perf_stat_file, paths.repo_root) if perf_stat_file is not None else ""
+            ),
             "circuit_file_used": _rel(circuit_path, paths.repo_root),
             "commit_short": git_info.get("commit_short", ""),
             "branch": git_info.get("branch", ""),
@@ -509,6 +533,7 @@ def build_metadata(
             **({} if direct_execution else {"mpirun": config.mpirun}),
             "execution_mode": "direct" if direct_execution else "mpi",
             "numactl": config.numactl,
+            "perf_stat": config.perf_stat,
             "circuit": str(paths.circuit),
             "input_statevector": str(paths.input_statevector),
             "output_bitstrings": str(paths.output_bitstrings),
