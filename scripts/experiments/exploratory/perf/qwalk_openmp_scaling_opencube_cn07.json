@@ -1,0 +1,44 @@
+{
+  "description": "Quantum-walk OpenMP strong scaling on cn07",
+  "repo_root": ".",
+  "binary": "build-standalone-cn07/feynman.x",
+  "vary": "omp_threads",
+  "values": [
+    4,
+    8,
+    16,
+    32,
+    64
+  ],
+  "repeat": 3,
+  "feynman_env": {
+    "FEYNMAN_HISTORY_TIMINGS": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PLACES": "cores",
+    "OMP_PROC_BIND": "close"
+  },
+  "batch_size": 1,
+  "fraction": 1.0,
+  "threshold": 0.0,
+  "cases": [
+    {
+      "checkpoint_policy": "thirds"
+    }
+  ],
+  "circuit": {
+    "generator": "qwalk",
+    "n": 6,
+    "it": 31
+  },
+  "input_statevector": {
+    "generator": "ket0"
+  },
+  "output_bitstrings": {
+    "generator": "one_interval",
+    "count": 1
+  },
+  "timeout_seconds": 1200,
+  "output_root": "data/outputs/experiments",
+  "notes": "OpenCube single-process OpenMP pilot with fixed workload and checkpoints. Per-history timing is enabled for load-balance analysis.",
+  "ranks": 1
+}
