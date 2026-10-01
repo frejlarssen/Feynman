@@ -4,15 +4,13 @@
   "binary": "build-standalone/feynman.x",
   "vary": "omp_threads",
   "values": [
+    4,
+    8,
+    16,
     32,
-    48,
     64
   ],
-  "repeat": 1,
-  "numactl": {
-    "physcpubind": "0-79",
-    "interleave": "0-1"
-  },
+  "repeat": 3,
   "feynman_env": {
     "FEYNMAN_HISTORY_TIMINGS": "1",
     "OMP_DYNAMIC": "FALSE",
@@ -24,7 +22,6 @@
   "threshold": 0.0,
   "cases": [
     {
-      "name": "fixed_thirds",
       "checkpoint_policy": "thirds"
     }
   ],
