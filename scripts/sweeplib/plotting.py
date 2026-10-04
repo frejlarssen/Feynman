@@ -157,6 +157,35 @@ def strong_scaling_series(rows: list[dict[str, str]], y_column: str,
     return result
 
 
+def write_strong_scaling_plotted_data(
+    *, series: dict, varied_param: str, y_column: str, output_path: Path,
+) -> None:
+    """Write the aggregate values represented by a strong-scaling plot."""
+    fieldnames = (
+        "case_name",
+        "varied_param",
+        "varied_value",
+        "y_column",
+        "mean",
+        "sample_std",
+        "relative_parallel_efficiency_percent",
+    )
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for case, (ranks, means, stds, efficiencies) in series.items():
+            for rank, mean, std, efficiency in zip(ranks, means, stds, efficiencies):
+                writer.writerow({
+                    "case_name": case,
+                    "varied_param": varied_param,
+                    "varied_value": rank,
+                    "y_column": y_column,
+                    "mean": mean,
+                    "sample_std": std,
+                    "relative_parallel_efficiency_percent": efficiency,
+                })
+
+
 def render_perf_sweep_plot(
     *, summary_path: Path, y_column: str, include_failures: bool,
     mode: str, x_label: str, title: str, output_path: Path,
@@ -179,6 +208,13 @@ def render_perf_sweep_plot(
 
     varied_param = next(iter(varied))
     series = strong_scaling_series(rows, y_column, varied_param)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    write_strong_scaling_plotted_data(
+        series=series,
+        varied_param=varied_param,
+        y_column=y_column,
+        output_path=output_path.parent / "plotted_data.csv",
+    )
     configure_headless_matplotlib()
     import matplotlib.pyplot as plt
     apply_plot_fontsizes(plt=plt, label_fontsize=label_fontsize)
@@ -194,26 +230,43 @@ def render_perf_sweep_plot(
     width = 0.8 / len(series)
     baselines = []
     for i, (case, (ranks, means, stds, efficiencies)) in enumerate(series.items()):
-        color = f"C{i % 10}"
+        time_color = f"C{(2 * i) % 10}"
+        efficiency_color = f"C{(2 * i + 1) % 10}"
         xs = [positions[p] + (i - (len(series) - 1) / 2) * width for p in ranks]
-        label = "" if case == "default" else f"{case} "
+        label = "" if len(series) == 1 or case == "default" else f"{case} "
         ax.bar(xs, means, width=width, yerr=stds, capsize=2,
-               facecolor="none", edgecolor=color, hatch="///", label=f"{label}time")
-        efficiency_ax.plot(xs, efficiencies, "o-", color=color,
-                           markersize=3, label=f"{label}efficiency")
+               facecolor="none", edgecolor=time_color, hatch="///", label=f"{label}Time")
+        efficiency_ax.plot(
+            xs,
+            efficiencies,
+            "o-",
+            color=efficiency_color,
+            linewidth=2,
+            markersize=5,
+            markeredgewidth=1,
+            zorder=3,
+            label=f"{label}Efficiency",
+        )
         baselines.append(f"{label}P₀={ranks[0]}")
     ax.set_xticks(range(len(ranks_all)), [str(p) for p in ranks_all])
     ax.set_xlabel("Number of OpenMP threads" if varied_param == "omp_threads"
                   else "Number of MPI processes")
     timing_labels = {
-        "total_full_s": "Execution time including I/O [s]",
+        "total_full_s": "Execution time [s]",
         "total_sim_s": "Simulation time [s]",
         "walltime_s": "Launcher wall time [s]",
     }
     ax.set_ylabel(timing_labels[y_column])
-    ax.set_yscale("log")
-    efficiency_ax.set_ylabel("Relative parallel efficiency (%)")
+    ax.set_ylim(bottom=0)
+    efficiency_ax.set_ylabel("Efficiency (%)")
     efficiency_ax.set_ylim(bottom=0)
+    if len(series) == 1:
+        time_color = "C0"
+        efficiency_color = "C1"
+        ax.tick_params(axis="y", colors=time_color)
+        ax.spines["left"].set_color(time_color)
+        efficiency_ax.tick_params(axis="y", colors=efficiency_color)
+        efficiency_ax.spines["right"].set_color(efficiency_color)
     ax.set_title(title or "Strong scaling")
     ax.grid(axis="y", alpha=0.3)
     handles, labels = ax.get_legend_handles_labels()
@@ -222,10 +275,15 @@ def render_perf_sweep_plot(
         fig.legend(handles + handles2, labels + labels2, fontsize="small",
                    loc="lower center", bbox_to_anchor=(0.5, 0.07), ncol=2)
     else:
-        ax.legend(handles + handles2, labels + labels2, fontsize="small", loc="lower left")
+        ax.legend(handles + handles2, labels + labels2, fontsize="small",
+                  loc="lower left", framealpha=0.9)
     baseline_counts = {values[0][0] for values in series.values()}
-    caption = (f"Baseline: P₀={next(iter(baseline_counts))} for every case"
-               if len(baseline_counts) == 1 else "Baseline: " + "; ".join(baselines))
+    if len(series) == 1:
+        caption = f"Baseline: P₀={next(iter(baseline_counts))}"
+    elif len(baseline_counts) == 1:
+        caption = f"Baseline: P₀={next(iter(baseline_counts))} for every case"
+    else:
+        caption = "Baseline: " + "; ".join(baselines)
     caption = textwrap.fill(caption, width=85 if multi_case else 45)
     fig.text(0.5, 0.01, caption, ha="center", fontsize="small")
     fig.tight_layout(rect=(0, 0.32 if multi_case else 0.1, 1, 1))

@@ -56,6 +56,15 @@ class StrongScalingTests(unittest.TestCase):
                           mode='meanstd', x_label='ranks', title='', output_path=Path(tmp) / 'plot.pdf')
             render_perf_sweep_plot(**kwargs)
             self.assertGreater(kwargs['output_path'].stat().st_size, 1000)
+            with (Path(tmp) / 'plotted_data.csv').open(newline='') as handle:
+                plotted = list(csv.DictReader(handle))
+            self.assertEqual([row['varied_value'] for row in plotted], ['4', '8'])
+            self.assertEqual([row['mean'] for row in plotted], ['10.0', '5.0'])
+            self.assertEqual([row['sample_std'] for row in plotted], ['0.0', '0.0'])
+            self.assertEqual(
+                [row['relative_parallel_efficiency_percent'] for row in plotted],
+                ['100.0', '100.0'],
+            )
             for item in rows:
                 item['varied_param'] = 'batch_size'
             write()
