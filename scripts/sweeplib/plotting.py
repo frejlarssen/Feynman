@@ -277,15 +277,6 @@ def render_perf_sweep_plot(
     else:
         ax.legend(handles + handles2, labels + labels2, fontsize="small",
                   loc="lower left", framealpha=0.9)
-    baseline_counts = {values[0][0] for values in series.values()}
-    if len(series) == 1:
-        caption = f"Baseline: P₀={next(iter(baseline_counts))}"
-    elif len(baseline_counts) == 1:
-        caption = f"Baseline: P₀={next(iter(baseline_counts))} for every case"
-    else:
-        caption = "Baseline: " + "; ".join(baselines)
-    caption = textwrap.fill(caption, width=85 if multi_case else 45)
-    fig.text(0.5, 0.01, caption, ha="center", fontsize="small")
     fig.tight_layout(rect=(0, 0.32 if multi_case else 0.1, 1, 1))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)
