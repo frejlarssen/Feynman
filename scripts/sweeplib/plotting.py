@@ -265,8 +265,10 @@ def render_perf_sweep_plot(
         efficiency_color = "C1"
         ax.tick_params(axis="y", colors=time_color)
         ax.spines["left"].set_color(time_color)
+        ax.spines["right"].set_visible(False)
         efficiency_ax.tick_params(axis="y", colors=efficiency_color)
         efficiency_ax.spines["right"].set_color(efficiency_color)
+        efficiency_ax.spines["left"].set_visible(False)
     ax.set_title(title or "Strong scaling")
     ax.grid(axis="y", alpha=0.3)
     handles, labels = ax.get_legend_handles_labels()
